@@ -27,7 +27,9 @@ export function verifyPkce(verifier, challenge) {
 // The local mode selects fixtures; staging obtains identities only from a
 // separately verified OIDC provider. This broker authorizes synthetic data only.
 export function createAuth({ pool, baseUrl, redirectAllowlist = [],
-  cookieName = 'prototype_session', allowSyntheticAuthorization = true, csrfKey, onRegistrationRejected = () => {}, onGrantRevoked = async () => {} }) {
+  cookieName = 'prototype_session', allowSyntheticAuthorization = true, csrfKey, principalResolver,
+  onRegistrationRejected = () => {}, onGrantRevoked = async () => {} }) {
+  if (principalResolver !== undefined && (typeof principalResolver !== 'function' || allowSyntheticAuthorization)) throw new Error('persistent_identity_requires_verified_login');
   if (!/^[A-Za-z0-9_-]+$/.test(cookieName)) throw new Error('invalid_cookie_name');
   if (!allowSyntheticAuthorization && (!csrfKey || Buffer.from(csrfKey,'base64').length!==32)) throw new Error('csrf_key_required');
   if (typeof onRegistrationRejected !== 'function') throw new Error('invalid_registration_reporter');
@@ -75,11 +77,20 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
       CREATE INDEX IF NOT EXISTS demo_refresh_family ON demo_oauth_refresh_tokens(family_id);
       ALTER TABLE demo_sessions ADD COLUMN IF NOT EXISTS oauth_family_id TEXT REFERENCES demo_oauth_grants(id);
     `);
-    for (const id of Object.keys(FIXTURES)) {
+    for (const id of principalResolver ? [] : Object.keys(FIXTURES)) {
       await pool.query('INSERT INTO demo_identities(id) VALUES($1) ON CONFLICT DO NOTHING', [id]);
     }
   }
   async function principal(id, scopes) {
+    if (principalResolver) {
+      const identity = await principalResolver(id);
+      if (!identity || identity.id !== id || identity.role !== 'customer') return null;
+      const { rows } = await pool.query('SELECT enabled FROM demo_identities WHERE id=$1', [id]);
+      if (rows[0]?.enabled === false) return null;
+      const granted = scopes ?? CUSTOMER_SCOPES;
+      if (!Array.isArray(granted) || granted.some(scope => !CUSTOMER_SCOPES.includes(scope))) return null;
+      return { ...identity, scopes: [...new Set(granted)] };
+    }
     const fixture = FIXTURES[id];
     if (!fixture) return null;
     const { rows } = await pool.query('SELECT enabled FROM demo_identities WHERE id=$1', [id]);
@@ -90,6 +101,7 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
     if (!['browser','oauth'].includes(kind)) throw problem(400,'invalid_session_kind');
     const who = await principal(id, scopes);
     if (!who) throw problem(403, 'identity_disabled');
+    if (principalResolver) await database.query('INSERT INTO demo_identities(id) VALUES($1) ON CONFLICT DO NOTHING', [id]);
     const token = opaque();
     await database.query(`INSERT INTO demo_sessions(token_hash,principal_id,issuer,audience,scopes,expires_at,session_kind,oauth_family_id)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
@@ -181,6 +193,7 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
     if(!allowSyntheticAuthorization && input.identity!==undefined)throw problem(400,'identity_parameter_forbidden');
     const who = await principal(verifiedPrincipal?.id ?? input.identity);
     if (who?.role !== 'customer') throw problem(403, 'customer_required');
+    if (principalResolver) await pool.query('INSERT INTO demo_identities(id) VALUES($1) ON CONFLICT DO NOTHING', [who.id]);
     const code = opaque();
     await pool.query(`INSERT INTO demo_oauth_codes VALUES($1,$2,$3,$4,$5,$6,$7,now()+interval '2 minutes')`,
       [hash(code), input.client_id, who.id, input.redirect_uri, input.code_challenge, resource, JSON.stringify(scopes)]);

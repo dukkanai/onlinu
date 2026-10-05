@@ -69,7 +69,7 @@ const publicErrors = new Set(['invalid_request', 'invalid_quantity', 'invalid_op
 function failure(code, status = 503) { return Object.assign(new Error(code), { code, status }); }
 
 export function createCoreAdapter({ restaurants, fetchImpl = fetch, timeoutMs = 5000, maxBytes = 2_000_000 }) {
-  if (!Array.isArray(restaurants) || !restaurants.length || restaurants.length > 1000
+  if (!Array.isArray(restaurants) || restaurants.length > 1000
       || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000
       || !Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 4_000_000) throw new Error('invalid_core_configuration');
   const routes = new Map();

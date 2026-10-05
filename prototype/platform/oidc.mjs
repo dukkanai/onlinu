@@ -111,7 +111,7 @@ export function createOidcClientAdapter({ issuer, clientId, clientSecret, fetchI
   };
 }
 
-export function createOidcLogin({ pool, issuer, clientId, clientSecret, baseUrl, identityMap,
+export function createOidcLogin({ pool, issuer, clientId, clientSecret, baseUrl, identityMap, identityResolver,
   clientAdapter, now = Date.now }) {
   if (!pool?.query || !pool?.connect) throw new Error('OIDC requires a PostgreSQL pool');
   const issuerUrl = httpsUrl(issuer);
@@ -119,11 +119,12 @@ export function createOidcLogin({ pool, issuer, clientId, clientSecret, baseUrl,
   if (applicationUrl.pathname !== '/') throw new Error('OIDC baseUrl must be an origin');
   if (typeof clientId !== 'string' || !clientId || clientId.length > 200 ||
       typeof clientSecret !== 'string' || clientSecret.length < 16) throw new Error('OIDC client configuration missing');
-  if (!identityMap || typeof identityMap !== 'object' || Array.isArray(identityMap)) throw new Error('OIDC identity map required');
-  const allowed = new Map(Object.entries(identityMap));
-  if (!allowed.size || new Set(allowed.values()).size !== allowed.size || [...allowed].some(([email, principal]) =>
+  if (identityResolver !== undefined && (typeof identityResolver !== 'function' || identityMap !== undefined)) throw new Error('Choose one verified OIDC identity mapping');
+  if (!identityResolver && (!identityMap || typeof identityMap !== 'object' || Array.isArray(identityMap))) throw new Error('OIDC identity map required');
+  const allowed = new Map(Object.entries(identityMap ?? {}));
+  if (!identityResolver && (!allowed.size || new Set(allowed.values()).size !== allowed.size || [...allowed].some(([email, principal]) =>
     typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 ||
-    typeof principal !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(principal))) {
+    typeof principal !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(principal)))) {
     throw new Error('OIDC identity map must uniquely map exact verified emails to internal identities');
   }
   const redirectUri = `${applicationUrl.origin}/auth/callback`;
@@ -201,11 +202,21 @@ export function createOidcLogin({ pool, issuer, clientId, clientSecret, baseUrl,
       if (error instanceof OidcLoginError) throw error;
       throw new OidcLoginError('oidc_verification_failed', 403);
     }
-    const principalId = typeof claims?.email === 'string' ? allowed.get(claims.email) : undefined;
-    if (!principalId || claims.email_verified !== true || claims.iss !== issuerUrl.href ||
+    if (!claims || claims.iss !== issuerUrl.href ||
         (claims.aud !== clientId && !(Array.isArray(claims.aud) && claims.aud.includes(clientId))) ||
         typeof claims.sub !== 'string' || !claims.sub || claims.sub.length > 255 || /[\x00-\x1f\x7f]/.test(claims.sub) ||
         typeof claims.nonce !== 'string' || !safeEqual(claims.nonce, saved.nonce)) throw denied();
+    let principalId;
+    if (identityResolver) {
+      // The library has verified the signed token and this layer has checked
+      // issuer/audience/nonce before creating any identity. Never link by email.
+      try { principalId = (await identityResolver({ issuer: claims.iss, subject: claims.sub }))?.id; }
+      catch (error) { if (error?.status === 403) throw denied(); throw unavailable(); }
+    } else {
+      principalId = typeof claims.email === 'string' ? allowed.get(claims.email) : undefined;
+      if (claims.email_verified !== true) throw denied();
+    }
+    if (typeof principalId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(principalId)) throw denied();
     try {
       // Neither a new subject claiming a previously bound email nor an existing
       // subject changing to another allowed email can take over an identity.

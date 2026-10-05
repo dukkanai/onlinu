@@ -174,7 +174,7 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
     if (coreAdapter) {
       register('search_restaurants', 'Find restaurants', 'Search the configured restaurant directory. No personal data or order creation.', searchArgs,
         z.object({ restaurants: z.array(z.object({ id: identifier, name: z.string().max(4096), cuisine: z.string().max(4096) })).max(1000) }),
-        args => ({ restaurants: coreAdapter.listRestaurants(args) }), { scope: catalogScope });
+        async args => ({ restaurants: await coreAdapter.listRestaurants(args) }), { scope: catalogScope });
       register('get_restaurant_menu', 'Read the restaurant menu', 'Read original menu categories, available items/options, prices and published appearance. Availability is not a stock reservation.',
         z.object({ tenantId: identifier }).strict(), coreCatalogSchema.extend({ tenantId: identifier }),
         args => coreAdapter.getMenu(args.tenantId), { scope: catalogScope });

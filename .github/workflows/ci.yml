@@ -39,6 +39,7 @@ jobs:
       TENANT_TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_tenant_prototype_test?sslmode=disable
       CHANNELS_TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_channels_prototype_test?sslmode=disable
       TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_oauth_refresh_test?sslmode=disable
+      IDENTITY_TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_identity_test?sslmode=disable
       TEST_CORE_ADAPTER: "1"
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +59,7 @@ jobs:
         env:
           PGPASSWORD: ci-only-test-password
         run: |
-          for database in astracalls_restaurant_test astracalls_meta_test astracalls_tenant_prototype_test astracalls_channels_prototype_test astracalls_oauth_refresh_test; do
+          for database in astracalls_restaurant_test astracalls_meta_test astracalls_tenant_prototype_test astracalls_channels_prototype_test astracalls_oauth_refresh_test astracalls_identity_test; do
             psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $database"
           done
 

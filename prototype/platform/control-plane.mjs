@@ -1,0 +1,159 @@
+/** Real subject-based identity and staff control API, separate from demo routes.
+ * Deployment still needs approved HTTPS/OIDC configuration. No public bootstrap,
+ * Docker socket, payments or production provisioning is exposed by this module.
+ */
+import { createIdentityDirectory } from './identity-directory.mjs';
+import { createAuth, problem } from './auth.mjs';
+import { createOidcLogin } from './oidc.mjs';
+import { createCoreAdapter } from './core-adapter.mjs';
+import { createMcpHandler } from './mcp.mjs';
+
+const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const cookieName = '__Host-platform_session';
+const bindingName = '__Host-platform_oidc';
+function cookie(name, value, age) { return `${name}=${value}; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}`; }
+function json(res, status, value) { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); }
+function redirect(res, target) { res.writeHead(302, { location: target }); res.end(); }
+function fields(entries) {
+  if (new Set(entries.map(([key]) => key)).size !== entries.length) throw problem(400, 'duplicate_parameter');
+  return Object.fromEntries(entries);
+}
+async function body(req) {
+  const chunks = []; let bytes = 0;
+  for await (const chunk of req) { bytes += chunk.length; if (bytes > 32768) throw problem(413, 'body_too_large'); chunks.push(chunk); }
+  const raw = Buffer.concat(chunks).toString('utf8');
+  if (req.headers['content-type']?.startsWith('application/x-www-form-urlencoded')) return fields([...new URLSearchParams(raw)]);
+  if (!req.headers['content-type']?.startsWith('application/json')) throw problem(415, 'json_required');
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { throw problem(400, 'invalid_json'); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw problem(400, 'invalid_json');
+  return parsed;
+}
+
+export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [] }, { oidcClientAdapter } = {}) {
+  const base = new URL(baseUrl);
+  if (base.protocol !== 'https:' || base.pathname !== '/' || base.username || base.password || base.search || base.hash) throw new Error('control_plane_requires_https_origin');
+  const directory = createIdentityDirectory({ pool, trustedIssuers: [new URL(oidc.issuer).href] });
+  await directory.init();
+  const auth = createAuth({ pool, baseUrl: base.origin, cookieName, allowSyntheticAuthorization: false,
+    csrfKey, principalResolver: directory.resolve, redirectAllowlist });
+  await auth.init();
+  const login = createOidcLogin({ pool, ...oidc, baseUrl: base.origin,
+    identityResolver: directory.verifiedIdentity, clientAdapter: oidcClientAdapter });
+  await login.init();
+  const core = createCoreAdapter({ restaurants });
+  const publicCore = {
+    async listRestaurants(args) {
+      const configured = core.listRestaurants(args);
+      const published = new Map((await directory.published(configured.map(row => row.id))).map(row => [row.id, row]));
+      return configured.filter(row => published.has(row.id)).map(row => ({ ...row, name: published.get(row.id).name }));
+    },
+    async getMenu(tenantId) {
+      if (!(await directory.published([tenantId])).length) throw problem(404, 'restaurant_not_found');
+      return core.getMenu(tenantId);
+    },
+    async preview(tenantId, input) {
+      if (!(await directory.published([tenantId])).length) throw problem(404, 'restaurant_not_found');
+      return core.preview(tenantId, input);
+    },
+  };
+  const mcp = createMcpHandler({ baseUrl: base.origin, authenticate: req => auth.authenticate(req, { bearerOnly: true }), coreAdapter: publicCore });
+  const limits = new Map();
+  function rate(req) {
+    const now = Date.now(), key = req.socket.remoteAddress;
+    if (limits.size > 1000) for (const [key, row] of limits) if (row.until < now) limits.delete(key);
+    if (limits.size > 10000 && !limits.has(key)) throw problem(429, 'rate_limited');
+    let row = limits.get(key);
+    if (!row || row.until < now) { row = { until: now + 60000, count: 0 }; limits.set(key, row); }
+    if (++row.count > 240) throw problem(429, 'rate_limited');
+  }
+  async function browser(req) {
+    // Customer OAuth grants never confer staff/control-plane privileges.
+    if (req.headers.authorization) throw problem(403, 'browser_session_required');
+    const who = await auth.authenticate(req, { cookieOnly: true });
+    if (!who) throw problem(401, 'authentication_required');
+    return who;
+  }
+  async function handle(req, res) {
+    res.setHeader('cache-control', 'no-store'); res.setHeader('x-content-type-options', 'nosniff');
+    res.setHeader('referrer-policy', 'no-referrer');
+    res.setHeader('content-security-policy', "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+    try {
+      if (req.headers.host !== base.host || (req.headers.origin && req.headers.origin !== base.origin)) throw problem(403, 'origin_rejected');
+      const url = new URL(req.url, base);
+      if (url.searchParams.has('access_token')) throw problem(400, 'token_in_url_forbidden');
+      rate(req);
+      if (req.url === '/health' && req.method === 'GET') { await pool.query('SELECT 1'); return json(res, 200, { status: 'ok', mode: 'core_control_plane', ordersEnabled: false }); }
+      if (url.pathname === '/mcp') return await mcp(req, res);
+      if (req.method === 'GET' && url.pathname === '/.well-known/oauth-protected-resource') return json(res, 200, auth.resourceMetadata);
+      if (req.method === 'GET' && url.pathname === '/.well-known/oauth-authorization-server') return json(res, 200, auth.metadata);
+      if (req.method === 'POST' && ['/oauth/register','/oauth/token','/oauth/revoke'].includes(url.pathname)) {
+        const input = await body(req);
+        if (url.pathname === '/oauth/register') return json(res, 201, await auth.register(input));
+        if (url.pathname === '/oauth/token') return json(res, 200, await auth.exchange(input));
+        await auth.revoke(input.token); return json(res, 200, {});
+      }
+      if (req.method === 'GET' && url.pathname === '/auth/login') {
+        const params = fields([...url.searchParams]);
+        if (Object.keys(params).some(key => key !== 'returnTo')) throw problem(400, 'invalid_request');
+        const flow = await login.begin(params.returnTo ?? '/');
+        res.setHeader('set-cookie', cookie(bindingName, flow.bindingCookie, 600));
+        return redirect(res, flow.authorizationUrl);
+      }
+      if (req.method === 'GET' && url.pathname === '/auth/callback') {
+        const matches = (req.headers.cookie ?? '').split(';').map(value => value.trim()).filter(value => value.startsWith(bindingName + '='));
+        const binding = matches.length === 1 ? matches[0].slice(bindingName.length + 1) : '';
+        res.setHeader('set-cookie', cookie(bindingName, '', 0));
+        const identity = await login.complete(url.href, binding);
+        await auth.revoke(auth.browserToken(req));
+        const session = await auth.issue(identity.principalId, undefined, { kind: 'browser' });
+        res.setHeader('set-cookie', [cookie(bindingName, '', 0), cookie(cookieName, session.accessToken, 1800)]);
+        return redirect(res, identity.returnTo);
+      }
+      if (req.method === 'GET' && url.pathname === '/oauth/authorize') {
+        const input = fields([...url.searchParams]); await auth.validateAuthorization(input);
+        const who = await auth.authenticate(req, { cookieOnly: true });
+        if (!who) return redirect(res, '/auth/login?returnTo=' + encodeURIComponent(url.pathname + url.search));
+        const hidden = Object.entries(input).map(([key, value]) => `<input type="hidden" name="${escape(key)}" value="${escape(value)}">`).join('');
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>موافقة الربط</title><h1>ربط حسابك</h1><p>الصلاحيات المطلوبة: ${escape(input.scope)}</p><p>العميل: ${escape(input.client_id)}</p><form method="post" action="/oauth/authorize">${hidden}<input type="hidden" name="csrf" value="${escape(auth.csrfToken(req))}"><button name="approve" value="yes">موافقة</button><button name="approve" value="no">رفض</button></form></html>`); return;
+      }
+      if (['POST','PATCH','PUT','DELETE'].includes(req.method)) {
+        if (req.headers.origin !== base.origin) throw problem(403, 'origin_required');
+      }
+      if (req.method === 'POST' && url.pathname === '/oauth/authorize') {
+        const who = await browser(req), input = await body(req);
+        auth.verifyCsrf(req, input.csrf);
+        const { csrf, approve, ...grant } = input;
+        if (approve !== 'yes') throw problem(403, 'consent_declined');
+        return redirect(res, await auth.authorize(grant, who));
+      }
+      if (req.method === 'POST' && url.pathname === '/auth/logout') {
+        auth.verifyCsrf(req); await auth.revoke(auth.browserToken(req));
+        res.setHeader('set-cookie', cookie(cookieName, '', 0)); return json(res, 200, { loggedOut: true });
+      }
+      if (req.method === 'GET' && url.pathname === '/') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>منصة المطاعم</title><h1>منصة المطاعم</h1><p>الهوية وإدارة الصلاحيات قيد التكامل.</p><a href="/auth/login">تسجيل الدخول</a></html>'); return;
+      }
+      if (url.pathname.startsWith('/api/')) {
+        const who = await browser(req);
+        if (req.method !== 'GET') auth.verifyCsrf(req);
+        if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { principal: who, csrfToken: auth.csrfToken(req) });
+        if (req.method === 'POST' && url.pathname === '/api/platform/restaurants') return json(res, 201, await directory.createTenant(who.id, await body(req)));
+        let match = /^\/api\/platform\/restaurants\/([a-z0-9-]{1,64})\/status$/.exec(url.pathname);
+        if (match && req.method === 'PATCH') return json(res, 200, await directory.setTenantStatus(who.id, match[1], await body(req)));
+        match = /^\/api\/restaurants\/([a-z0-9-]{1,64})\/members(?:\/([a-f0-9-]{36}))?$/.exec(url.pathname);
+        if (match && req.method === 'GET' && !match[2]) return json(res, 200, { members: await directory.members(who.id, match[1]) });
+        if (match && req.method === 'PUT' && match[2]) return json(res, 200, await directory.setMembership(who.id, match[1], match[2], await body(req)));
+      }
+      throw problem(404, 'not_found');
+    } catch (error) {
+      if (res.headersSent) { res.end(); return; }
+      const status = [400,401,403,404,409,413,415,429,503].includes(error.status) ? error.status : 500;
+      const code = status === 500 || !/^[a-z_]{1,80}$/.test(error.code ?? '') ? 'request_failed' : error.code;
+      json(res, status, { error: code });
+    }
+  }
+  return { handle, auth, directory, login, core: publicCore };
+}

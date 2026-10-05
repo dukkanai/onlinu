@@ -35,11 +35,18 @@ Existing production/security and external-account approval boundaries remain.
 
 ## Current increment
 
-Original core adapter, contact-free cart preview and read-only core MCP mode.
-See `prototype/platform/CORE-INTEGRATION.md`. Cross-language parity uses real
-Go HTTP/PostgreSQL and SDK MCP, rather than mocked prices. This is not yet the
-owned checkout/production identity phase. Tests and publication are recorded
-when the increment is complete.
+Original core adapter, contact-free cart preview and read-only core MCP mode
+are pushed in e8af8cc. Cross-language parity uses real Go HTTP/PostgreSQL and
+SDK MCP for two restaurants, five templates and three modes. CI coverage update
+ae47673 passed GitHub Actions run 37277857214, server and client, including the
+WebRTC tests blocked locally. Local DB-enabled baseline is 568 Go passes,
+five environment-specific media failures and one native codec skip; platform
+115 passes, tenant eight, client 80 and Python 37. Counts include subtests.
+
+Subject-based identity, granular tenant memberships and control-plane HTTP are
+the next increment. They reuse verified OIDC and OAuth/PKCE while excluding
+fixture identities in persistent mode. See `prototype/platform/IDENTITY-CONTROL.md`.
+Owned checkout and production deployment remain incomplete.
 
 ## External acceptance still required
 
