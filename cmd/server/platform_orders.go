@@ -173,6 +173,7 @@ func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
 			next(w, r, body, owner)
 		}
 	}
+	s.registerPlatformStaffOrderRoutes(mux, wrap)
 	mux.HandleFunc("POST /platform-api/orders", wrap("orders:write", func(w http.ResponseWriter, r *http.Request, body []byte, owner string) {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		var input restaurantOrderInput

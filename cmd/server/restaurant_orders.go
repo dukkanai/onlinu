@@ -808,6 +808,9 @@ func restaurantWriteOrderEvent(ctx context.Context, tx *sql.Tx, order restaurant
 	if err != nil {
 		return err
 	}
+	if err = writePlatformStaffAudit(ctx, tx, order, kind); err != nil {
+		return err
+	}
 	return writePlatformOrderEvent(ctx, tx, order)
 }
 

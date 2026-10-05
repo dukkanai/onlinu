@@ -92,10 +92,27 @@ try {
   assert.ok(Date.parse(eventResponse.data.result.refreshBefore)<=Date.now()+1800_000,'Event lifetime cannot outlast the active grant');
   await app.eventWorker.ingest(alice.id,'restaurant-a');
   assert.equal((await app.events.dispatchOnce()).attempted,0,'No pre-subscription history replay');
-  // Existing native management API is used only with the Go fixture's synthetic
-  // admin key. The real control plane never receives a restaurant master key.
-  const advanced=await fetch(`${fixture.baseUrl}/api/restaurant/orders/${order.number}`,{method:'PATCH',headers:{'content-type':'application/json','X-API-Key':'restaurant-test-master'},body:JSON.stringify({status:'accepted',version:order.version})});
-  assert.equal(advanced.status,200);
+  const staffPath='/api/restaurants/restaurant-a/staff/orders';
+  assert.equal((await send(staffPath,{token:alice.token})).status,403,'Customer OAuth cannot use staff APIs');
+  assert.equal((await send(staffPath,{cookie:bob.cookie})).status,403);
+  const listed=await send(staffPath,{cookie:alice.cookie});assert.equal(listed.status,200);
+  assert.ok(listed.data.orders.some(row=>row.number===order.number));
+  assert.equal(JSON.stringify(listed.data).includes(contact.phone),false);
+  await app.directory.setMembership(alice.id,'restaurant-a',bob.id,{role:'kitchen',enabled:true,expectedVersion:null});
+  const kitchenPage=await send('/manage/restaurant-a/orders',{cookie:bob.cookie});
+  assert.equal(kitchenPage.status,200);assert.match(kitchenPage.data,/تحديث الحالة/);assert.doesNotMatch(kitchenPage.data,/تأكيد استلام المبلغ النقدي/);
+  assert.equal((await send('/manage/restaurant-b/orders',{cookie:bob.cookie})).status,403);
+  const loginPage=await send('/manage');assert.equal(loginPage.status,302);assert.equal(loginPage.headers.location,'/auth/login?returnTo=%2Fmanage');
+  assert.equal((await send(loginPage.headers.location)).status,302,'OIDC accepts the bounded management return path');
+  const bobMe=await send('/api/me',{cookie:bob.cookie});
+  const staffPost=(who,path,body)=>send(staffPath+path,{method:'POST',cookie:who.cookie,headers:{origin:baseUrl,'x-csrf-token':who.id===alice.id?csrf:bobMe.data.csrfToken},body});
+  assert.equal((await staffPost(bob,`/${order.number}/cash`,{version:order.version})).status,403);
+  const advanced=await staffPost(bob,`/${order.number}/status`,{status:'accepted',version:order.version});
+  assert.equal(advanced.status,200,JSON.stringify(advanced));
+  assert.equal((await staffPost(bob,`/${order.number}/status`,{status:'preparing',version:order.version})).status,409);
+  await app.directory.setMembership(alice.id,'restaurant-a',bob.id,{role:'kitchen',enabled:false,expectedVersion:1});
+  assert.equal((await send(staffPath,{cookie:bob.cookie})).status,403,'Revoked staff membership applies on the next request');
+  assert.equal((await send('/manage/restaurant-a/orders',{cookie:bob.cookie})).status,403);
   await pool.query(`CREATE FUNCTION reject_core_cursor() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic cursor failure';END $$;
     CREATE TRIGGER reject_core_cursor BEFORE UPDATE ON platform_core_event_cursors FOR EACH ROW EXECUTE FUNCTION reject_core_cursor()`);
   await assert.rejects(app.eventWorker.ingest(alice.id,'restaurant-a'));
@@ -144,9 +161,13 @@ try {
         await route.abort();throw new Error('Unexpected browser destination');
       });
       const page=await context.newPage();page.setDefaultTimeout(8000);
+      const browserDiagnostics=[];
+      page.on('console',message=>{if(message.type()==='error')browserDiagnostics.push(message.text());});
+      page.on('response',response=>{if(response.status()>=400)browserDiagnostics.push(`${response.status()} ${new URL(response.url()).pathname}`);});
       await page.goto(baseUrl+cardPath);
       await page.getByRole('button',{name:'الانتقال لصفحة الدفع'}).click();
-      await page.waitForURL('https://checkout.stripe.com/**');
+      try{await page.waitForURL('https://checkout.stripe.com/**');}
+      catch(error){console.error('Synthetic browser navigation diagnostics',new URL(page.url()).pathname,await page.locator('body').innerText(),browserDiagnostics);throw error;}
       assert.equal(providerVisits,1);
       await page.goBack();await page.waitForURL(baseUrl+cardPath);
       assert.match(await page.locator('body').innerText(),/حالة الدفع: pending/);
@@ -161,6 +182,12 @@ try {
   assert.match((await send(cardPath,{cookie:alice.cookie})).data,/حالة الدفع: paid/);
   await app.auth.revoke(alice.token);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_subscriptions WHERE active')).rows[0].n,0);
+  await app.directory.setTenantStatus(alice.id,'restaurant-a',{status:'suspended',expectedVersion:2});
+  assert.equal((await send(staffPath,{cookie:alice.cookie})).status,200,'Suspension preserves existing order operations');
+  const cash=await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version});
+  assert.equal(cash.status,200);assert.equal(cash.data.paymentStatus,'paid');
+  assert.equal((await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version})).status,409);
+  console.log('Verified live staff membership, customer OAuth exclusion, kitchen cash denial, version conflicts, revocation and suspended-tenant settlement without restaurant master keys');
   console.log('Verified transactional original-core events, owner-only ingestion, signed callback, crash-safe cursor deduplication and OAuth revocation; callback transport mocked');
   console.log('Verified MCP preview -> owned handoff -> CSRF-protected browser confirmation -> signed original Go order -> private MCP status; duplicate confirmation stays one order');
 } finally {

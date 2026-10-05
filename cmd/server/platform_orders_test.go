@@ -198,6 +198,43 @@ func TestPlatformOrdersOwnedIdempotentAndMinimal(t *testing.T) {
 	if err != nil || len(feed) != 2 || feed[1].Sequence != 2 || feed[1].Order.Status != "accepted" {
 		t.Fatalf("rollback consumed cursor: %+v %v", feed, err)
 	}
+	staffPath := "/platform-api/staff/orders"
+	if send(platformTestRequest(t, private, actor, "GET", staffPath, "", "orders:read", nil, nil)).Code != 401 {
+		t.Fatal("customer scope elevated to staff")
+	}
+	listed := send(platformTestRequest(t, private, actor, "GET", staffPath, "", "staff:orders:read", nil, nil))
+	if listed.Code != 200 || strings.Contains(listed.Body.String(), `"phone"`) || strings.Contains(listed.Body.String(), `"customerName"`) {
+		t.Fatalf("staff summary exposure: %d %s", listed.Code, listed.Body.String())
+	}
+	_, err = s.restaurant.db.Exec(`CREATE FUNCTION reject_platform_staff_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit failure';END $$;
+		CREATE TRIGGER reject_platform_staff_audit BEFORE INSERT ON platform_staff_order_audit FOR EACH ROW EXECUTE FUNCTION reject_platform_staff_audit()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changePath := staffPath + "/" + number + "/status"
+	change := map[string]any{"status": "preparing", "version": 2}
+	if send(platformTestRequest(t, private, actor, "POST", changePath, "", "staff:orders:update", change, nil)).Code != 500 {
+		t.Fatal("staff operation ignored failed transactional audit")
+	}
+	unchanged, err := s.orders.Track(context.Background(), number, "", "", owner)
+	if err != nil || unchanged.Version != 2 || unchanged.Status != "accepted" {
+		t.Fatal("failed audit did not roll back order")
+	}
+	if _, err = s.restaurant.db.Exec("DROP TRIGGER reject_platform_staff_audit ON platform_staff_order_audit"); err != nil {
+		t.Fatal(err)
+	}
+	changed := send(platformTestRequest(t, private, actor, "POST", changePath, "", "staff:orders:update", change, nil))
+	if changed.Code != 200 {
+		t.Fatalf("staff change: %d %s", changed.Code, changed.Body.String())
+	}
+	var auditActor, auditScope string
+	if err = s.restaurant.db.QueryRow("SELECT actor_id,scope FROM platform_staff_order_audit WHERE order_number=$1 AND version=3", number).Scan(&auditActor, &auditScope); err != nil || auditActor != owner || auditScope != "staff:orders:update" {
+		t.Fatal("missing staff attribution", err)
+	}
+	feed, err = s.orders.platformEvents(context.Background(), owner, 0, 100)
+	if err != nil || len(feed) != 3 || feed[2].Sequence != 3 {
+		t.Fatal("failed staff audit consumed outbox sequence", err)
+	}
 	r := platformTestRequest(t, private, actor, "GET", "/platform-api/orders/"+number, "", "orders:read", nil, nil)
 	r.Header.Set("Cookie", "untrusted=browser")
 	if send(r).Code != 401 {

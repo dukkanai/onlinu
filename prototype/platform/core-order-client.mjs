@@ -29,7 +29,7 @@ const safeCodes = new Set(['invalid_request','invalid_quantity','invalid_option'
   'address_required','country_required','location_required','outside_delivery_area','invalid_district',
   'district_unavailable','delivery_minimum','delivery_unavailable','store_closed','mode_unavailable',
   'item_unavailable','out_of_stock','payment_required','payment_unavailable','price_changed','conflict',
-  'invalid_order_access','platform_unauthorized','not_found']);
+  'invalid_order_access','platform_unauthorized','not_found','order_not_found','invalid_status','invalid_payment_method']);
 
 export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchImpl = fetch, now = Date.now }) {
   const source = new URL(issuer);
@@ -78,6 +78,18 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    staffOrders(tenantId,subject) {
+      return request(tenantId,subject,'GET','/platform-api/staff/orders',undefined,'','staff:orders:read',
+        z.object({orders:z.array(coreOrderView).max(100),limit:z.literal(100)}));
+    },
+    staffChange(tenantId,subject,number,action,input) {
+      if(!/^R[0-9]{8,20}$/.test(number??'')||!['status','cash'].includes(action))throw problem(400,'invalid_request');
+      const version=z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1);
+      const schema=action==='status'?z.object({version,status:z.enum(['new','accepted','preparing','ready','out_for_delivery','completed','cancelled'])}).strict():z.object({version}).strict();
+      const parsed=schema.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST',`/platform-api/staff/orders/${number}/${action}`,parsed.data,'',
+        action==='status'?'staff:orders:update':'staff:payments:collect');
+    },
     create(tenantId, subject, input, idempotencyKey) {
       const parsed = orderInput.safeParse(input), key = uuid.safeParse(idempotencyKey);
       if (!parsed.success || !key.success || idempotencyKey[14] !== '4') throw problem(400, 'invalid_request');

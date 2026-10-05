@@ -30,7 +30,8 @@ export function validateReturnTo(value, baseUrl) {
   let destination;
   try { destination = new URL(value, baseUrl); } catch { throw invalid(); }
   if (destination.origin !== new URL(baseUrl).origin || destination.username || destination.password || destination.hash ||
-      !(destination.pathname === '/' || destination.pathname === '/oauth/authorize' ||
+      !(destination.pathname === '/' || destination.pathname === '/oauth/authorize' || destination.pathname === '/manage' ||
+        /^\/manage\/[a-z0-9][a-z0-9-]{0,63}\/orders$/.test(destination.pathname) ||
         /^\/checkout\/[A-Za-z0-9_-]{1,160}$/.test(destination.pathname))) throw invalid();
   if (destination.pathname !== '/oauth/authorize' && destination.search) throw invalid();
   return `${destination.pathname}${destination.search}`;

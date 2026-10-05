@@ -58,8 +58,18 @@ skip; tenant eight, platform 149, client 80, Python 37. Go vet/build and client
 type-check/build pass. Counts include subtests. Cross-language tests use real
 Go HTTP/PostgreSQL/MCP with simulated provider/callback transports, not live
 merchant or ChatGPT acceptance. CI now separately builds and checks the non-root
-control image. Publication and this increment's remote CI outcome are pending.
+control image. See the subsequent publication and browser outcome below.
 See `prototype/platform/CORE-PAYMENTS-EVENTS.md` for scope and limitations.
+Payment/Events commit 76d2828 passed CI 37286386290, including the control image.
+The subsequent Chromium navigation regression in ed5f59a failed CI 37286898595
+at the provider redirect; diagnosis remains active. HTTP success is not browser
+acceptance. The initial staff order bridge and `/manage` view are being added
+with separate membership/CSRF/scopes and transactional audit; see `CORE-STAFF.md`
+in `prototype/platform/`. Full management and Flutter parity remain open.
+Staff increment local checks retain 583 Go passes/five known local restrictions/
+one codec skip, with 150 platform tests passing, including staff page escaping.
+Browser diagnostics were expanded and CI now runs the focused browser test
+before the full suite, so a failure cannot be hidden among unrelated checks.
 
 ## External acceptance still required
 

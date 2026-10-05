@@ -16,6 +16,11 @@ func initPlatformEventSchema(ctx context.Context, db *sql.DB) error {
 		owner_id TEXT NOT NULL, sequence BIGINT NOT NULL, order_number TEXT NOT NULL REFERENCES restaurant_orders(number),
 		version BIGINT NOT NULL, document JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL,
 		PRIMARY KEY(owner_id,sequence), UNIQUE(order_number,version)
+	);
+	CREATE TABLE IF NOT EXISTS platform_staff_order_audit (
+		actor_id TEXT NOT NULL, scope TEXT NOT NULL, order_number TEXT NOT NULL REFERENCES restaurant_orders(number),
+		version BIGINT NOT NULL, kind TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL,
+		PRIMARY KEY(order_number,version)
 	)`)
 	return err
 }

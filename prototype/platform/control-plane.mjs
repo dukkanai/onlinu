@@ -1,6 +1,7 @@
 /** Real subject-based identity and staff control API, separate from demo routes.
  * Deployment still needs approved HTTPS/OIDC configuration. No public bootstrap,
- * Docker socket, payments or production provisioning is exposed by this module.
+ * Docker socket or production provisioning is exposed by this module. Payment
+ * actions reuse the owned original-core handoff rather than accepting money here.
  */
 import { createIdentityDirectory } from './identity-directory.mjs';
 import { createAuth, problem } from './auth.mjs';
@@ -11,6 +12,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
+import { staffHome, staffOrdersPage } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -212,14 +214,51 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           return redirect(res,'/checkout/'+checkoutId,303);
         }
       }
+      const management=/^\/manage(?:\/([a-z0-9-]{1,64})\/orders(?:\/(R[0-9]{8,20})\/(status|cash))?)?$/.exec(url.pathname);
+      if(management&&orderClient){
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
+        const who=await browser(req),[,tenantId,number,action]=management;
+        if(url.search)throw problem(400,'invalid_request');
+        if(req.method==='GET'&&!number){
+          let html;
+          if(!tenantId)html=staffHome(who);
+          else{
+            const membership=await directory.authorize(who.id,tenantId,'orders:read');
+            const {orders}=await orderClient.staffOrders(tenantId,who.id);
+            html=staffOrdersPage({tenantId,membership,orders,csrf:auth.csrfToken(req)});
+          }
+          res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(html);return;
+        }
+        if(req.method==='POST'&&number){
+          const input=await body(req);auth.verifyCsrf(req,input.csrf);
+          const allowed=action==='status'?['csrf','version','status']:['csrf','version'];
+          if(Object.keys(input).some(key=>!allowed.includes(key))||!/^\d{1,16}$/.test(input.version??''))throw problem(400,'invalid_request');
+          await directory.authorize(who.id,tenantId,action==='status'?'orders:update':'payments:collect');
+          await orderClient.staffChange(tenantId,who.id,number,action,{version:Number(input.version),...(action==='status'?{status:input.status}:{})});
+          return redirect(res,`/manage/${tenantId}/orders`,303);
+        }
+      }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>منصة المطاعم</title><h1>منصة المطاعم</h1><p>الهوية وإدارة الصلاحيات قيد التكامل.</p><a href="/auth/login">تسجيل الدخول</a></html>'); return;
+        res.end('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>منصة المطاعم</title><h1>منصة المطاعم</h1><a href="/manage">دخول إدارة المطاعم</a></html>'); return;
       }
       if (url.pathname.startsWith('/api/')) {
         const who = await browser(req);
         if (req.method !== 'GET') auth.verifyCsrf(req);
         if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { principal: who, csrfToken: auth.csrfToken(req) });
+        const staffRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/orders(?:\/(R[0-9]{8,20})\/(status|cash))?$/.exec(url.pathname);
+        if(staffRoute&&orderClient){
+          if(url.search)throw problem(400,'invalid_request');
+          const [,tenantId,number,action]=staffRoute;
+          if(req.method==='GET'&&!number){
+            await directory.authorize(who.id,tenantId,'orders:read');
+            return json(res,200,await orderClient.staffOrders(tenantId,who.id));
+          }
+          if(req.method==='POST'&&number){
+            await directory.authorize(who.id,tenantId,action==='status'?'orders:update':'payments:collect');
+            return json(res,200,await orderClient.staffChange(tenantId,who.id,number,action,await body(req)));
+          }
+        }
         if (req.method === 'POST' && url.pathname === '/api/platform/restaurants') return json(res, 201, await directory.createTenant(who.id, await body(req)));
         let match = /^\/api\/platform\/restaurants\/([a-z0-9-]{1,64})\/status$/.exec(url.pathname);
         if (match && req.method === 'PATCH') return json(res, 200, await directory.setTenantStatus(who.id, match[1], await body(req)));
