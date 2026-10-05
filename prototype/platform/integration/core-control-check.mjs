@@ -251,6 +251,7 @@ try {
   const nativeItem=(await send(nativeMenuPath+'/items/rice',{token:nativeToken})).data;
   const nativeWrite=await send(nativeMenuPath+'/items/rice',{method:'POST',token:nativeToken,body:{expectedVersion:nativeItem.version,description:'Synthetic native staff edit'}});
   assert.equal(nativeWrite.status,200,JSON.stringify(nativeWrite.data));assert.equal(nativeWrite.data.item.description,'Synthetic native staff edit');assert.deepEqual(nativeWrite.data.item.options,nativeItem.item.options);
+  const deliveryPageCheck=await send('/manage/restaurant-a/delivery',{cookie:alice.cookie});assert.equal(deliveryPageCheck.status,200,JSON.stringify(deliveryPageCheck.data));assert.match(deliveryPageCheck.data,/name="region"/);
   if(process.env.CORE_BROWSER_TEST==='1'){
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,
@@ -399,6 +400,7 @@ try {
 
 
       await page.goto(baseUrl+'/manage/restaurant-a/delivery');
+      assert.match(await page.locator('body').innerText(),/اختيار حي من البيانات الحالية/,JSON.stringify({url:page.url(),body:await page.locator('body').innerText(),diagnostics:browserDiagnostics,interceptionErrors}));
       await page.getByLabel('المنطقة',{exact:true}).selectOption('sa-r-1');
       await page.getByRole('button',{name:'عرض المدن',exact:true}).click();
       await page.locator('select[name="city"] option[value="sa-c-1"]').waitFor({state:'attached'});

@@ -94,5 +94,6 @@ test('delivery coverage page preserves null versus free fees, reviewed writes an
  const data={version:7,mode:'district',feeMinor:500,minimumMinor:0,enabled:true,acceptingOrders:true,radiusKm:0,zones:[{districtId:'d1',nameAr:'<حي>',nameEn:'',cityName:'مدينة',regionName:'منطقة',active:false,enabled:true,feeMinor:0},{districtId:'d2',nameAr:'حي آخر',nameEn:'',cityName:'مدينة',regionName:'منطقة',active:true,enabled:false,feeMinor:null}]};
  const args={tenantId:'a',data,regions:{regions:[],source:{name:'Community source',license:'GPL-2.0',notice:'Not official'}},canUpdate:true,csrf:'<token>'};
  const html=staffDeliveryPage(args);assert.match(html,/توصيل مجاني/);assert.match(html,/الرسم غير محدد/);assert.match(html,/&lt;حي&gt;/);assert.match(html,/GPL-2.0/);assert.match(html,/name="expectedVersion" value="7"/);assert.match(html,/غير نشط؛ اختر التعطيل/);assert.match(html,/name="reviewed" value="yes" required/);
+ assert.match(html,/name="region" aria-label="المنطقة"/);assert.match(html,/name="mode" aria-label="طريقة التسعير"/);assert.match(html,/name="enabled" aria-label="حالة الحي"/);
  const readOnly=staffDeliveryPage({...args,canUpdate:false});assert.doesNotMatch(readOnly,/>حفظ حي التوصيل</);assert.doesNotMatch(readOnly,/>حفظ تسعير التوصيل</);
 });
