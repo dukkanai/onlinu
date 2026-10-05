@@ -12,6 +12,7 @@ import 'delivery_pane.dart';
 import 'dispatch_editor.dart';
 import 'courier_pane.dart';
 import 'service_pane.dart';
+import 'finance_dialog.dart';
 
 class CoreApp extends StatefulWidget {
   const CoreApp({super.key, required this.controller});
@@ -90,6 +91,14 @@ class CoreScreen extends StatelessWidget {
         selected == null ||
         controller.selectedTenant != order.tenantId) return;
     await controller.assignCourier(order, selected);
+  }
+
+  Future<void> _finance(BuildContext context, String number) async {
+    unawaited(controller.showFinance(number));
+    await showDialog<void>(
+        context: context,
+        builder: (_) => FinanceDialog(controller: controller, number: number));
+    controller.closeDetail();
   }
 
   Future<void> _details(BuildContext context, String number) async {
@@ -442,6 +451,18 @@ class CoreScreen extends StatelessWidget {
                                                   },
                                                   child: const Text(
                                                       'تفاصيل الطلب')),
+                                              if (member
+                                                      ?.can('payments:read') ==
+                                                  true)
+                                                OutlinedButton(
+                                                    onPressed:
+                                                        c.busy || !c.online
+                                                            ? null
+                                                            : () => _finance(
+                                                                context,
+                                                                order.number),
+                                                    child: const Text(
+                                                        'السجل المالي')),
                                               if (member!
                                                       .can('orders:update') &&
                                                   order.nextStatus != null)
@@ -531,9 +552,3 @@ String roleLabel(String role) => switch (role) {
     };
 String modeLabel(String mode) =>
     switch (mode) { 'table' => 'طاولة', 'delivery' => 'توصيل', _ => 'استلام' };
-
-String localTimestamp(DateTime value) {
-  final date = value.toLocal();
-  String two(int part) => part.toString().padLeft(2, '0');
-  return '${date.year}-${two(date.month)}-${two(date.day)} ${two(date.hour)}:${two(date.minute)}:${two(date.second)}';
-}

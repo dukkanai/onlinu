@@ -117,6 +117,7 @@ try {
   const loginPage=await send('/manage');assert.equal(loginPage.status,302);assert.equal(loginPage.headers.location,'/auth/login?returnTo=%2Fmanage');
   assert.equal((await send(loginPage.headers.location)).status,302,'OIDC accepts the bounded management return path');
   const bobMe=await send('/api/me',{cookie:bob.cookie});
+  const financePath=staffPath+'/'+order.number+'/finance';const finance=await send(financePath,{cookie:alice.cookie});assert.equal(finance.status,200,JSON.stringify(finance.data));assert.equal(finance.data.totalMinor,3500);assert.equal(finance.data.capturedMinor,0);assert.equal(finance.data.order,undefined);assert.equal((await send(financePath,{cookie:bob.cookie})).status,403);assert.equal((await send(financePath,{token:alice.token})).status,403);
   const menuPath='/api/restaurants/restaurant-a/staff/menu';
   const kitchenMenu=await send(menuPath,{cookie:bob.cookie});assert.equal(kitchenMenu.status,200);
   assert.equal(kitchenMenu.data.tables,undefined);assert.equal(kitchenMenu.data.settings,undefined);
@@ -435,6 +436,8 @@ try {
       await deliveryPricing.getByRole('button',{name:'حفظ تسعير التوصيل',exact:true}).click();
       await page.locator(`input[name="expectedVersion"][value="${zoneState.version+1}"]`).first().waitFor({state:'attached'});
 
+      await page.goto(baseUrl+'/manage/restaurant-a/orders/'+order.number+'/finance');
+      assert.match(await page.locator('body').innerText(),/المبلغ المحصل المؤكد/);assert.equal(await page.locator('form').count(),0);
       await page.goto(baseUrl+'/manage/restaurant-a/service');
       const serviceVersion=Number(await page.locator('input[name="expectedVersion"]').inputValue());
       await page.getByLabel('استقبال الطلبات الجديدة',{exact:true}).selectOption('false');

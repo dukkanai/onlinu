@@ -39,6 +39,7 @@ type platformStaffOrderView struct {
 func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(string, func(http.ResponseWriter, *http.Request, []byte, string)) http.HandlerFunc) {
 	s.registerPlatformStaffDeliveryRoutes(mux, wrap)
 	s.registerPlatformStaffServiceRoutes(mux, wrap)
+	s.registerPlatformStaffFinanceRoutes(mux, wrap)
 	s.registerPlatformStaffDispatchRoutes(mux, wrap)
 	s.registerPlatformCourierWorkRoutes(mux, wrap)
 	mux.HandleFunc("GET /platform-api/staff/profile", wrap("staff:settings:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {

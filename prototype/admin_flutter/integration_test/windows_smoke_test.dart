@@ -183,6 +183,31 @@ void main() {
     expect(controller.channels, isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets(
+      'Windows financial snapshot is read-only and private on dismissal',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile =
+          profileFixture(permissions: ['orders:read', 'payments:read']);
+    final c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الدخول عبر المتصفح'));
+    await tester.pumpAndSettle();
+    final button = find.text('السجل المالي');
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('المبلغ المحصل المؤكد:'), findsOneWidget);
+    await capture(tester, boundary, 'windows-finance-readonly.png');
+    await tester.tap(find.text('إغلاق السجل المالي'));
+    await tester.pumpAndSettle();
+    expect(c.finance, isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('Windows service intake review preserves existing work',
       (tester) async {
     final api = FakeCoreGateway()

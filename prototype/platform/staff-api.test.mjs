@@ -37,3 +37,11 @@ test('revocation during original-core upload prevents assignment and releases th
  await assert.rejects(api(request(Buffer.from('x')),{}, {id:'staff'},uri),{code:'forbidden'});
  assert.equal(uploaded,true);assert.equal(patched,false);assert.equal(slots.active,0);
 });
+
+test('financial read requires both order and payment grants and offers no write route',async()=>{
+ const calls=[],grants=new Set(['orders:read']);
+ const api=createStaffApi({directory:{async authorize(actor,tenant,permission){calls.push(permission);if(!grants.has(permission))throw Object.assign(Error(),{code:'forbidden'});}},orderClient:{async finance(){return{number:'R1234567890'};}},json:(_,status,data)=>({status,data})});
+ const url=new URL('https://platform.example/api/restaurants/a/staff/orders/R1234567890/finance');
+ await assert.rejects(api({method:'GET'},{},{id:'staff'},url),{code:'forbidden'});grants.add('payments:read');assert.equal((await api({method:'GET'},{},{id:'staff'},url)).status,200);assert.deepEqual(calls,['orders:read','payments:read','orders:read','payments:read']);
+ await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'not_found'});
+});

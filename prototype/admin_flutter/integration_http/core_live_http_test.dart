@@ -159,6 +159,12 @@ void main() {
     expect(unassigned.courierId, '');
     expect(unassigned.version, assigned.version + 1);
 
+    final finance = await api.finance('restaurant-a', number);
+    expect(finance.number, number);
+    expect(finance.total, 3500);
+    expect(finance.captured, 0);
+    expect(finance.refunds, isEmpty);
+
     final intake = await api.service('restaurant-a');
     expect(intake.flags['acceptingOrders'], true);
     await api.patchService(intake, {'acceptingOrders': false});

@@ -8,6 +8,7 @@ import 'business_profile.dart';
 import 'delivery_models.dart';
 import 'courier_models.dart';
 import 'service_policy.dart';
+import 'finance_models.dart';
 import 'transport.dart';
 
 enum CoreSection {
@@ -53,6 +54,7 @@ class CoreController extends ChangeNotifier {
   CoreBusinessProfile? business;
   CoreDelivery? coverage;
   CoreServicePolicy? service;
+  CoreFinance? finance;
   CoreCourierLinks? courierLinks;
   CoreCourierWork? courierWork;
   CoreCourierDetail? courierDetail;
@@ -93,6 +95,7 @@ class CoreController extends ChangeNotifier {
     business = null;
     coverage = null;
     service = null;
+    finance = null;
     courierLinks = null;
     courierWork = null;
     courierDetail = null;
@@ -282,6 +285,17 @@ class CoreController extends ChangeNotifier {
         if (!_current(generation)) return;
         menu = result;
       }
+      if (finance != null) {
+        if (!member.can('payments:read')) {
+          finance = null;
+          _detailGeneration++;
+        } else {
+          final ticket = _detailGeneration,
+              value = await api.finance(tenant, finance!.number);
+          if (!_current(generation)) return;
+          if (ticket == _detailGeneration && finance != null) finance = value;
+        }
+      }
       online = true;
       refreshedAt = _now();
       if (detail != null &&
@@ -302,6 +316,7 @@ class CoreController extends ChangeNotifier {
   }
 
   void _failure(Object error) {
+    finance = null;
     courierDetail = null;
     online = false;
     message = errorMessage(error);
@@ -315,6 +330,34 @@ class CoreController extends ChangeNotifier {
       _clearData();
       profile = null;
       _timer?.cancel();
+    }
+  }
+
+  Future<void> showFinance(String number) async {
+    final tenant = selectedTenant;
+    bool allowed() =>
+        signedIn &&
+        !suspended &&
+        section == CoreSection.orders &&
+        membership?.can('orders:read') == true &&
+        membership?.can('payments:read') == true;
+    if (tenant == null || !allowed()) return;
+    final generation = _generation, ticket = ++_detailGeneration;
+    finance = null;
+    detail = null;
+    loadingDetail = true;
+    _emit();
+    try {
+      final value = await api.finance(tenant, number);
+      if (_current(generation) && ticket == _detailGeneration && allowed())
+        finance = value;
+    } catch (error) {
+      if (_current(generation) && ticket == _detailGeneration) _failure(error);
+    } finally {
+      if (_current(generation) && ticket == _detailGeneration) {
+        loadingDetail = false;
+        _emit();
+      }
     }
   }
 
@@ -345,6 +388,7 @@ class CoreController extends ChangeNotifier {
   }
 
   void closeDetail() {
+    finance = null;
     courierDetail = null;
     _detailGeneration++;
     detail = null;
@@ -1104,7 +1148,9 @@ String errorMessage(Object error) {
     'invalid_status' =>
       'لا يسمح الخادم بهذه الخطوة الآن؛ راجع الطلب أو طلب إلغائه.',
     'forbidden' => 'تغيرت صلاحياتك. سجّل الدخول للتحقق منها.',
-    'order_not_found' => 'لم يُعثر على الطلب في هذا المطعم.',
+    'order_not_found' ||
+    'invalid_order_access' =>
+      'لم يُعثر على الطلب في هذا المطعم.',
     'rate_limited' => 'طلبات كثيرة. انتظر قليلًا ثم حدّث.',
     'browser_unavailable' => 'تعذر فتح المتصفح. تحقق من وجود متصفح افتراضي.',
     _ => 'تعذر الاتصال أو التحقق من البيانات. التعديلات متوقفة حتى التحديث.',

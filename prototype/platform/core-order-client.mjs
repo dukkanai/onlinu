@@ -51,6 +51,8 @@ const menuPatch=z.object({expectedVersion:z.number().int().positive().max(Number
   options:z.array(z.object({id:menuId,name:z.string().min(1).max(240),priceMinor:z.number().int().min(0).max(100_000_000),available:z.boolean()}).strict()).max(50).optional(),
 }).strict().refine(value=>Object.keys(value).length>1);
 
+const financeAmount=z.number().int().min(0).max(100_000_000);
+const financeView=z.object({number:z.string().regex(/^R[0-9]{8,20}$/),orderVersion:z.number().int().positive(),totalMinor:financeAmount,currency:z.literal('SAR'),paymentMethod:z.string().max(40),paymentStatus:z.string().max(40),provider:z.string().max(40),demo:z.boolean(),capturedMinor:financeAmount,reservedMinor:financeAmount,refundedMinor:financeAmount,availableMinor:financeAmount,limit:z.literal(100),capability:z.object({automatic:z.boolean(),partial:z.boolean(),manual:z.boolean(),reason:z.string().max(100)}),refunds:z.array(z.object({id:z.string().uuid(),version:z.number().int().positive(),status:z.enum(['requested','processing','succeeded','failed','review','manual_reported']),provider:z.string().max(40),currency:z.literal('SAR'),amountMinor:financeAmount,taxMinor:financeAmount,confirmation:z.string().max(40),authorized:z.boolean(),submitted:z.boolean(),createdAt:z.string().datetime({offset:true}),updatedAt:z.string().datetime({offset:true})})).max(100)});
 const serviceFields={acceptingOrders:z.boolean(),deliveryEnabled:z.boolean(),pickupEnabled:z.boolean(),tableEnabled:z.boolean()};
 const serviceView=z.object({version:z.number().int().positive(),...serviceFields});
 const servicePatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),...Object.fromEntries(Object.entries(serviceFields).map(([key,value])=>[key,value.optional()]))}).strict().refine(v=>Object.keys(v).length>1);
@@ -116,6 +118,7 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    finance(tenantId,subject,number){if(!/^R[0-9]{8,20}$/.test(number??''))throw problem(400,'invalid_request');return request(tenantId,subject,'GET','/platform-api/staff/orders/'+number+'/finance',undefined,'','staff:payments:read',financeView,2_000_000);},
     service(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/service',undefined,'','staff:settings:read',serviceView);},
     patchService(tenantId,subject,input){const parsed=servicePatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/service',parsed.data,'','staff:settings:update',serviceView);},
     principalRef(tenantId,subject){if(!routes.has(tenantId)||!uuid.safeParse(subject).success)throw problem(400,'invalid_request');return 'platform:'+createHash('sha256').update(issuer+'\0'+tenantId+'\0'+subject).digest('hex');},

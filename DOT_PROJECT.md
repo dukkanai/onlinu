@@ -331,3 +331,23 @@ even if no React component was edited. Run all client tests and the TypeScript/V
 build for new codes, and add both Arabic and English messages. In restricted cloud
 shells the supported `node --import tsx --test tests/*.test.ts` test-loader invocation
 avoids the tsx CLI's optional Unix IPC listener; it runs the same complete test files.
+
+## Read-only staff financial snapshot (local increment)
+
+- `GET /platform-api/staff/orders/{number}/finance` and central/native counterparts
+  require a signed payment-read grant; central routes additionally require current
+  `orders:read` and `payments:read` membership. Customer tokens and courier-only
+  grants cannot read restaurant-wide financial data.
+- The original refund ledger's repeatable-read transaction supplies the order and
+  captured/reserved/refunded/available amounts from one snapshot. A private Go
+  field carries that order internally without changing legacy JSON serialization.
+- Browser `/manage/{tenant}/orders/{number}/finance` and native order dialogs are
+  read-only. They contain no refund execution, manual-transfer or payout controls.
+  Reserved includes nonfailed pending and successful refunds; a manual report is
+  explicitly not presented as provider-confirmed settlement.
+- Whitelisted output excludes receipt/customer capabilities, contacts, provider
+  secrets, refund request IDs, private transfer references and operator notes.
+- Native caches clear on dismissal, logout, tenant/permission changes and failures;
+  open financial snapshots refresh with foreground polling. Late responses cannot
+  reopen a dismissed dialog. Display is limited to 100 refund records, while the
+  ledger totals cover the full order history.

@@ -377,3 +377,9 @@ String courierKey(String id) {
     throw const CoreException('invalid_request');
   return id;
 }
+
+String localTimestamp(DateTime value) {
+  final date = value.toLocal();
+  String two(int part) => part.toString().padLeft(2, '0');
+  return '${date.year}-${two(date.month)}-${two(date.day)} ${two(date.hour)}:${two(date.minute)}:${two(date.second)}';
+}

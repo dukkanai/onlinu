@@ -6,6 +6,7 @@ import 'package:restaurant_admin_prototype/core/business_profile.dart';
 import 'package:restaurant_admin_prototype/core/delivery_models.dart';
 import 'package:restaurant_admin_prototype/core/courier_models.dart';
 import 'package:restaurant_admin_prototype/core/service_policy.dart';
+import 'package:restaurant_admin_prototype/core/finance_models.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
 import 'package:restaurant_admin_prototype/core/models.dart';
 import 'package:restaurant_admin_prototype/core/transport.dart';
@@ -244,6 +245,25 @@ Map<String, dynamic> menuDocument(CoreMenu menu) => {
     };
 
 class FakeCoreGateway implements CoreGateway {
+  @override
+  Future<CoreFinance> finance(String tenant, String number) async =>
+      CoreFinance({
+        'number': number,
+        'orderVersion': currentOrder.version,
+        'totalMinor': currentOrder.totalMinor,
+        'currency': 'SAR',
+        'paymentMethod': currentOrder.paymentMethod,
+        'paymentStatus': currentOrder.paymentStatus,
+        'provider': '',
+        'demo': true,
+        'capturedMinor': currentOrder.totalMinor,
+        'reservedMinor': 0,
+        'refundedMinor': 0,
+        'availableMinor': currentOrder.totalMinor,
+        'refunds': [],
+        'limit': 100
+      }, tenantId: tenant);
+
   Map<String, dynamic> serviceData = {
     'version': 1,
     'acceptingOrders': true,

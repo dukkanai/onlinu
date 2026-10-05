@@ -54,6 +54,7 @@ type restaurantRefundResolution struct {
 	Version   int64  `json:"version"`
 }
 type restaurantRefundSummary struct {
+	order          restaurantOrder            // Private snapshot; never serialized by legacy refund endpoints.
 	Refunds        []restaurantRefund         `json:"refunds"`
 	CapturedMinor  int64                      `json:"capturedMinor"`
 	ReservedMinor  int64                      `json:"reservedMinor"`
@@ -238,6 +239,7 @@ func (p *restaurantPayments) Refunds(ctx context.Context, number string) (restau
 	if err != nil {
 		return out, err
 	}
+	out.order = stored.order
 	out.Capability = restaurantRefundCapabilities(stored.order.Payment.Provider)
 	out.CapturedMinor, err = restaurantRefundCaptured(ctx, tx, stored.order)
 	if err != nil {

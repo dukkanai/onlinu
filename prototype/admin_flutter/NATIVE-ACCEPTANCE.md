@@ -219,3 +219,16 @@ The first service CI (`37362384371`) caught missing legacy React translations fo
 page were added. All 80 React tests and TypeScript/Vite build pass locally; the
 platform Arabic-error regression also passes. This correction needs its own full
 remote CI result; do not treat the original failed aggregate as release success.
+
+## Read-only financial/refund review
+
+A staff order's financial dialog requires both order-read and payment-read grants.
+It shows verified captured funds, reserved refunds, confirmed refunds and available
+balance from the original transactional ledger. Pending and manual-report states
+remain distinct from confirmed settlement. The dialog and central browser page are
+read-only; refund creation/authorization/manual resolution remain a later increment.
+
+Local tests cover sanitized projection, original refund processing/idempotency,
+late-response dismissal, current grants, DTO validation and no native payout button.
+Actual Dart reads through the Node/Go fixture; new Chromium and Windows rendering
+checks must still pass remotely. No real payment or refund has been executed.

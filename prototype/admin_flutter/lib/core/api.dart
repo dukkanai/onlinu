@@ -6,6 +6,7 @@ import 'business_profile.dart';
 import 'delivery_models.dart';
 import 'courier_models.dart';
 import 'service_policy.dart';
+import 'finance_models.dart';
 import 'transport.dart';
 
 abstract interface class CoreGateway {
@@ -23,6 +24,7 @@ abstract interface class CoreGateway {
   Future<CoreServicePolicy> service(String tenant);
   Future<void> patchService(
       CoreServicePolicy expected, Map<String, bool> changes);
+  Future<CoreFinance> finance(String tenant, String number);
   Future<CoreProfile> profile();
   Future<CoreDelivery> delivery(String tenant);
   Future<void> setDeliveryPricing(CoreDelivery expected,
@@ -102,6 +104,7 @@ class CoreApi implements CoreGateway {
         'invalid_status',
         'invalid_payment_method',
         'order_not_found',
+        'invalid_order_access',
         'restaurant_unavailable',
         'order_outcome_unknown',
         'rate_limited',
@@ -127,6 +130,16 @@ class CoreApi implements CoreGateway {
       '/native/api/restaurants/${tenantKey(tenant)}/staff/orders';
   void _tenant(Map<String, dynamic> data, String tenant) {
     if (data['tenantId'] != tenant) invalidResponse();
+  }
+
+  @override
+  Future<CoreFinance> finance(String tenant, String number) async {
+    final data = await _request('GET',
+        '/native/api/restaurants/${tenantKey(tenant)}/staff/orders/${orderKey(number)}/finance');
+    _tenant(data, tenant);
+    final value = CoreFinance(data, tenantId: tenant);
+    if (value.number != number) invalidResponse();
+    return value;
   }
 
   @override

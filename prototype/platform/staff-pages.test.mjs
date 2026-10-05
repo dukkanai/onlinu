@@ -1,4 +1,4 @@
-import {staffServicePage,staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
+import {staffFinancePage,staffServicePage,staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage,staffMenuPage,staffMenuItemPage,menuPriceMinor,staffMembersPage,staffErrorPage} from './staff-pages.mjs';
@@ -112,3 +112,7 @@ test('service intake form uses explicit booleans, version and review without unr
 });
 
 test('service validation error gives a useful Arabic browser explanation',()=>{assert.match(staffErrorPage('invalid_service_modes'),/طريقة خدمة واحدة/);});
+
+test('financial page is read-only and distinguishes manual reports from settled refunds',()=>{
+ const html=staffFinancePage({tenantId:'<a>',data:{number:'R1234567890',demo:true,paymentStatus:'paid',provider:'<provider>',totalMinor:3500,capturedMinor:3500,reservedMinor:1000,refundedMinor:0,availableMinor:2500,refunds:[{id:'<id>',status:'manual_reported',amountMinor:1000,taxMinor:0,updatedAt:'2026-10-05T00:00:00Z'}]}});assert.match(html,/&lt;provider&gt;/);assert.match(html,/إبلاغ يدوي غير مؤكد/);assert.match(html,/25\.00/);assert.doesNotMatch(html,/<form|<button|<provider>/);
+});

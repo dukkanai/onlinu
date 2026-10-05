@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -283,6 +283,12 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           await orderClient.patchDelivery(tenantId,who.id,action,{expectedVersion:Number(input.expectedVersion),zone:{districtId:input.districtId,enabled:input.enabled==='true',feeMinor:fee}});
         }
         return redirect(res,'/manage/'+tenantId+'/delivery'+(action==='zone'?'?filter='+encodeURIComponent(input.districtId):''),303);
+      }
+      const managementFinance=/^\/manage\/([a-z0-9-]{1,64})\/orders\/(R[0-9]{8,20})\/finance$/.exec(url.pathname);
+      if(managementFinance&&orderClient&&req.method==='GET'){
+        if(req.headers.authorization||url.search)throw problem(403,'browser_session_required');
+        if(!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
+        const who=await browser(req),[,tenantId,number]=managementFinance;await directory.authorize(who.id,tenantId,'orders:read');await directory.authorize(who.id,tenantId,'payments:read');const data=await orderClient.finance(tenantId,who.id,number);htmlHeaders(res);res.end(staffFinancePage({tenantId,data}));return;
       }
       const managementService=/^\/manage\/([a-z0-9-]{1,64})\/service$/.exec(url.pathname);
       if(managementService&&orderClient&&['GET','POST'].includes(req.method)){
