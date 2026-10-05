@@ -41,8 +41,8 @@ func TestEmitIncomingEscopadoPorConta(t *testing.T) {
 	}
 
 	admin := b.subscribe("painel", 0) // sem escopo: recebe tudo
-	widget5 := b.subscribe("w5", 5)    // widget da conta 5
-	widget9 := b.subscribe("w9", 9)    // widget da conta 9
+	widget5 := b.subscribe("w5", 5)   // widget da conta 5
+	widget9 := b.subscribe("w9", 9)   // widget da conta 9
 
 	b.emitIncoming("sess-da-conta-5", "call-1", "5511999999999@lid", "5511999999999", "", false)
 

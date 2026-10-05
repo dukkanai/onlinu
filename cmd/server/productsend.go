@@ -113,7 +113,8 @@ func (s *server) handleSendProduct(w http.ResponseWriter, r *http.Request) {
 // Business E o `productId` existir no catálogo dela — o app do destinatário busca o
 // produto em `businessJid` por esse ID. Com ID inexistente, o card não renderiza.
 // Corpo: {to, productId, businessJid?, title?, description?, price?, salePrice?,
-//         currency?, retailerId?, url?, image?/imageUrl?}
+//
+//	currency?, retailerId?, url?, image?/imageUrl?}
 func (s *server) handleSendProductNative(w http.ResponseWriter, r *http.Request) {
 	sess := s.pairedSession(w, r.PathValue("sid"))
 	if sess == nil {

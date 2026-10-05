@@ -40,7 +40,7 @@ func (f *fakeSock) CreateParticipantNodes(context.Context, []types.JID, []byte, 
 func (f *fakeSock) DecryptCallKey(context.Context, types.JID, *waBinary.Node) ([]byte, error) {
 	return nil, nil
 }
-func (f *fakeSock) GetTCToken(context.Context, types.JID) ([]byte, error) { return nil, nil }
+func (f *fakeSock) GetTCToken(context.Context, types.JID) ([]byte, error)     { return nil, nil }
 func (f *fakeSock) ResolveLIDForPN(_ context.Context, pn types.JID) types.JID { return pn }
 
 func (f *fakeSock) sentTags() []string {

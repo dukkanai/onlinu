@@ -47,10 +47,10 @@ func TestEventSecretRoundtrip(t *testing.T) {
 
 func TestParseEventResponse(t *testing.T) {
 	cases := map[string]waE2E.EventResponseMessage_EventResponseType{
-		"going": waE2E.EventResponseMessage_GOING,
-		"vai":   waE2E.EventResponseMessage_GOING,
-		"maybe": waE2E.EventResponseMessage_MAYBE,
-		"talvez": waE2E.EventResponseMessage_MAYBE,
+		"going":     waE2E.EventResponseMessage_GOING,
+		"vai":       waE2E.EventResponseMessage_GOING,
+		"maybe":     waE2E.EventResponseMessage_MAYBE,
+		"talvez":    waE2E.EventResponseMessage_MAYBE,
 		"not_going": waE2E.EventResponseMessage_NOT_GOING,
 		"não vai":   waE2E.EventResponseMessage_NOT_GOING,
 	}

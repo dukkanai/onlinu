@@ -8,13 +8,13 @@ import (
 
 func TestOutboxBackoff(t *testing.T) {
 	cases := map[int]time.Duration{
-		1: 60 * time.Second,
-		2: 120 * time.Second,
-		3: 240 * time.Second,
-		4: 480 * time.Second,
-		5: 960 * time.Second,
-		6: 30 * time.Minute, // 1920s > teto -> capado
-		7: 30 * time.Minute,
+		1:  60 * time.Second,
+		2:  120 * time.Second,
+		3:  240 * time.Second,
+		4:  480 * time.Second,
+		5:  960 * time.Second,
+		6:  30 * time.Minute, // 1920s > teto -> capado
+		7:  30 * time.Minute,
 		20: 30 * time.Minute,
 	}
 	for attempts, want := range cases {

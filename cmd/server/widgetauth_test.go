@@ -26,9 +26,9 @@ func TestWidgetAllowedScope(t *testing.T) {
 	}
 
 	denied := []struct{ method, path string }{
-		{"GET", "/api/sessions"},               // listar sessões
-		{"POST", "/api/sessions"},              // criar sessão
-		{"DELETE", "/api/sessions/abc"},        // apagar sessão
+		{"GET", "/api/sessions"},                   // listar sessões
+		{"POST", "/api/sessions"},                  // criar sessão
+		{"DELETE", "/api/sessions/abc"},            // apagar sessão
 		{"POST", "/api/sessions/abc/messages/pix"}, // mandar mensagem
 		{"PUT", "/api/sessions/abc/recording"},     // configurar gravação
 		{"GET", "/api/chatwoot/config"},            // config do chatwoot

@@ -108,9 +108,9 @@ func buildWhatsappVideoExt(mediaFrameInfo uint8, frameNumber *uint16, transportS
 	} else {
 		ext = append(ext, 0x30, mediaFrameInfo) // id3, len1
 	}
-	ext = append(ext, 0x51, 0x00, 0x00)                                     // id5 InitialBandwidth=0
-	ext = append(ext, 0x61, 0x00, 0x00)                                     // id6 ShortOffset=0
-	ext = append(ext, 0x91, byte(transportSeq>>8), byte(transportSeq))      // id9 TransportSequence
+	ext = append(ext, 0x51, 0x00, 0x00)                                // id5 InitialBandwidth=0
+	ext = append(ext, 0x61, 0x00, 0x00)                                // id6 ShortOffset=0
+	ext = append(ext, 0x91, byte(transportSeq>>8), byte(transportSeq)) // id9 TransportSequence
 	for len(ext)%4 != 0 {
 		ext = append(ext, 0x00) // padding até fronteira de 4 bytes
 	}
