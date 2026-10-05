@@ -5,12 +5,12 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 11:36 UTC
+## Latest verified position — 2026-10-05 11:51 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `f66c9d4b53f7a1162d36b5904b8582d6a83ee3f7`, CI [37303346507](https://github.com/dukkanai/onlinu/actions/runs/37303346507), all jobs successful.
+- Latest published and fully verified commit: `db9ae2b4121149590e66a9ba4ff5131ccedc65a2`, CI [37304792692](https://github.com/dukkanai/onlinu/actions/runs/37304792692), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Current unpublished increment: option add/edit/disable and category rename/reorder with versioned original-core writes and tests.
+- Current unpublished increment: bounded original-core image upload, versioned assignment, own-origin image delivery/MCP mapping and tests.
 - Still incomplete: broader management and Flutter parity, media upload UI, WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
 - Historical verification entries below describe their exact commits; they are not a claim that the entire SaaS is complete.
 
@@ -157,7 +157,7 @@ provisioning. Successful increments do not close these release gates.
 - Added staff-only APIs and browser forms with stable generated IDs and CSRF. Browser-created items begin disabled for explicit review/activation; kitchen/customer OAuth cannot create them.
 - Added atomic-audit/duplicate/stale/unchanged-settings tests and actual control-plane/browser creation coverage. Local aggregate: 592 Go passes, five known sandbox netlink failures and one codec skip; 164 platform, eight tenant, 80 client and 37 deployment tests pass. Go vet/build and client type-check/build pass. Published as f66c9d4; all CI37303346507 jobs passed, including actual Chromium category/item creation.
 
-### Option/category editing (in progress, 2026-10-05)
+### Option/category editing (verified after browser correction, 2026-10-05)
 
 - Added category rename/reorder with original-core version validation and atomic actor audit, preserving item assignments and settings.
 - Added staff-only option add/edit/disable forms; narrow current-item merge and final core version check prevent stale overwrites. Stable IDs, maximum 50 options, exact price parsing and historical receipts remain intact.
@@ -176,3 +176,13 @@ CI37304245517 on 6ae0e8a failed at Chromium option availability selection: the
 exact label lookup included the select's option text. The option control now has
 an explicit accessible name matching its visible label. Server-side integration
 and unit cases passed; this browser correction requires a new complete CI run.
+
+CI37304792692 on db9ae2b passed all server, client and control-image jobs,
+including corrected Chromium option/category flows and HTML error status test.
+
+### Original-core menu media (in progress, 2026-10-05)
+
+- Staff-only bounded multipart upload → raw-byte signed core upload → existing Go image normalizer → versioned/audited item image assignment.
+- Fixed-origin, content-hash-checked public media delivery and absolute own-origin MCP menu/brand image URLs; no arbitrary URL fetch or credential forwarding.
+- Local multipart/Go normalization/permission/CSRF/stale/ownership tests and Chrome preview cases added. Native browser-selected-file submission has a separate loopback-only synthetic ingress test because CDP omits binary file parts; this is not a replacement for separately tested HTTPS identity/origin checks. Remote execution is pending.
+- Local aggregate: 594 Go passes, five known sandbox netlink failures and one codec skip; 170 platform, eight tenant, 80 client and 37 deployment tests pass. Vet/build/type-check pass. New remote browser/runtime verification pending. No production image, credential or storage configuration changed.

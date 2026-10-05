@@ -1,3 +1,4 @@
+import {createCoreMedia,publicMenuImages} from './core-media.mjs';
 import { randomUUID } from 'node:crypto';
 import { checkoutSummary, checkoutErrorPage } from './checkout-pages.mjs';
 /** Real subject-based identity and staff control API, separate from demo routes.
@@ -59,6 +60,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
     identityResolver: directory.verifiedIdentity, clientAdapter: oidcClientAdapter });
   await login.init();
   const core = createCoreAdapter({ restaurants });
+  const media=createCoreMedia({restaurants});let uploads=0;
   const publicCore = {
     async listRestaurants(args) {
       const configured = core.listRestaurants(args);
@@ -67,7 +69,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
     },
     async getMenu(tenantId) {
       if (!(await directory.published([tenantId])).length) throw problem(404, 'restaurant_not_found');
-      return core.getMenu(tenantId);
+      return publicMenuImages(base.origin,tenantId,await core.getMenu(tenantId));
     },
     async preview(tenantId, input) {
       if (!(await directory.published([tenantId])).length) throw problem(404, 'restaurant_not_found');
@@ -119,6 +121,13 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       if (url.searchParams.has('access_token')) throw problem(400, 'token_in_url_forbidden');
       rate(req);
       if (req.url === '/health' && req.method === 'GET') { await pool.query('SELECT 1'); return json(res, 200, { status: 'ok', mode: 'core_control_plane', ordersEnabled: !!checkouts }); }
+      const publicImage=/^\/restaurant-media\/([a-z0-9-]{1,64})\/([a-f0-9]{64}\.(?:png|jpg))$/.exec(url.pathname);
+      if(publicImage&&req.method==='GET'){
+        const [,tenantId,name]=publicImage;if(url.search)throw problem(400,'invalid_request');
+        if(!(await directory.published([tenantId])).length)throw problem(404,'not_found');
+        const result=await media.image(tenantId,name);
+        res.writeHead(200,{'content-type':result.type,'content-length':result.bytes.length,'cache-control':'public, max-age=300','content-security-policy':"default-src 'none'; sandbox"});res.end(result.bytes);return;
+      }
       if (url.pathname === '/mcp') return await mcp(req, res);
       if (req.method === 'GET' && url.pathname === '/.well-known/oauth-protected-resource') return json(res, 200, auth.resourceMetadata);
       if (req.method === 'GET' && url.pathname === '/.well-known/oauth-authorization-server') return json(res, 200, auth.metadata);
@@ -245,6 +254,27 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         await orderClient.createMenuCategory(tenantId,who.id,{expectedVersion:Number(input.expectedVersion),category:{id:input.id,name:input.name,sort:Number(input.sort)}});
         return redirect(res,`/manage/${tenantId}/menu`,303);
       }
+      const menuImage=/^\/manage\/([a-z0-9-]{1,64})\/menu\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79})\/image$/.exec(url.pathname);
+      if(menuImage&&orderClient&&req.method==='POST'){
+        const who=await browser(req),[,tenantId,itemId]=menuImage;
+        if(url.search||!req.headers['content-type']?.startsWith('multipart/form-data;'))throw problem(400,'invalid_request');
+        await directory.authorize(who.id,tenantId,'menu:update');
+        if(uploads>=2)throw problem(429,'rate_limited');uploads++;
+        try{
+          const chunks=[];let size=0;
+          for await(const chunk of req){size+=chunk.length;if(size>5*1024*1024+65536)throw problem(413,'image_too_large');chunks.push(chunk);}
+          let form;try{form=await new Response(Buffer.concat(chunks),{headers:{'content-type':req.headers['content-type']}}).formData();}catch{throw problem(400,'image_invalid');}
+          if([...form.keys()].some(key=>!['csrf','expectedVersion','image'].includes(key))||['csrf','expectedVersion','image'].some(key=>form.getAll(key).length!==1))throw problem(400,'invalid_request');
+          auth.verifyCsrf(req,form.get('csrf'));
+          const version=form.get('expectedVersion'),file=form.get('image');
+          if(typeof version!=='string'||!/^\d{1,16}$/.test(version)||!(file instanceof File)||file.size<1||file.size>5*1024*1024)throw problem(400,'image_invalid');
+          const current=await orderClient.menuItem(tenantId,who.id,itemId);
+          if(current.version!==Number(version))throw problem(409,'catalog_changed');
+          const uploaded=await orderClient.uploadImage(tenantId,who.id,Buffer.from(await file.arrayBuffer()));
+          await orderClient.patchMenuItem(tenantId,who.id,itemId,{expectedVersion:current.version,imageUrl:uploaded.url});
+          return redirect(res,`/manage/${tenantId}/menu/items/${itemId}`,303);
+        }finally{uploads--;}
+      }
       const menuCategory=/^\/manage\/([a-z0-9-]{1,64})\/menu\/categories\/([A-Za-z0-9][A-Za-z0-9_-]{0,79})$/.exec(url.pathname);
       if(menuCategory&&orderClient&&req.method==='POST'){
         const who=await browser(req),[,tenantId,categoryId]=menuCategory;
@@ -278,6 +308,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         if(req.method==='GET'){
           const membership=await directory.authorize(who.id,tenantId,'menu:read');
           const menu=itemId?await orderClient.menuItem(tenantId,who.id,itemId):await orderClient.menu(tenantId,who.id);
+          if(itemId)res.setHeader('content-security-policy',"default-src 'none'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
           htmlHeaders(res);res.end(itemId?staffMenuItemPage({tenantId,membership,menu,csrf:auth.csrfToken(req),newOptionId:randomUUID()}):staffMenuPage({tenantId,menu,membership,csrf:auth.csrfToken(req),newItemId:randomUUID(),newCategoryId:randomUUID()}));return;
         }
         if(req.method==='POST'&&itemId){

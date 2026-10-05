@@ -43,7 +43,7 @@ try {
   await app.directory.setTenantStatus(alice.id,'restaurant-a',{status:'active',expectedVersion:1});
   server=createServer(app.handle);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const local=`http://127.0.0.1:${server.address().port}`;
-  const send=(path,{method='GET',body,cookie,token,headers={}}={})=>new Promise((resolve,reject)=>{
+  const send=(path,{method='GET',body,raw,cookie,token,headers={}}={})=>new Promise((resolve,reject)=>{
     const request=httpRequest(local+path,{method,headers:{host:'platform.example',accept:'application/json',
       ...(cookie?{cookie}:{}),...(token?{authorization:`Bearer ${token}`} : {}),
       ...(body?{'content-type':'application/json'}:{}),...headers}},response=>{
@@ -51,7 +51,7 @@ try {
         const text=Buffer.concat(chunks).toString('utf8');let data;try{data=JSON.parse(text);}catch{data=text;}
         resolve({status:response.statusCode,data,headers:response.headers});
       });
-    });request.on('error',reject);request.end(body?JSON.stringify(body):undefined);
+    });request.on('error',reject);request.end(raw??(body?JSON.stringify(body):undefined));
   });
   const rpc=async(name,args,who)=>{
     const response=await send('/mcp',{method:'POST',token:who?.token,headers:{'MCP-Protocol-Version':MCP_PROTOCOL_VERSION,'Mcp-Method':'tools/call','Mcp-Name':name},
@@ -204,6 +204,28 @@ try {
   const pay=(cookie,token=csrf)=>send(cardPath+'/payment',{method:'POST',cookie,headers:{origin:baseUrl},body:{csrf:token}});
   assert.equal((await pay(alice.cookie,'bad')).status,403);
   assert.equal((await pay(bob.cookie)).status,403);
+  const beforeImage=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
+  const imageUpload=async(who,version,{badCsrf=false,invalid=false}={})=>{
+    const form=new FormData();form.set('csrf',badCsrf?'bad':who.id===alice.id?csrf:bobMe.data.csrfToken);form.set('expectedVersion',String(version));
+    const image=invalid?Buffer.from('<svg/>'):Buffer.concat([Buffer.from(fixture.imageBase64,'base64'),Buffer.from('PRIVATE-TRAILER')]);
+    form.set('image',new Blob([image],{type:invalid?'image/svg+xml':'image/png'}),'synthetic.png');
+    const encoded=new Request(baseUrl+'/upload',{method:'POST',body:form});
+    return send('/manage/restaurant-a/menu/items/rice/image',{method:'POST',cookie:who.cookie,headers:{origin:baseUrl,'content-type':encoded.headers.get('content-type')},raw:Buffer.from(await encoded.arrayBuffer())});
+  };
+  assert.equal((await imageUpload(bob,beforeImage.version)).status,403);
+  assert.equal((await imageUpload(alice,beforeImage.version,{badCsrf:true})).status,403);
+  assert.equal((await imageUpload(alice,beforeImage.version,{invalid:true})).status,400);
+  const uploadedImage=await imageUpload(alice,beforeImage.version);assert.equal(uploadedImage.status,303,JSON.stringify(uploadedImage.data));
+  assert.equal((await imageUpload(alice,beforeImage.version)).status,409,'Stale upload form cannot overwrite a newer image');
+  const afterImage=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
+  assert.match(afterImage.item.imageUrl,/^\/restaurant-media\/[a-f0-9]{64}\.png$/);assert.deepEqual(afterImage.item.options,beforeImage.item.options);
+  const publicMenu=await rpc('get_restaurant_menu',{tenantId:'restaurant-a'});
+  assert.equal(publicMenu.isError,undefined);
+  const publicImageURL=publicMenu.structuredContent.items.find(item=>item.id==='rice').imageUrl;
+  assert.equal(new URL(publicImageURL).origin,baseUrl);assert.match(new URL(publicImageURL).pathname,/^\/restaurant-media\/restaurant-a\//);
+  const imageResponse=await send(new URL(publicImageURL).pathname);
+  assert.equal(imageResponse.status,200);assert.equal(imageResponse.headers['content-type'],'image/png');assert.equal(imageResponse.data.includes('PRIVATE-TRAILER'),false);
+  assert.equal((await send(new URL(publicImageURL).pathname.replace('restaurant-a','restaurant-b'))).status,404);
   if(process.env.CORE_BROWSER_TEST==='1'){
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,
@@ -297,6 +319,8 @@ try {
       await page.goto(baseUrl+'/manage/restaurant-a/menu');
       await page.getByRole('link',{name:'Rice',exact:true}).click();
       await page.waitForURL(baseUrl+'/manage/restaurant-a/menu/items/rice');
+      await page.waitForFunction(()=>{const img=document.querySelector('img[alt="صورة Rice"]');return img?.complete&&img.naturalWidth===3;});
+      assert.equal(await page.locator('input[type="file"]').getAttribute('accept'),'image/png,image/jpeg');
       await page.getByLabel('السعر بالريال السعودي').fill('12.00');
       await page.getByLabel('الوصف').fill('Synthetic menu browser edit');
       await page.getByRole('button',{name:'حفظ الصنف',exact:true}).click();
@@ -361,6 +385,37 @@ try {
       console.log('Verified Chromium payment form, provider-bound CSP redirect, private cookie isolation and Back navigation using intercepted test origins');
       console.log('Verified authenticated staff navigation and real browser OAuth consent -> registered callback -> PKCE exchange using synthetic identities');
     }finally{await browser.close();}
+    // CDP interception omits binary file parts. Exercise native multipart over
+    // loopback instead, with an explicit synthetic ingress/session adapter.
+    // HTTPS cookie/Origin isolation is verified independently above; this test
+    // proves browser file serialization, normalization, assignment and preview.
+    let uploadOrigin,nativePosts=0;
+    const nativeIngress=createServer((req,res)=>{
+      if(!req.url.startsWith('/manage/restaurant-a/menu/items/rice')&&!req.url.startsWith('/restaurant-media/restaurant-a/')){res.writeHead(404);res.end();return;}
+      if(req.headers.origin&&req.headers.origin!==uploadOrigin){res.writeHead(403);res.end();return;}
+      if(req.method==='POST')nativePosts++;
+      req.headers.host='platform.example';req.headers.cookie=alice.cookie;
+      if(req.headers.origin)req.headers.origin=baseUrl;
+      void app.handle(req,res);
+    });
+    await new Promise(resolve=>nativeIngress.listen(0,'127.0.0.1',resolve));
+    uploadOrigin=`http://127.0.0.1:${nativeIngress.address().port}`;
+    let nativeBrowser;
+    try{
+      nativeBrowser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,
+        args:['--no-sandbox','--disable-dev-shm-usage','--disable-background-networking',
+          '--proxy-server=http://127.0.0.1:9','--proxy-bypass-list=<-loopback>;127.0.0.1']});
+      const page=await nativeBrowser.newPage();page.setDefaultTimeout(8000);
+      const beforeNative=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
+      await page.goto(uploadOrigin+'/manage/restaurant-a/menu/items/rice');
+      await page.locator('input[type="file"]').setInputFiles({name:'synthetic-browser.png',mimeType:'image/png',buffer:Buffer.concat([Buffer.from(fixture.imageBase64,'base64'),Buffer.from('BROWSER-TRAILER')])});
+      await page.getByRole('button',{name:'رفع وحفظ الصورة',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${beforeNative.version+1}"]`).first().waitFor({state:'attached'});
+      await page.waitForFunction(()=>{const img=document.querySelector('img[alt="صورة Rice"]');return img?.complete&&img.naturalWidth===3;});
+      const afterNative=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
+      assert.equal(afterNative.version,beforeNative.version+1);assert.deepEqual(afterNative.item.options,beforeNative.item.options);assert.equal(nativePosts,1);
+      console.log('Verified native Chromium file selection/multipart submission, original-core normalization, versioned assignment and preview through loopback synthetic ingress');
+    }finally{await nativeBrowser?.close();await new Promise(resolve=>nativeIngress.close(resolve));}
   }
   const beforeOption=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
   const optionPath='/manage/restaurant-a/menu/items/rice/options/extra';
@@ -407,6 +462,7 @@ try {
   assert.equal((await send(channelsPath,{cookie:alice.cookie})).status,403,'Suspension does not permit enabling new channel work');
   assert.equal((await send(stockPath,{cookie:alice.cookie})).status,403,'Stock management requires an active tenant');
   assert.equal((await send(menuPath,{cookie:alice.cookie})).status,403,'Menu management requires an active tenant');
+  assert.equal((await send(new URL(publicImageURL).pathname)).status,404,'Suspended tenant images are not newly served by the platform');
   const cash=await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version});
   assert.equal(cash.status,200);assert.equal(cash.data.paymentStatus,'paid');
   assert.equal((await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version})).status,409);

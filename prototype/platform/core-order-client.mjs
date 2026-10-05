@@ -33,7 +33,7 @@ const safeCodes = new Set(['invalid_request','invalid_quantity','invalid_option'
   'district_unavailable','delivery_minimum','delivery_unavailable','store_closed','mode_unavailable',
   'item_unavailable','out_of_stock','payment_required','payment_unavailable','price_changed','conflict',
   'invalid_order_access','platform_unauthorized','not_found','order_not_found','invalid_status','invalid_payment_method',
-  'channel_ordering_disabled','channel_ordering_unavailable','invalid_order_channel','catalog_changed','quote_changed']);
+  'channel_ordering_disabled','channel_ordering_unavailable','invalid_order_channel','catalog_changed','quote_changed','image_invalid','image_too_large','body_too_large']);
 const channelId=z.enum(['web','chatgpt','whatsapp_qr','whatsapp_cloud']);
 const channelPolicy=z.object({channel:channelId,newOrdersEnabled:z.boolean(),adapterImplemented:z.boolean(),
   version:z.number().int().positive(),updatedAt:z.string().datetime({offset:true})});
@@ -66,7 +66,8 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
   async function request(tenantId, subject, method, path, input, idempotencyKey = '', overrideScope, resultSchema=coreOrderView, maxBytes=128_000) {
     if (!routes.has(tenantId)) throw problem(404, 'restaurant_not_found');
     if (!uuid.safeParse(subject).success) throw problem(403, 'invalid_identity');
-    const body = input === undefined ? '' : JSON.stringify(input);
+    const binary=Buffer.isBuffer(input);
+    const body = input === undefined ? '' : binary?input:JSON.stringify(input);
     const issuedAt = Math.floor(now() / 1000);
     const claims = Buffer.from(JSON.stringify({ issuer, audience: tenantId, subject,
       scope: overrideScope ?? (method === 'POST' ? 'orders:write' : 'orders:read'), method, path,
@@ -77,14 +78,14 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     try {
       response = await fetchImpl(routes.get(tenantId) + path, { method, redirect: 'error',
         signal: AbortSignal.timeout(10_000), headers: { authorization, accept: 'application/json',
-          ...(method === 'POST' ? { 'content-type': 'application/json', 'idempotency-key': idempotencyKey } : {}) },
+          ...(method === 'POST' ? { 'content-type': binary?'application/octet-stream':'application/json', 'idempotency-key': idempotencyKey } : {}) },
         ...(method === 'POST' ? { body } : {}) });
       const chunks = []; let bytes = 0;
       for await (const chunk of response.body ?? []) {
         bytes += chunk.length; if (bytes > maxBytes) throw Error('oversized_response'); chunks.push(chunk);
       }
       const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      if (!response.ok) throw problem([400,401,403,404,409].includes(response.status) ? response.status : 503,
+      if (!response.ok) throw problem([400,401,403,404,409,413,429].includes(response.status) ? response.status : 503,
         safeCodes.has(value?.error) ? value.error : 'restaurant_unavailable');
       const parsed=resultSchema.parse(value);
       if(resultSchema===paymentView&&parsed.attemptId&&!['test','live'].includes(parsed.mode))throw Error('invalid_payment_mode');
@@ -96,6 +97,10 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    uploadImage(tenantId,subject,bytes){
+      if(!Buffer.isBuffer(bytes)||bytes.length<1||bytes.length>5*1024*1024)throw problem(400,'image_too_large');
+      return request(tenantId,subject,'POST','/platform-api/staff/images',bytes,'','staff:media:write',z.object({url:z.string().regex(/^\/restaurant-media\/[a-f0-9]{64}\.(png|jpg)$/)}));
+    },
     menu(tenantId,subject){
       return request(tenantId,subject,'GET','/platform-api/staff/menu',undefined,'','staff:menu:read',z.object({
         version:z.number().int().positive(),name:z.string().max(4096),currency:z.literal('SAR'),categories:coreCatalogSchema.shape.categories,

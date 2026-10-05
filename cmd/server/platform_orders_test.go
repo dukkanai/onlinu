@@ -11,6 +11,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"image"
+	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -280,6 +283,7 @@ func TestPlatformAuthConfigurationFailsClosed(t *testing.T) {
 }
 
 func TestPlatformOrderNodeSignatureCompatibility(t *testing.T) {
+	t.Setenv("WACALLS_RECORDING_DIR", t.TempDir())
 	if os.Getenv("TEST_CORE_ADAPTER") != "1" {
 		t.Skip("set TEST_CORE_ADAPTER=1 after installing Node dependencies")
 	}
@@ -334,7 +338,7 @@ func TestPlatformOrderNodeSignatureCompatibility(t *testing.T) {
 	input := map[string]any{"mode": "delivery", "customerName": "Synthetic", "phone": "+966501234567",
 		"address": map[string]string{"country": "SA", "nationalAddress": "ABCD1234"}, "paymentMethod": "cash_on_delivery",
 		"items": []restaurantOrderLineInput{{ItemID: "rice", Quantity: 2, OptionIDs: []string{"extra", "free"}}}, "expectedTotalMinor": 3500}
-	fixture, err := json.Marshal(map[string]any{"baseUrl": service.URL, "privateKey": string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})), "input": input})
+	fixture, err := json.Marshal(map[string]any{"baseUrl": service.URL, "privateKey": string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})), "input": input, "imageBase64": base64.StdEncoding.EncodeToString(platformImageFixture(t))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,4 +381,62 @@ func TestPlatformOrderNodeSignatureCompatibility(t *testing.T) {
 		t.Fatalf("duplicate provider invocation: %d", calls.Load())
 	}
 	t.Log(string(output))
+}
+
+func platformImageFixture(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	if err := png.Encode(&buffer, image.NewRGBA(image.Rect(0, 0, 3, 3))); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+func TestPlatformStaffImagesRawSignatureAndNormalization(t *testing.T) {
+	s, h := restaurantHTTPFixture(t)
+	t.Setenv("WACALLS_RECORDING_DIR", t.TempDir())
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.platformAuth = &platformRequestAuth{issuer: "https://platform.example", tenantID: "restaurant-a", publicKey: public, now: time.Now}
+	actor := uuid.NewString()
+	send := func(raw []byte, scope string, tamper bool) *httptest.ResponseRecorder {
+		digest := sha256.Sum256(raw)
+		r := platformTestRequest(t, private, actor, "POST", "/platform-api/staff/images", "", scope, nil, func(claims *platformRequestClaims) { claims.BodySHA256 = hex.EncodeToString(digest[:]) })
+		if tamper {
+			raw = append(append([]byte{}, raw...), 1)
+		}
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		r.ContentLength = int64(len(raw))
+		r.Header.Set("Content-Type", "application/octet-stream")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	raw := append(platformImageFixture(t), []byte("PRIVATE-TRAILER")...)
+	if w := send(raw, "orders:write", false); w.Code != 401 {
+		t.Fatal("customer scope could upload", w.Code)
+	}
+	if w := send(raw, "staff:media:write", true); w.Code != 401 {
+		t.Fatal("tampered bytes accepted", w.Code)
+	}
+	if w := send([]byte("<svg/>"), "staff:media:write", false); w.Code != 400 {
+		t.Fatal("SVG accepted", w.Code)
+	}
+	if w := send(make([]byte, restaurantImageLimit+1), "staff:media:write", false); w.Code != 413 {
+		t.Fatal("oversized raw upload accepted", w.Code)
+	}
+	w := send(raw, "staff:media:write", false)
+	if w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var result map[string]string
+	if err = json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	fetched := httptest.NewRecorder()
+	h.ServeHTTP(fetched, httptest.NewRequest("GET", result["url"], nil))
+	if fetched.Code != 200 || bytes.Contains(fetched.Body.Bytes(), []byte("PRIVATE-TRAILER")) {
+		t.Fatal("uploaded bytes were not normalized")
+	}
 }

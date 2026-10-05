@@ -105,3 +105,15 @@ test('menu creation signs a bounded staff operation and rejects settings injecti
  assert.throws(()=>client.createMenuCategory('restaurant-a',randomUUID(),{expectedVersion:2,category,settings:{}}),{code:'invalid_request'});
  assert.throws(()=>client.createMenuItem('restaurant-a',randomUUID(),{expectedVersion:2,item:{...input,id:'../unsafe'}}),{code:'invalid_request'});
 });
+
+test('staff image upload signs exact raw bytes instead of JSON/base64 content',async()=>{
+ const bytes=Buffer.from([0,255,128,10]),url='/restaurant-media/'+'a'.repeat(64)+'.png';
+ const client=createCoreOrderClient({...config,fetchImpl:async(target,options)=>{
+  assert.equal(target,'http://127.0.0.1:3001/platform-api/staff/images');assert.equal(options.headers['content-type'],'application/octet-stream');assert.deepEqual(options.body,bytes);
+  const claims=JSON.parse(Buffer.from(options.headers.authorization.slice(9).split('.')[0],'base64url'));
+  assert.equal(claims.scope,'staff:media:write');assert.equal(claims.bodySha256,createHash('sha256').update(bytes).digest('hex'));
+  return json({url},201);
+ }});
+ assert.equal((await client.uploadImage('restaurant-a',randomUUID(),bytes)).url,url);
+ assert.throws(()=>client.uploadImage('restaurant-a',randomUUID(),Buffer.alloc(5*1024*1024+1)),{code:'image_too_large'});
+});

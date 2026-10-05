@@ -142,6 +142,7 @@ func publicPlatformOrderDetails(order restaurantOrder) platformOrderDetails {
 func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
 	limiter := &restaurantRateLimiter{entries: make(map[string]restaurantRateEntry)}
 	slots := make(chan struct{}, 64)
+	uploadSlots := make(chan struct{}, 2)
 	wrap := func(scope string, next func(http.ResponseWriter, *http.Request, []byte, string)) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
@@ -158,7 +159,19 @@ func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
 				return
 			}
 			_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Second))
-			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 128*1024))
+			maxBody := int64(128 * 1024)
+			if scope == "staff:media:write" {
+				// Bound large unauthenticated reads before allocating buffers.
+				select {
+				case uploadSlots <- struct{}{}:
+					defer func() { <-uploadSlots }()
+				default:
+					writeRestaurantError(w, restaurantFail(429, "rate_limited"))
+					return
+				}
+				maxBody = restaurantImageLimit
+			}
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 			if err != nil {
 				writeRestaurantError(w, restaurantFail(413, "body_too_large"))
 				return
@@ -169,7 +182,7 @@ func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
 				return
 			}
 			limit := 240
-			if scope == "orders:write" {
+			if scope == "orders:write" || scope == "staff:media:write" {
 				limit = 30
 			}
 			if !limiter.allow(owner+":"+scope, limit) {

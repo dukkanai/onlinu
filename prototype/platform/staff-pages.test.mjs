@@ -65,3 +65,11 @@ test('option forms preserve stable IDs, escape text and enforce the visible limi
  assert.doesNotMatch(full,/إضافة الخيار/);assert.match(full,/50 إضافة/);
  assert.doesNotMatch(staffMenuItemPage({...config,membership:{permissions:['menu:read']}}),/<form/);
 });
+
+test('image forms use native multipart and preview only own content-addressed media',()=>{
+ const item={id:'rice',name:'<Rice>',description:'',priceMinor:100,categoryId:'main',sort:0,available:true,options:[],imageUrl:'/restaurant-media/'+'a'.repeat(64)+'.png'};
+ const config={tenantId:'a',menu:{version:2,item,categories:[]},membership:{permissions:['menu:update']},csrf:'test',newOptionId:'new-option'};
+ const html=staffMenuItemPage(config);assert.match(html,/enctype="multipart\/form-data"/);assert.match(html,/accept="image\/png,image\/jpeg"/);assert.match(html,/src="\/restaurant-media\/a\/a{64}\.png"/);
+ const external=staffMenuItemPage({...config,menu:{...config.menu,item:{...item,imageUrl:'https://images.example/private.jpg'}}});assert.doesNotMatch(external,/<img/);
+ assert.doesNotMatch(staffMenuItemPage({...config,membership:{permissions:['menu:read']}}),/<form/);
+});

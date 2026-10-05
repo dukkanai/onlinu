@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 )
@@ -25,6 +26,33 @@ type platformStaffOrderView struct {
 // control plane resolves current membership before signing each operation.
 // No restaurant master key or caller-supplied role enters this path.
 func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(string, func(http.ResponseWriter, *http.Request, []byte, string)) http.HandlerFunc) {
+	mux.HandleFunc("POST /platform-api/staff/images", wrap("staff:media:write", func(w http.ResponseWriter, r *http.Request, raw []byte, _ string) {
+		if r.URL.RawQuery != "" || len(raw) == 0 {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		// Internal transport signs raw image bytes. Construct our own multipart wrapper,
+		// so a caller-controlled Content-Type cannot reinterpret signed payload parts.
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("image", "upload")
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		if _, err = part.Write(raw); err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		if err = writer.Close(); err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body.Bytes()))
+		r.ContentLength = int64(body.Len())
+		r.Header.Set("Content-Type", writer.FormDataContentType())
+		s.handleRestaurantImageUpload(w, r)
+	}))
 	mux.HandleFunc("GET /platform-api/staff/menu", wrap("staff:menu:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
 		if r.URL.RawQuery != "" {
 			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
