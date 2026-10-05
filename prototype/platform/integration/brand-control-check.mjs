@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {createCoreOrderClient} from '../core-order-client.mjs';
+const fixture=JSON.parse(process.env.CORE_BRAND_FIXTURE),actor=randomUUID();
+const client=createCoreOrderClient({issuer:'https://platform.example',privateKey:fixture.privateKey,restaurants:[{id:'restaurant-a',baseUrl:fixture.baseUrl}]});
+const before=await client.brand('restaurant-a',actor),tuple=state=>({version:state.version,catalogVersion:state.catalogVersion,reviewed:true});
+const draft=await client.brandCommand('restaurant-a',actor,'draft',{...tuple(before),storefrontTemplate:'editorial',headingFont:'amiri',hideHero:false});
+assert.equal(draft.draft.storefrontTemplate,'editorial');assert.equal(draft.live.storefrontTemplate,before.live.storefrontTemplate);assert.equal(draft.draft.primaryColor,before.live.primaryColor);
+await assert.rejects(client.brandCommand('restaurant-a',actor,'publish',tuple(before)),{code:'brand_changed'});
+const published=await client.brandCommand('restaurant-a',actor,'publish',tuple(draft));assert.equal(published.live.storefrontTemplate,'editorial');assert.equal(published.draft,null);
+const restored=await client.brandCommand('restaurant-a',actor,'revert',tuple(published));assert.deepEqual(restored.live,before.live);
+console.log('Verified real Node-signed original-core private draft, independent version review, five-template publication and appearance-only restore; synthetic restaurant.');

@@ -30,7 +30,7 @@ export function allowedPaymentURL(provider, raw) {
 const paymentView=z.object({attemptId:z.string().max(128),status:z.string().max(40),provider:z.string().max(40),mode:z.enum(['','test','live']),
   url:z.string().url().optional(),widget:z.object({checkoutId:z.string().max(512),scriptUrl:z.string().url(),brands:z.array(z.string().max(40)),returnUrl:z.string().url()}).optional(),
 });
-const safeCodes = new Set(['invalid_service_modes','forbidden','unauthorized','invalid_request','invalid_delivery_zones','invalid_geography','invalid_quantity','invalid_option','phone_required',
+const safeCodes = new Set(['brand_changed','brand_invalid','brand_contrast','brand_no_draft','invalid_service_modes','forbidden','unauthorized','invalid_request','invalid_delivery_zones','invalid_geography','invalid_quantity','invalid_option','phone_required',
   'address_required','country_required','location_required','outside_delivery_area','invalid_district',
   'district_unavailable','delivery_minimum','delivery_unavailable','store_closed','mode_unavailable',
   'item_unavailable','out_of_stock','payment_required','payment_unavailable','price_changed','conflict',
@@ -56,6 +56,12 @@ const financeView=z.object({number:z.string().regex(/^R[0-9]{8,20}$/),orderVersi
 const refundDetail=financeView.shape.refunds.element.extend({number:coreOrderView.shape.number,orderVersion:coreOrderView.shape.version,orderTotalMinor:financeAmount,capturedMinor:financeAmount,demo:z.boolean(),reason:z.string().max(4000),providerReference:z.string().max(4096),manualReference:z.string().max(4096),resolutionReason:z.string().max(4000),capability:financeView.shape.capability});
 const refundCommand=z.object({version:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),reviewed:z.literal(true),amountMinor:financeAmount.refine(n=>n>0),currency:z.literal('SAR'),provider:z.string().max(40),demo:z.boolean(),reference:z.string().max(200).optional(),reason:z.string().max(1000).optional()}).strict();
 function refundPath(number,refundId){if(!/^R[0-9]{8,20}$/.test(number??'')||!uuid.safeParse(refundId).success)throw problem(400,'invalid_request');return '/platform-api/staff/orders/'+number+'/refunds/'+refundId;}
+const brandVersion=z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1);
+const brandEditFields={storefrontTemplate:z.enum(['classic','bistro','editorial','compact','showcase']),font:z.enum(['system','serif']),headingFont:z.enum(['','system','serif','cairo','amiri','tajawal']),bodyFont:z.enum(['','system','serif','cairo','amiri','tajawal']),buttonFont:z.enum(['','system','serif','cairo','amiri','tajawal']),layout:z.enum(['grid','list']),textSize:z.enum(['normal','large']),radius:z.enum(['square','soft','round']),shadow:z.enum(['none','soft']),imageFit:z.enum(['cover','contain']),hideHero:z.boolean(),introTitle:z.string().max(640),introText:z.string().max(8000)};
+const brandView=z.object({...brandEditFields,template:z.enum(['classic','warm','modern']),...Object.fromEntries(['primaryColor','primaryTextColor','secondaryColor','secondaryTextColor','headingColor','bodyColor','pageColor','cardColor','cartColor','borderColor'].map(key=>[key,z.string().regex(/^#[0-9a-fA-F]{6}$/)])),logoUrl:z.string().max(4096),coverUrl:z.string().max(4096),introImageUrl:z.string().max(4096)});
+const brandState=z.object({version:brandVersion,catalogVersion:brandVersion,live:brandView,draft:brandView.nullable(),hasPrevious:z.boolean()});
+const brandReview=z.object({version:brandVersion,catalogVersion:brandVersion,reviewed:z.literal(true)}).strict();
+const brandPatch=brandReview.extend(Object.fromEntries(Object.entries(brandEditFields).map(([key,value])=>[key,value.optional()]))).strict().refine(v=>Object.keys(v).length>3);
 const serviceFields={acceptingOrders:z.boolean(),deliveryEnabled:z.boolean(),pickupEnabled:z.boolean(),tableEnabled:z.boolean()};
 const serviceView=z.object({version:z.number().int().positive(),...serviceFields});
 const servicePatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),...Object.fromEntries(Object.entries(serviceFields).map(([key,value])=>[key,value.optional()]))}).strict().refine(v=>Object.keys(v).length>1);
@@ -129,6 +135,8 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
       if(['manual','verify'].includes(action)&&(!parsed.data.reference?.trim()||!parsed.data.reason?.trim()))throw problem(400,'invalid_request');
       return request(tenantId,subject,'POST',path+'/'+action,parsed.data,'','staff:refunds:'+action,refundDetail).then(value=>{if(value.number!==number||value.id!==refundId||value.amountMinor!==parsed.data.amountMinor||value.currency!==parsed.data.currency||value.provider!==parsed.data.provider||value.demo!==parsed.data.demo)throw problem(503,'order_outcome_unknown');return value;});
     },
+    brand(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/brand',undefined,'','staff:settings:read',brandState);},
+    brandCommand(tenantId,subject,action,input){if(!['draft','publish','revert'].includes(action))throw problem(400,'invalid_request');const parsed=(action==='draft'?brandPatch:brandReview).safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/brand/'+action,parsed.data,'','staff:brand:'+action,brandState);},
     finance(tenantId,subject,number){if(!/^R[0-9]{8,20}$/.test(number??''))throw problem(400,'invalid_request');return request(tenantId,subject,'GET','/platform-api/staff/orders/'+number+'/finance',undefined,'','staff:payments:read',financeView,2_000_000);},
     service(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/service',undefined,'','staff:settings:read',serviceView);},
     patchService(tenantId,subject,input){const parsed=servicePatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/service',parsed.data,'','staff:settings:update',serviceView);},

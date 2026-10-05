@@ -155,3 +155,12 @@ test('refund reads reject a mismatched original order or refund identity',async(
  const id=randomUUID();const client=createCoreOrderClient({...config,fetchImpl:async()=>json({id:randomUUID(),version:1,status:'review',provider:'',currency:'SAR',amountMinor:100,taxMinor:0,confirmation:'',authorized:false,submitted:false,createdAt:view.updatedAt,updatedAt:view.updatedAt,number:view.number,orderVersion:1,orderTotalMinor:100,capturedMinor:100,demo:true,reason:'synthetic',providerReference:'',manualReference:'',resolutionReason:'',capability:{automatic:false,partial:true,manual:true,reason:'manual_review_required'}})});
  await assert.rejects(client.refund('restaurant-a',randomUUID(),view.number,id),{code:'restaurant_unavailable'});
 });
+
+test('appearance draft transport binds independent versions, exact scope and explicit false',async()=>{
+ const appearance={template:'classic',storefrontTemplate:'classic',font:'system',headingFont:'',bodyFont:'',buttonFont:'',layout:'grid',textSize:'normal',radius:'soft',shadow:'soft',imageFit:'cover',hideHero:false,introTitle:'',introText:'',logoUrl:'',coverUrl:'',introImageUrl:'',...Object.fromEntries(['primaryColor','primaryTextColor','secondaryColor','secondaryTextColor','headingColor','bodyColor','pageColor','cardColor','cartColor','borderColor'].map(k=>[k,'#ffffff']))};
+ let calls=0;const input={version:2,catalogVersion:4,reviewed:true,storefrontTemplate:'editorial',hideHero:false};
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{calls++;assert.ok(url.endsWith('/staff/brand/draft'));const claims=JSON.parse(Buffer.from(options.headers.authorization.slice(9).split('.')[0],'base64url'));assert.equal(claims.scope,'staff:brand:draft');assert.deepEqual(JSON.parse(options.body),input);return json({version:3,catalogVersion:4,live:appearance,draft:{...appearance,storefrontTemplate:'editorial'},hasPrevious:false,providerSecret:'not-public'});}});
+ for(const bad of [{...input,reviewed:false},{...input,paymentMethods:{}},{version:2,catalogVersion:4,reviewed:true},{...input,storefrontTemplate:'unknown'}])assert.throws(()=>client.brandCommand('restaurant-a',randomUUID(),'draft',bad),{code:'invalid_request'});
+ const result=await client.brandCommand('restaurant-a',randomUUID(),'draft',input);assert.equal(result.providerSecret,undefined);assert.equal(result.draft.storefrontTemplate,'editorial');assert.equal(calls,1);
+ assert.throws(()=>client.brandCommand('restaurant-a',randomUUID(),'publish',input),{code:'invalid_request'});
+});

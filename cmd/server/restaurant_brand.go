@@ -166,7 +166,8 @@ func initRestaurantBrand(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS restaurant_brand_state (
 		id INTEGER PRIMARY KEY CHECK (id=1), version BIGINT NOT NULL DEFAULT 1 CHECK(version>0),
 		draft JSONB, previous JSONB, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-	); INSERT INTO restaurant_brand_state(id) VALUES(1) ON CONFLICT(id) DO NOTHING`)
+	); INSERT INTO restaurant_brand_state(id) VALUES(1) ON CONFLICT(id) DO NOTHING;
+CREATE TABLE IF NOT EXISTS platform_staff_brand_audit(version BIGINT PRIMARY KEY,catalog_version BIGINT NOT NULL,actor_id TEXT NOT NULL,scope TEXT NOT NULL,kind TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now())`)
 	return err
 }
 
@@ -230,7 +231,21 @@ func (s *restaurantStore) SaveBrandDraft(ctx context.Context, version int64, bra
 	if err != nil {
 		return restaurantBrandState{}, err
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE restaurant_brand_state SET draft=$1,version=version+1,updated_at=now() WHERE id=1 AND version=$2`, data, version)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return restaurantBrandState{}, err
+	}
+	defer tx.Rollback()
+	// Match publication's catalog-first lock order. Legacy callers retain the
+	// existing appearance-version contract; staff patches add a reviewed catalog.
+	var catalogVersion int64
+	if err = tx.QueryRowContext(ctx, `SELECT version FROM restaurant_catalog WHERE id=1 FOR UPDATE`).Scan(&catalogVersion); err != nil {
+		return restaurantBrandState{}, err
+	}
+	if expected, ok := ctx.Value(platformStaffBrandCatalogKey{}).(int64); ok && expected != catalogVersion {
+		return restaurantBrandState{}, restaurantFail(409, "brand_changed")
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE restaurant_brand_state SET draft=$1,version=version+1,updated_at=now() WHERE id=1 AND version=$2`, data, version)
 	if err != nil {
 		return restaurantBrandState{}, err
 	}
@@ -241,7 +256,18 @@ func (s *restaurantStore) SaveBrandDraft(ctx context.Context, version int64, bra
 	if n != 1 {
 		return restaurantBrandState{}, restaurantFail(409, "brand_changed")
 	}
-	return s.BrandState(ctx)
+	catalog, err := loadRestaurantCatalog(ctx, tx, false)
+	if err != nil {
+		return restaurantBrandState{}, err
+	}
+	state, _, err := readRestaurantBrandState(ctx, tx, catalog, false)
+	if err != nil {
+		return state, err
+	}
+	if err = writePlatformStaffBrandAudit(ctx, tx, state, "draft_saved"); err != nil {
+		return state, err
+	}
+	return state, tx.Commit()
 }
 
 func (s *restaurantStore) PublishBrand(ctx context.Context, version int64, revert bool) (restaurantBrandState, error) {
@@ -265,6 +291,9 @@ func (s *restaurantStore) PublishBrand(ctx context.Context, version int64, rever
 		return restaurantBrandState{}, err
 	}
 	catalog.Version = catalogVersion
+	if expected, ok := ctx.Value(platformStaffBrandCatalogKey{}).(int64); ok && expected != catalogVersion {
+		return restaurantBrandState{}, restaurantFail(409, "brand_changed")
+	}
 	state, previous, err := readRestaurantBrandState(ctx, tx, catalog, true)
 	if err != nil {
 		return state, err
@@ -305,6 +334,13 @@ func (s *restaurantStore) PublishBrand(ctx context.Context, version int64, rever
 	}
 	state, _, err = readRestaurantBrandState(ctx, tx, catalog, false)
 	if err != nil {
+		return state, err
+	}
+	kind := "published"
+	if revert {
+		kind = "reverted"
+	}
+	if err = writePlatformStaffBrandAudit(ctx, tx, state, kind); err != nil {
 		return state, err
 	}
 	if err = tx.Commit(); err != nil {

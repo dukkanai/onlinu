@@ -370,3 +370,10 @@ See `prototype/platform/REFUND-MANAGEMENT.md` for the scoped backend increment,
 reviewed immutable facts, original-ledger audit and remaining browser/native
 confirmation work. It does not create a second payment engine or enable real
 provider transactions in development.
+
+## Appearance draft management work
+
+`prototype/platform/BRAND-MANAGEMENT.md` records the next original-core management
+bridge. Drafts remain private; publication/restore use independent appearance
+and catalog review versions, original validation and transactional staff audit.
+No production appearance is changed by implementation tests.

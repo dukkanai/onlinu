@@ -41,6 +41,15 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
         if(financeRoute&&orderClient&&req.method==='GET'){
           if(url.search)throw problem(400,'invalid_request');const [,tenantId,number]=financeRoute;await directory.authorize(who.id,tenantId,'orders:read');await directory.authorize(who.id,tenantId,'payments:read');return json(res,200,await orderClient.finance(tenantId,who.id,number));
         }
+        const brandRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/brand(?:\/(draft|publish|revert))?$/.exec(url.pathname);
+        if(brandRoute&&orderClient){
+          const [,tenantId,action]=brandRoute;if(url.search||!(req.method==='GET'&&!action||req.method==='POST'&&action))throw problem(400,'invalid_request');
+          await directory.authorize(who.id,tenantId,'settings:read');
+          if(req.method==='GET')return json(res,200,await orderClient.brand(tenantId,who.id));
+          await directory.authorize(who.id,tenantId,'settings:update');const input=await body(req);
+          await directory.authorize(who.id,tenantId,'settings:read');await directory.authorize(who.id,tenantId,'settings:update');
+          return json(res,200,await orderClient.brandCommand(tenantId,who.id,action,input));
+        }
         const serviceRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/service$/.exec(url.pathname);
         if(serviceRoute&&orderClient&&['GET','POST'].includes(req.method)){
           if(url.search)throw problem(400,'invalid_request');const tenantId=serviceRoute[1];await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');

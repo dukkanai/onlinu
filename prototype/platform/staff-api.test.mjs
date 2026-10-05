@@ -58,3 +58,13 @@ test('existing refund commands require all grants again after reading the body a
  await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'order_outcome_unknown'});assert.equal(calls.length,1);
  assert.deepEqual(calls[0],['a','staff','R1234567890','11111111-1111-4111-8111-111111111111','authorize',{reviewed:true}]);
 });
+
+test('appearance commands require current read/write grants and preserve action separation',async()=>{
+ const grants=new Set(['settings:read']),calls=[];let revoke=false;
+ const api=createStaffApi({directory:{async authorize(a,t,p){if(!grants.has(p))throw Object.assign(Error(),{code:'forbidden'});}},body:async()=>{if(revoke)grants.delete('settings:update');return{version:1,catalogVersion:2,reviewed:true};},orderClient:{async brand(){return{version:1};},async brandCommand(...args){calls.push(args);return{version:2};}},json:(_,status,data)=>({status,data})});
+ const base='https://platform.example/api/restaurants/a/staff/brand';
+ assert.equal((await api({method:'GET'},{},{id:'staff'},new URL(base))).status,200);
+ await assert.rejects(api({method:'POST'},{},{id:'staff'},new URL(base+'/publish')),{code:'forbidden'});
+ grants.add('settings:update');revoke=true;await assert.rejects(api({method:'POST'},{},{id:'staff'},new URL(base+'/publish')),{code:'forbidden'});assert.equal(calls.length,0);
+ grants.add('settings:update');revoke=false;await api({method:'POST'},{},{id:'staff'},new URL(base+'/revert'));assert.equal(calls.length,1);assert.equal(calls[0][2],'revert');
+});
