@@ -144,3 +144,13 @@ stale versions, retired-zone disabling, permission loss and audit rollback. Actu
 Dart TLS tests traverse the geographic hierarchy, save a free zone, toggle pricing
 and restore the original mode. Chromium/Windows form verification is a separate CI
 gate; all data used by these fixtures is synthetic.
+
+### Functional fixture client budgets
+
+The expanded browser suite and native suite previously shared one loopback IP and
+exhausted the real 240-request/minute ingress budget. The native TLS fixture now
+binds a distinct ephemeral loopback client address (`127.0.0.2`); the Node fixture
+asserts the observed peer. Production limits, proxy trust and authentication remain
+unchanged. This isolates functional client scenarios rather than disabling throttling.
+It is not a NAT/shared-IP or distributed-load acceptance test: those capacity/fairness
+gates remain required before production, especially with multiple polling devices.

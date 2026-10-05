@@ -32,7 +32,10 @@ HttpClient fixtureClient(SecurityContext context, int port,
   client.connectionFactory = (uri, proxyHost, proxyPort) async {
     if (uri.origin != base || proxyHost != null || proxyPort != null)
       throw StateError('Fixture routing cannot leave the reserved origin');
-    final tcp = await Socket.startConnect(InternetAddress.loopbackIPv4, port);
+    // A separate synthetic native device has its own loopback source address.
+    // Keep the production per-IP budget intact; the long browser suite uses .1.
+    final tcp = await Socket.startConnect(InternetAddress.loopbackIPv4, port,
+        sourceAddress: InternetAddress('127.0.0.2'));
     Socket? raw;
     final secured = tcp.socket.then((socket) {
       raw = socket;
