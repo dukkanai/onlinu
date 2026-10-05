@@ -233,11 +233,11 @@ try {
       const webForm=page.locator('form[action$="/channels/web"]');
       await webForm.getByLabel('استقبال طلبات الموقع').selectOption('false');
       await webForm.getByRole('button').click();
-      await page.locator('form[action$="/channels/web"] input[name="expectedVersion"][value="2"]').waitFor();
+      await page.locator('form[action$="/channels/web"] input[name="expectedVersion"][value="2"]').waitFor({state:'attached'});
       assert.equal(await webForm.getByLabel('استقبال طلبات الموقع').inputValue(),'false');
       await webForm.getByLabel('استقبال طلبات الموقع').selectOption('true');
       await webForm.getByRole('button').click();
-      await page.locator('form[action$="/channels/web"] input[name="expectedVersion"][value="3"]').waitFor();
+      await page.locator('form[action$="/channels/web"] input[name="expectedVersion"][value="3"]').waitFor({state:'attached'});
       const registration=await app.auth.register({redirect_uris:['https://client.example/callback'],token_endpoint_auth_method:'none',grant_types:['authorization_code'],response_types:['code']});
       const verifier=randomBytes(32).toString('base64url');
       const grant={client_id:registration.client_id,redirect_uri:'https://client.example/callback',response_type:'code',resource:baseUrl+'/mcp',
