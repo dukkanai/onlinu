@@ -59,6 +59,80 @@ Map<String, dynamic> linksJson() => {
       ]
     };
 void main() {
+  testWidgets('revoked linking permission masks visible identity choices',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile = profileFixture(permissions: ['couriers:link'])
+      ..linksValue = CoreCourierLinks(linksJson(), tenantId: 'demo-a');
+    api.session.restoreAvailable = true;
+    final c = CoreController(api, pollInterval: const Duration(hours: 1));
+    await tester.pumpWidget(CoreApp(controller: c));
+    await tester.pumpAndSettle();
+    final edit = find.text('مراجعة الربط');
+    await tester.ensureVisible(edit);
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('هوية تجريبية'), findsWidgets);
+    api.currentProfile = profileFixture(permissions: []);
+    await c.refresh();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('هوية تجريبية'), findsNothing);
+    expect(find.text('تغير المطعم أو صلاحياتك. أغلق نموذج الربط.'),
+        findsOneWidget);
+    expect(api.courierWrites, isEmpty);
+  });
+  testWidgets(
+      'suspended tenant can review unlink without choosing a new identity',
+      (tester) async {
+    final raw = linksJson();
+    raw['candidates'] = <Map<String, dynamic>>[];
+    raw['links'] = [
+      {
+        ...object((raw['links'] as List).single),
+        'version': 1,
+        'bound': true,
+        'principalId': principalId,
+        'principalName': 'هوية تجريبية',
+        'eligible': false
+      }
+    ];
+    final api = FakeCoreGateway()
+      ..currentProfile = CoreProfile({
+        'id': principalId,
+        'memberships': [
+          memberJson('demo-a',
+              permissions: ['couriers:link'], status: 'suspended')
+        ]
+      })
+      ..linksValue = CoreCourierLinks(raw, tenantId: 'demo-a');
+    api.session.restoreAvailable = true;
+    final c = CoreController(api, pollInterval: const Duration(hours: 1));
+    await tester.pumpWidget(CoreApp(controller: c));
+    await tester.pumpAndSettle();
+    final edit = find.text('مراجعة الربط');
+    await tester.ensureVisible(edit);
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('فك الربط الحالي').last);
+    await tester.pumpAndSettle();
+    final review = find.byType(CheckboxListTile);
+    await tester.ensureVisible(review);
+    await tester.pumpAndSettle();
+    await tester.tap(review);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تأكيد تغيير الربط'));
+    await tester.pumpAndSettle();
+    expect(api.courierWrites, ['link:']);
+  });
+
+  test('suspended restaurant retains explicit binding revocation access', () {
+    final member = CoreMembership(memberJson('demo-a',
+        permissions: ['couriers:link'], status: 'suspended'));
+    expect(member.can('couriers:link'), true);
+    expect(member.can('settings:update'), false);
+  });
   test(
       'courier list rejects other drivers, completed tasks and inconsistent binding',
       () {
@@ -219,8 +293,7 @@ void main() {
                 find.widgetWithText(FilledButton, 'تأكيد تغيير الربط'))
             .onPressed,
         isNull);
-    await tester.tap(find.byType(DropdownButtonFormField<String>).last);
-    await tester.pumpAndSettle();
+
     await tester.tap(find.textContaining('هوية تجريبية').last);
     await tester.pumpAndSettle();
     expect(

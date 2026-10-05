@@ -1,6 +1,8 @@
 # Native courier identity and owned work
 
-Status: local implementation and targeted acceptance passed; remote CI/Windows pending, not production acceptance. Dispatcher assignment
+Status: base workflow plus packaging correction passed all CI37360485687 jobs at
+`faa7c44`; the additional revocation hardening below is locally verified and awaits
+remote acceptance. This is not production acceptance. Dispatcher assignment
 to existing courier accounts is already verified separately.
 
 ## Authority and identity
@@ -67,3 +69,21 @@ succeeded but the non-root import smoke failed. The allowlist is corrected and a
 local transitive-import-graph regression test now catches missing runtime modules;
 an isolated copy of exactly those runtime files imports successfully. Actual
 Docker/non-root and full CI verification must pass on the corrective commit.
+
+## Suspension and open-editor hardening
+
+A suspended tenant retains explicit courier-link listing and unlink authority.
+It cannot add/reassign a nonempty identity binding: candidate eligibility is empty
+and the command rechecks current active status immediately before the core call.
+Closed tenants remain inaccessible. No existing grant is automatically expanded.
+
+The native identity picker is an inline, searchable single-choice radio list with
+at most 50 visible matches. It avoids a separate dropdown route retaining employee
+names when permission is revoked; the whole editor masks its private content on
+revocation/tenant change. Confirmation still requires explicit review. Suspended
+tenants offer only unlink, and stale link versions disable confirmation.
+
+Local regressions cover mid-review suspension, actual Node→Go unlink under a
+suspended tenant, maintained courier settlement grants and masked native choices.
+No real identity was linked/unlinked by these tests. Native Windows regression of
+the revised picker remains a remote gate.

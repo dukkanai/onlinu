@@ -285,8 +285,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(edit);
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<String>).last);
-    await tester.pumpAndSettle();
     await tester.tap(find.textContaining('هوية تجريبية').last);
     await tester.pumpAndSettle();
     final check = find.byType(CheckboxListTile);

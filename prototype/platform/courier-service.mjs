@@ -20,7 +20,8 @@ export function createCourierService({directory,orderClient}){
    parse(id,courier);const value=parse(linkInput,input),candidates=await directory.courierCandidates(actor,tenant);
    if(value.principalId&&!candidates.some(v=>v.principalId===value.principalId&&v.eligible))throw problem(403,'forbidden');
    const ownerRef=value.principalId?orderClient.principalRef(tenant,value.principalId):'';
-   await directory.authorize(actor,tenant,'couriers:link');
+   const authority=await directory.authorize(actor,tenant,'couriers:link');
+   if(value.principalId&&authority.tenantStatus!=='active')throw problem(403,'tenant_suspended');
    const saved=await orderClient.setCourierLink(tenant,actor,courier,{expectedVersion:value.expectedVersion,ownerRef});
    if(saved.id!==courier||saved.version!==value.expectedVersion+1||saved.ownerRef!==(ownerRef||null))throw problem(503,'order_outcome_unknown');
    return {tenantId:tenant,link:mapped(saved,candidateMap(tenant,candidates))};

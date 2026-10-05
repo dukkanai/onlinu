@@ -191,8 +191,10 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
       WHERE m.principal_id=$1 AND m.tenant_id=$2 AND m.enabled=TRUE AND t.status IN ('active','suspended')`, [principalId, tenantId]);
     if (!rows[0]?.permissions.includes(permission)) throw problem(403, 'forbidden');
     // Suspension prevents new business, not completion/refund of existing work.
+    // couriers:link is retained for listing/revocation only; courier-service
+    // rechecks active status for every nonempty binding and candidates hide grants.
     const settlement = ['orders:read', 'orders:update', 'delivery:read', 'delivery:assign',
-      'payments:read', 'payments:collect', 'refunds:manage','courier:read','courier:update','courier:collect'];
+      'payments:read', 'payments:collect', 'refunds:manage','couriers:link','courier:read','courier:update','courier:collect'];
     if (rows[0].tenant_status === 'suspended' && !settlement.includes(permission)) throw problem(403, 'tenant_suspended');
     return safeRow(rows[0]);
   }
@@ -210,9 +212,9 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
     });
   }
   async function courierCandidates(actorId,tenantId){
-    await authorize(actorId,tenantId,'couriers:link');
+    const authority=await authorize(actorId,tenantId,'couriers:link');
     const {rows}=await pool.query(`SELECT m.principal_id,m.display_name,m.enabled AS member_enabled,m.permissions,i.enabled AS identity_enabled FROM platform_memberships m JOIN platform_identities i ON i.id=m.principal_id WHERE m.tenant_id=$1 ORDER BY m.principal_id LIMIT 5000`,[tenantId]);
-    return rows.map(row=>({principalId:row.principal_id,displayName:row.display_name??'',eligible:row.member_enabled&&row.identity_enabled&&row.permissions.includes('courier:read')}));
+    return rows.map(row=>({principalId:row.principal_id,displayName:row.display_name??'',eligible:authority.tenantStatus==='active'&&row.member_enabled&&row.identity_enabled&&row.permissions.includes('courier:read')}));
   }
   return { init, verifiedIdentity, resolve, createTenant, setTenantStatus, setMembership, authorize, published, members, courierCandidates };
 }

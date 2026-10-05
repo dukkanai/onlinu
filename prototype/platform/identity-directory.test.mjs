@@ -101,6 +101,11 @@ test('persistent tenant identity, roles, concurrency and OAuth revocation', {
     for(const permission of ['orders:read','couriers:link','delivery:assign'])await assert.rejects(directory.authorize(courier.id,'a',permission),{code:'forbidden'});
     for(const person of [courier,manager,root])await assert.rejects(directory.courierCandidates(person.id,'a'),{code:'forbidden'});
     const candidates=await directory.courierCandidates(ownerA.id,'a');assert.equal(candidates.find(v=>v.principalId===courier.id).eligible,true);assert.equal(candidates.find(v=>v.principalId===manager.id).eligible,false);assert.equal(candidates.some(v=>v.principalId===foreign.id),false);
+    await directory.setTenantStatus(root.id,'a',{status:'suspended',expectedVersion:2});
+    await directory.authorize(ownerA.id,'a','couriers:link');
+    assert.equal((await directory.courierCandidates(ownerA.id,'a')).some(v=>v.eligible),false);
+    await directory.authorize(courier.id,'a','courier:read');
+    await directory.setTenantStatus(root.id,'a',{status:'active',expectedVersion:3});
     await pool.query('UPDATE platform_identities SET enabled=FALSE WHERE id=$1',[courier.id]);
     assert.equal((await directory.courierCandidates(ownerA.id,'a')).find(v=>v.principalId===courier.id).eligible,false);
     await assert.rejects(directory.authorize(courier.id,'a','courier:read'));

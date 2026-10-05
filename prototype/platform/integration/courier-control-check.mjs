@@ -50,6 +50,8 @@ try {
  assert.equal((await send(native+'/courier-work/orders/'+fixture.orderA+'/cash',{method:'POST',token,body:{version:detail.data.version,bindingVersion:1}})).status,409);
  await app.directory.setMembership(owner.id,'restaurant-a',a.id,{role:'courier',enabled:true,expectedVersion:2});
  if(process.env.CORE_FLUTTER_TEST_BIN)await checkNativeDart({app,browserCookie:a.cookie,principalId:a.id,orderNumber:fixture.orderA,courier:true,courierId:fixture.courierA});
+ await app.directory.setTenantStatus(owner.id,'restaurant-a',{status:'suspended',expectedVersion:2});
+ assert.equal((await link(fixture.courierA,b.id,1)).status,403,'Suspension cannot grant a new courier binding');
  assert.equal((await link(fixture.courierA,'',1)).status,200);
  const revoked=await send(native+'/courier-work',{token});assert.equal(revoked.status,200);assert.equal(revoked.data.courier,null);assert.equal(revoked.data.orders.length,0);
  assert.equal((await send(stagePath,{method:'POST',token,body})).status,403);

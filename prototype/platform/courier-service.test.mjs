@@ -6,7 +6,7 @@ function fixture(){
  const calls=[],permissions=new Set(['couriers:link','courier:read','courier:update','courier:collect']);
  const candidates=[{principalId:target,displayName:'Synthetic courier',eligible:true},{principalId:disabled,displayName:'Disabled',eligible:false}];
  const row={id:courier,name:'Courier',active:true,availability:'offline',version:0,ownerRef:null,activeOrders:0};
- const directory={async authorize(who,tenant,permission){calls.push(['authorize',who,tenant,permission]);if(who!==actor||tenant!=='a'||!permissions.has(permission))throw Object.assign(Error('forbidden'),{code:'forbidden'});},async courierCandidates(who,tenant){await this.authorize(who,tenant,'couriers:link');return candidates;}};
+ const directory={async authorize(who,tenant,permission){calls.push(['authorize',who,tenant,permission]);if(who!==actor||tenant!=='a'||!permissions.has(permission))throw Object.assign(Error('forbidden'),{code:'forbidden'});return {tenantStatus:'active'};},async courierCandidates(who,tenant){await this.authorize(who,tenant,'couriers:link');return candidates;}};
  const orderClient={principalRef(tenant,id){assert.equal(tenant,'a');return id===target?ref:'platform:'+'c'.repeat(64);},async courierLinks(){calls.push(['links']);return {links:[row]};},async setCourierLink(tenant,who,id,input){calls.push(['write',input]);return {...row,version:input.expectedVersion+1,ownerRef:input.ownerRef||null};},async courierWork(){calls.push(['work']);return {orders:[]};},async courierDetail(){calls.push(['detail']);return {};},async courierChange(...args){calls.push(['change',...args]);return {};},async courierAvailability(){calls.push(['availability']);return {};}};
  return {service:createCourierService({directory,orderClient}),directory,orderClient,calls,permissions,row,candidates};
 }
@@ -36,4 +36,11 @@ test('courier API does not accept queries, ambiguous methods or foreign route sh
  assert.equal((await api({method:'GET'},{},{id:actor},new URL('https://platform.example/api/restaurants/a/courier-work'))).status,200);
  for(const path of ['/api/restaurants/a/courier-work?all=1','/api/restaurants/a/courier-work/availability?x=1'])await assert.rejects(api({method:'GET'},{},{id:actor},new URL('https://platform.example'+path)),{code:'invalid_request'});
  for(const path of ['/api/restaurants/a/courier-work/availability','/api/restaurants/a/courier-work/orders/other','/api/restaurants/a/courier-links/'+actor])await assert.rejects(api({method:'GET'},{},{id:actor},new URL('https://platform.example'+path)),{code:'not_found'});
+});
+
+test('suspension can revoke a binding but never grant a new one, including a mid-review pause',async()=>{
+ const f=fixture();f.directory.authorize=async()=>({tenantStatus:'suspended'});
+ // Deliberately keep a stale eligible candidate to exercise the final recheck.
+ await assert.rejects(f.service.setLink(actor,'a',courier,{expectedVersion:0,principalId:target}),{code:'tenant_suspended'});
+ const revoked=await f.service.setLink(actor,'a',courier,{expectedVersion:1,principalId:''});assert.equal(revoked.link.bound,false);assert.equal(f.calls.filter(v=>v[0]==='write').length,1);
 });
