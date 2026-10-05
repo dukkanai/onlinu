@@ -140,8 +140,11 @@ class CoreScreen extends StatelessWidget {
                               .surfaceContainerHighest,
                           child: Padding(
                               padding: const EdgeInsets.all(14),
-                              child: Text(c.message!,
-                                  key: const Key('core-message')))),
+                              child: Semantics(
+                                  container: true,
+                                  liveRegion: true,
+                                  child: Text(c.message!,
+                                      key: const Key('core-message'))))),
                     if (!c.signedIn) ...[
                       const SizedBox(height: 40),
                       const Text('مرحبًا بك في Onlinu',
@@ -209,10 +212,15 @@ class CoreScreen extends StatelessWidget {
                                 icon: const Icon(Icons.refresh),
                                 label: const Text('تحديث')),
                           ]),
+                      if (c.refreshedAt != null)
+                        Text('آخر تحديث: ${localTimestamp(c.refreshedAt!)}',
+                            style: Theme.of(context).textTheme.labelSmall),
                       if (member?.tenantStatus == 'suspended')
                         const Text(
                             'المطعم موقوف للطلبات الجديدة. يمكن متابعة الطلبات المقبولة وتسويتها حسب صلاحياتك.'),
-                      if (c.busy) const LinearProgressIndicator(),
+                      if (c.busy)
+                        const LinearProgressIndicator(
+                            semanticsLabel: 'جارٍ تنفيذ العملية'),
                       if (c.selectedTenant == null)
                         const Padding(
                             padding: EdgeInsets.all(24),
@@ -404,3 +412,9 @@ String roleLabel(String role) => switch (role) {
     };
 String modeLabel(String mode) =>
     switch (mode) { 'table' => 'طاولة', 'delivery' => 'توصيل', _ => 'استلام' };
+
+String localTimestamp(DateTime value) {
+  final date = value.toLocal();
+  String two(int part) => part.toString().padLeft(2, '0');
+  return '${date.year}-${two(date.month)}-${two(date.day)} ${two(date.hour)}:${two(date.minute)}:${two(date.second)}';
+}

@@ -61,7 +61,7 @@ void main() {
     await tester.tap(find.text('تفاصيل الطلب'));
     await tester.pumpAndSettle();
     expect(find.textContaining('بدون ملح'), findsOneWidget);
-    await capture(boundary, 'windows-orders.png');
+    await capture(tester, boundary, 'windows-orders.png');
     await tester.tap(find.byTooltip('إغلاق التفاصيل'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('تسجيل الخروج'));
@@ -105,6 +105,29 @@ void main() {
     await tap(find.text('حفظ التعديلات'));
     expect(api.menuWrites, 1);
     expect(controller.menu!.items.single.priceMinor, 1230);
+    await tap(find.text('تعديل تصنيف'));
+    await tester.enterText(
+        find.widgetWithText(TextField, 'اسم التصنيف'), 'الأطباق الرئيسية');
+    await tester.enterText(find.widgetWithText(TextField, 'ترتيب العرض'), '١');
+    await capture(tester, boundary, 'windows-category.png');
+    await tap(find.text('حفظ التصنيف'));
+    expect(controller.menu!.items.single.categoryId, 'main');
+    await tap(find.text('الوصف والإضافات'));
+    await tester.enterText(
+        find.widgetWithText(TextField, 'وصف الصنف'), 'وصف اختبار Windows');
+    await tap(find.text('متاحة للاختيار'));
+    await tap(find.text('إضافة خيار'));
+    await tester.enterText(
+        find.widgetWithText(TextField, 'اسم الإضافة'), 'صلصة إضافية');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'سعر الإضافة بالريال'), '١٫٥٠');
+    await tap(find.text('اعتماد الإضافة'));
+    await capture(tester, boundary, 'windows-options.png');
+    await tap(find.text('حفظ الوصف والإضافات'));
+    expect(api.menuOptions.first.id, 'extra');
+    expect(api.menuOptions.first.available, false);
+    expect(api.menuOptions.last.priceMinor, 150);
+    expect(api.menuOptions.last.available, false);
     await tap(find.text('إضافة تصنيف'));
     await tester.enterText(find.widgetWithText(TextField, 'اسم التصنيف الجديد'),
         'مشروبات الاختبار');
@@ -114,9 +137,9 @@ void main() {
         find.widgetWithText(TextField, 'اسم الصنف الجديد'), 'عصير الاختبار');
     await tester.enterText(
         find.widgetWithText(TextField, 'السعر بالريال السعودي'), '٧٫٢٥');
-    await capture(boundary, 'windows-create-item.png');
+    await capture(tester, boundary, 'windows-create-item.png');
     await tap(find.text('إنشاء'));
-    expect(api.menuWrites, 3);
+    expect(api.menuWrites, 5);
     expect(
         controller.menu!.items
             .where((v) => v.name == 'عصير الاختبار')
@@ -129,7 +152,7 @@ void main() {
             .single
             .priceMinor,
         725);
-    await capture(boundary, 'windows-menu.png');
+    await capture(tester, boundary, 'windows-menu.png');
     await tap(find.widgetWithText(ChoiceChip, 'المخزون'));
     await tap(find.text('تعديل الجرد'));
     await tester.enterText(
@@ -138,14 +161,14 @@ void main() {
     await tap(find.text('تأكيد الجرد'));
     expect(controller.stock.single.available, 28);
     expect(controller.stock.single.held, 3);
-    await capture(boundary, 'windows-stock.png');
+    await capture(tester, boundary, 'windows-stock.png');
     await tap(find.widgetWithText(ChoiceChip, 'قنوات الطلب'));
     await tap(find.text('إيقاف الطلبات الجديدة').first);
     await tap(find.text('تأكيد'));
     expect(api.channelWrites, 1);
     expect(controller.channels.first.newOrdersEnabled, false);
     expect(controller.channels.last.adapterImplemented, false);
-    await capture(boundary, 'windows-channels.png');
+    await capture(tester, boundary, 'windows-channels.png');
     await tap(find.text('تسجيل الخروج'));
     expect(controller.menu, isNull);
     expect(controller.stock, isEmpty);
@@ -154,7 +177,9 @@ void main() {
   });
 }
 
-Future<void> capture(GlobalKey boundary, String name) async {
+Future<void> capture(
+    WidgetTester tester, GlobalKey boundary, String name) async {
+  await tester.pumpAndSettle();
   final root = Platform.environment['ONLINU_SMOKE_SCREENSHOT'];
   if (root == null) return;
   final render =

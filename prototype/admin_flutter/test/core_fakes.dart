@@ -230,6 +230,13 @@ class FakeCoreGateway implements CoreGateway {
   int stockWrites = 0, stockReads = 0;
   int channelWrites = 0;
   int menuWrites = 0;
+  String menuDescription = 'وصف الصنف';
+  List<CoreOption> menuOptions = [
+    CoreOption(
+        {'id': 'extra', 'name': 'إضافة', 'priceMinor': 200, 'available': true})
+  ];
+  Completer<CoreMenuDetails>? menuDetailsGate;
+  final itemDetails = <String, Map<String, dynamic>>{};
   CoreMenu currentMenu = menuFixture();
   Completer<CoreMenu>? menuGate;
   List<CoreChannel> currentChannels =
@@ -400,5 +407,61 @@ class FakeCoreGateway implements CoreGateway {
       'sort': sort
     });
     currentMenu = CoreMenu(doc, tenantId: menu.tenantId);
+  }
+
+  @override
+  Future<void> patchCategory(CoreMenu menu, CoreCategory category,
+      {required String name, required int sort}) async {
+    menuWrites++;
+    if (writeError != null) throw writeError!;
+    final doc = menuDocument(currentMenu);
+    doc['version'] = menu.version + 1;
+    doc['categories'] = (doc['categories'] as List)
+        .map((v) => object(v)['id'] == category.id
+            ? <String, dynamic>{...object(v), 'name': name, 'sort': sort}
+            : object(v))
+        .toList();
+    currentMenu = CoreMenu(doc, tenantId: menu.tenantId);
+  }
+
+  @override
+  Future<CoreMenuDetails> menuDetails(String tenant, String id) async {
+    if (readError != null) throw readError!;
+    final extra = id == 'meal'
+        ? {
+            'description': menuDescription,
+            'options': menuOptions.map((v) => v.toJson()).toList()
+          }
+        : itemDetails[id] ??
+            {'description': '', 'options': <Map<String, dynamic>>[]};
+    return menuDetailsGate?.future ??
+        CoreMenuDetails({
+          'version': currentMenu.version,
+          'currency': 'SAR',
+          'item': {
+            ...object((menuDocument(currentMenu)['items'] as List)
+                .firstWhere((v) => object(v)['id'] == id)),
+            ...extra
+          }
+        }, tenantId: tenant);
+  }
+
+  @override
+  Future<void> patchMenuDetails(CoreMenuDetails details,
+      {required String description, required List<CoreOption> options}) async {
+    menuWrites++;
+    if (writeError != null) throw writeError!;
+    if (details.item.id == 'meal') {
+      menuDescription = description;
+      menuOptions = options;
+    } else {
+      itemDetails[details.item.id] = {
+        'description': description,
+        'options': options.map((v) => v.toJson()).toList()
+      };
+    }
+    currentMenu = CoreMenu(
+        {...menuDocument(currentMenu), 'version': details.version + 1},
+        tenantId: details.tenantId);
   }
 }

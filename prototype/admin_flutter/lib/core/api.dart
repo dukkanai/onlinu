@@ -6,6 +6,11 @@ abstract interface class CoreGateway {
   CoreSession get session;
   Future<CoreProfile> profile();
   Future<CoreMenu> menu(String tenant);
+  Future<CoreMenuDetails> menuDetails(String tenant, String id);
+  Future<void> patchMenuDetails(CoreMenuDetails details,
+      {required String description, required List<CoreOption> options});
+  Future<void> patchCategory(CoreMenu menu, CoreCategory category,
+      {required String name, required int sort});
   Future<void> createMenuCategory(CoreMenu menu,
       {required String id, required String name, required int sort});
   Future<void> createMenuItem(CoreMenu menu,
@@ -318,6 +323,81 @@ class CoreApi implements CoreGateway {
           created.priceMinor != price ||
           created.available ||
           created.sort != sort) invalidResponse();
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
+  }
+
+  @override
+  Future<void> patchCategory(CoreMenu menu, CoreCategory category,
+      {required String name, required int sort}) async {
+    final label = name.trim();
+    if (label.isEmpty ||
+        label.length > 240 ||
+        sort < 0 ||
+        sort > 10000 ||
+        !menu.categories.any((v) => v.id == category.id))
+      throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(menu.tenantId)}/staff/menu/categories/${menuKey(category.id)}',
+        body: {'expectedVersion': menu.version, 'name': label, 'sort': sort});
+    try {
+      _tenant(data, menu.tenantId);
+      final changed = CoreCategory(object(data['category']));
+      if (integer(data['version'], min: 1) <= menu.version ||
+          changed.id != category.id ||
+          changed.name != label ||
+          changed.sort != sort) invalidResponse();
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
+  }
+
+  @override
+  Future<CoreMenuDetails> menuDetails(String tenant, String id) async {
+    final data = await _request('GET',
+        '/native/api/restaurants/${tenantKey(tenant)}/staff/menu/items/${menuKey(id)}');
+    _tenant(data, tenant);
+    final detail = CoreMenuDetails(data, tenantId: tenant);
+    if (detail.item.id != id) invalidResponse();
+    return detail;
+  }
+
+  @override
+  Future<void> patchMenuDetails(CoreMenuDetails details,
+      {required String description, required List<CoreOption> options}) async {
+    final text = description.trim();
+    if (text.length > 4000 ||
+        details.options.any((v) => !options.any((c) => c.id == v.id)) ||
+        options.length > 50 ||
+        options.map((v) => v.id).toSet().length != options.length ||
+        options.any((v) =>
+            v.name.trim().isEmpty ||
+            v.name.length > 240 ||
+            v.priceMinor > 100000000))
+      throw const CoreException('invalid_request');
+    final clean = options
+        .map((v) => CoreOption({...v.toJson(), 'name': v.name.trim()}))
+        .toList();
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(details.tenantId)}/staff/menu/items/${menuKey(details.item.id)}',
+        body: {
+          'expectedVersion': details.version,
+          'description': text,
+          'options': clean.map((v) => v.toJson()).toList()
+        });
+    try {
+      _tenant(data, details.tenantId);
+      final changed = CoreMenuDetails(data, tenantId: details.tenantId);
+      if (changed.version <= details.version ||
+          changed.item.id != details.item.id ||
+          changed.description != text ||
+          changed.options.length != clean.length ||
+          clean.any((v) => !changed.options.any((c) =>
+              c.id == v.id &&
+              c.name == v.name &&
+              c.priceMinor == v.priceMinor &&
+              c.available == v.available))) invalidResponse();
     } on CoreException {
       throw const CoreException('invalid_response', uncertain: true);
     }

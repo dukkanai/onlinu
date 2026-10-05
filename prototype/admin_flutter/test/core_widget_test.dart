@@ -70,4 +70,25 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets(
+      'status outcomes are live semantic announcements with a visible freshness time',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      final c = CoreController(FakeCoreGateway(),
+          pollInterval: const Duration(hours: 1));
+      await tester.pumpWidget(CoreApp(controller: c));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('الدخول عبر المتصفح'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('آخر تحديث:'), findsOneWidget);
+      await c.change(c.orders.single);
+      await tester.pumpAndSettle();
+      expect(tester.getSemantics(find.byKey(const Key('core-message'))),
+          matchesSemantics(label: c.message!, isLiveRegion: true));
+      await tester.pumpWidget(const SizedBox());
+    } finally {
+      semantics.dispose();
+    }
+  });
 }

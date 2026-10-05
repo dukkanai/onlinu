@@ -242,7 +242,12 @@ class CoreMenu {
       : version = integer(json['version'], min: 1),
         name = textField(json['name']),
         categories = List.unmodifiable(array(json['categories'], max: 1000)
-            .map((v) => CoreCategory(object(v)))),
+            .map((v) => CoreCategory(object(v)))
+            .toList()
+          ..sort((a, b) {
+            final order = a.sort.compareTo(b.sort);
+            return order != 0 ? order : a.id.compareTo(b.id);
+          })),
         items = List.unmodifiable(array(json['items'], max: 5000)
             .map((v) => CoreMenuItem(object(v)))) {
     final categoryIds = categories.map((v) => v.id).toSet();
@@ -282,4 +287,43 @@ int? priceMinor(String raw) {
 String newMenuId(bool category) {
   final random = Random.secure();
   return '${category ? 'c' : 'i'}_${List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
+}
+
+class CoreOption {
+  CoreOption(Map<String, dynamic> json)
+      : id = menuKey(json['id']),
+        name = textField(json['name']),
+        priceMinor = integer(json['priceMinor'], max: 40000000000),
+        available = json['available'] is bool
+            ? json['available'] as bool
+            : invalidResponse();
+  final String id, name;
+  final int priceMinor;
+  final bool available;
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'priceMinor': priceMinor,
+        'available': available
+      };
+  CoreOption withAvailable(bool value) =>
+      CoreOption({...toJson(), 'available': value});
+}
+
+class CoreMenuDetails {
+  CoreMenuDetails(Map<String, dynamic> json, {required this.tenantId})
+      : version = integer(json['version'], min: 1),
+        item = CoreMenuItem(object(json['item'])),
+        description = textField(object(json['item'])['description'], max: 4096),
+        options = List.unmodifiable(
+            array(object(json['item'])['options'] ?? [], max: 100)
+                .map((v) => CoreOption(object(v)))) {
+    if (json['currency'] != 'SAR' ||
+        options.map((v) => v.id).toSet().length != options.length)
+      invalidResponse();
+  }
+  final String tenantId, description;
+  final int version;
+  final CoreMenuItem item;
+  final List<CoreOption> options;
 }

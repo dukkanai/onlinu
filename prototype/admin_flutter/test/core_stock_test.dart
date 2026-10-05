@@ -119,6 +119,7 @@ void main() {
     expect(find.text('محجوز للطلبات: 3'), findsOneWidget);
     expect(find.text('آخر 100 طلب'), findsNothing);
     await tester.ensureVisible(find.text('تعديل الجرد'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('تعديل الجرد'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('إلغاء'));

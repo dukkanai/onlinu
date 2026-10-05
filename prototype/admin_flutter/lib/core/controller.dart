@@ -282,9 +282,22 @@ class CoreController extends ChangeNotifier {
     _emit();
   }
 
+  bool _writeGuard(String tenant, String permission, CoreSection target) {
+    if (_disposed || busy || tenant != selectedTenant || section != target)
+      return false;
+    if (!writable || membership?.can(permission) != true) {
+      message =
+          'لم يُرسل التعديل. تحقق من الاتصال والصلاحيات ثم حدّث البيانات.';
+      _emit();
+      return false;
+    }
+    return true;
+  }
+
   Future<void> change(CoreOrder expected, {bool cash = false}) async {
     final tenant = selectedTenant;
     final permission = cash ? 'payments:collect' : 'orders:update';
+    if (!_writeGuard(expected.tenantId, permission, CoreSection.orders)) return;
     if (section == CoreSection.orders &&
         expected.tenantId == tenant &&
         !orders.any((v) =>
@@ -330,6 +343,8 @@ class CoreController extends ChangeNotifier {
 
   Future<void> recount(CoreStockItem expected,
       {required bool tracked, required int available}) async {
+    if (!_writeGuard(expected.tenantId, 'stock:update', CoreSection.stock))
+      return;
     final tenant = selectedTenant;
     if (section == CoreSection.stock &&
         expected.tenantId == tenant &&
@@ -371,6 +386,8 @@ class CoreController extends ChangeNotifier {
   }
 
   Future<void> changeChannel(CoreChannel expected, bool enabled) async {
+    if (!_writeGuard(
+        expected.tenantId, 'channels:manage', CoreSection.channels)) return;
     final tenant = selectedTenant;
     if (section != CoreSection.channels ||
         !writable ||
@@ -411,6 +428,8 @@ class CoreController extends ChangeNotifier {
       required String categoryId,
       required int price,
       required bool available}) async {
+    if (!_writeGuard(expected.tenantId, 'menu:update', CoreSection.menu))
+      return;
     if (section != CoreSection.menu ||
         !writable ||
         expected.tenantId != selectedTenant ||
@@ -451,6 +470,8 @@ class CoreController extends ChangeNotifier {
       required int sort,
       String? categoryId,
       int? price}) async {
+    if (!_writeGuard(expected.tenantId, 'menu:update', CoreSection.menu))
+      return;
     if (section != CoreSection.menu ||
         !writable ||
         expected.tenantId != selectedTenant ||
@@ -481,6 +502,96 @@ class CoreController extends ChangeNotifier {
         message = categoryId == null
             ? 'أُضيف التصنيف.'
             : 'أُضيف الصنف غير متاح للطلب؛ راجعه ثم فعّله عندما يكون جاهزًا.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
+  Future<void> patchCategory(CoreMenu expected, CoreCategory category,
+      {required String name, required int sort}) async {
+    if (!_writeGuard(expected.tenantId, 'menu:update', CoreSection.menu))
+      return;
+    if (section != CoreSection.menu ||
+        !writable ||
+        expected.tenantId != selectedTenant ||
+        membership?.can('menu:update') != true) return;
+    if (menu?.version != expected.version) {
+      message = 'تغيرت القائمة. افتح التصنيف من النسخة الحالية.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.patchCategory(expected, category, name: name, sort: sort);
+      if (_current(generation))
+        message = 'حُفظ التصنيف دون تغيير معرّفه أو أصنافه.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
+  Future<CoreMenuDetails> menuDetails(String id) async {
+    final tenant = selectedTenant, generation = _generation;
+    if (section != CoreSection.menu ||
+        !signedIn ||
+        tenant == null ||
+        membership?.can('menu:read') != true)
+      throw const CoreException('forbidden');
+    try {
+      final detail = await api.menuDetails(tenant, id);
+      if (!_current(generation) || tenant != selectedTenant)
+        throw const CoreException('cancelled');
+      if (!signedIn || membership?.can('menu:read') != true)
+        throw const CoreException('forbidden', status: 403);
+      return detail;
+    } catch (error) {
+      if (_current(generation)) {
+        _failure(error);
+        _emit();
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> patchMenuDetails(CoreMenuDetails expected,
+      {required String description, required List<CoreOption> options}) async {
+    if (!_writeGuard(expected.tenantId, 'menu:update', CoreSection.menu))
+      return;
+    if (section != CoreSection.menu ||
+        !writable ||
+        expected.tenantId != selectedTenant ||
+        membership?.can('menu:update') != true) return;
+    if (menu == null || expected.version < menu!.version) {
+      message = 'تغير الصنف أثناء تحرير التفاصيل. افتح نسخته الحالية.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.patchMenuDetails(expected,
+          description: description, options: options);
+      if (_current(generation))
+        message = 'حُفظ الوصف والإضافات. الطلبات السابقة لم تتغير.';
     } catch (error) {
       if (_current(generation)) _failure(error);
     } finally {
@@ -524,7 +635,8 @@ String errorMessage(Object error) {
     'invalid_grant' ||
     'invalid_saved_session' =>
       'انتهت الجلسة. سجّل الدخول من جديد.',
-    'cancelled' || 'access_denied' => 'أُلغي تسجيل الدخول.',
+    'cancelled' => 'أُلغيت العملية.',
+    'access_denied' => 'أُلغي تسجيل الدخول.',
     'secure_storage_unavailable' =>
       'تعذر الوصول إلى مخزن النظام الآمن. لن تُحفظ الجلسة في ملف عادي.',
     'conflict' ||

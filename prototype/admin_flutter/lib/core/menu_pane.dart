@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'controller.dart';
 import 'models.dart';
+import 'category_editor.dart';
+import 'menu_details_editor.dart';
 
 typedef MenuEdit = ({
   String name,
@@ -49,6 +51,28 @@ class _MenuPaneState extends State<MenuPane> {
         price: result.price);
   }
 
+  Future<void> _category(CoreMenu menu) async {
+    final result = await showDialog<CategoryEdit>(
+        context: context, builder: (_) => CategoryEditor(menu: menu));
+    if (!mounted ||
+        result == null ||
+        widget.controller.selectedTenant != menu.tenantId) return;
+    await widget.controller.patchCategory(menu, result.category,
+        name: result.name, sort: result.sort);
+  }
+
+  Future<void> _details(CoreMenu menu, CoreMenuItem item) async {
+    final result = await showDialog<MenuDetailsEdit>(
+        context: context,
+        builder: (_) => MenuDetailsEditor(
+            controller: widget.controller, tenant: menu.tenantId, id: item.id));
+    if (!mounted ||
+        result == null ||
+        widget.controller.selectedTenant != menu.tenantId) return;
+    await widget.controller.patchMenuDetails(result.details,
+        description: result.description, options: result.options);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = widget.controller, menu = c.menu;
@@ -86,6 +110,14 @@ class _MenuPaneState extends State<MenuPane> {
                   : null,
               icon: const Icon(Icons.create_new_folder_outlined),
               label: const Text('إضافة تصنيف')),
+          OutlinedButton.icon(
+              onPressed: c.writable && menu.categories.isNotEmpty
+                  ? () {
+                      unawaited(_category(menu));
+                    }
+                  : null,
+              icon: const Icon(Icons.edit_note),
+              label: const Text('تعديل تصنيف')),
           FilledButton.icon(
               onPressed: c.writable &&
                       menu.categories.isNotEmpty &&
@@ -140,6 +172,11 @@ class _MenuPaneState extends State<MenuPane> {
                           style: Theme.of(context).textTheme.labelSmall),
                       Text(money(item.priceMinor)),
                       Text(item.available ? 'متاح للطلب' : 'غير متاح للطلب'),
+                      OutlinedButton(
+                          onPressed: () {
+                            unawaited(_details(menu, item));
+                          },
+                          child: const Text('الوصف والإضافات')),
                       if (c.membership?.can('menu:update') == true)
                         OutlinedButton.icon(
                             onPressed: c.writable
