@@ -81,6 +81,7 @@ COPY --from=opus /opt/libopus_mlow.so /usr/local/lib/libopus_mlow.so
 RUN ldconfig
 COPY --from=server /wacalls /usr/local/bin/wacalls
 COPY --from=client /app/client/dist /app/client/dist
+COPY data/saudi-geography/ /app/data/saudi-geography/
 COPY --from=server /astracalls-passkey.zip /app/client/dist/astracalls-passkey.zip
 COPY LICENSE LICENSE.WaCalls /usr/share/doc/astracalls/
 WORKDIR /app

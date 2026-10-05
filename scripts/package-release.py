@@ -212,7 +212,19 @@ def package_images(version, secrets):
     print(json.dumps(manifest, indent=2))
 
 
+PUBLIC_GEOGRAPHY_FILES = {
+    "data/saudi-geography/" + name for name in (
+        "regions_lite.json", "cities_lite.json", "districts_lite.json",
+        "LICENSE", "UPSTREAM-README.md", "SOURCE.md",
+    )
+}
+
+
 def include_source(name):
+    # Only these pinned public inputs may cross the runtime-data exclusion.
+    # Check the exact name, not a normalized prefix that could admit private data.
+    if name in PUBLIC_GEOGRAPHY_FILES:
+        return True
     path = PurePosixPath(name)
     if path.is_absolute() or ".." in path.parts or set(path.parts) & EXCLUDED_PARTS:
         return False
@@ -235,6 +247,7 @@ def package_source(version, secrets):
     names = sorted({os.fsdecode(name) for name in listed.split(b"\0") if name and include_source(os.fsdecode(name))})
     required = {"Dockerfile", "deploy/release.json", "deploy/test_install.py", "META.ar.md", "deploy/INSTALL.ar.md",
                 ".env.example", "scripts/build-installer.sh", "scripts/package-release.py"}
+    required.update(PUBLIC_GEOGRAPHY_FILES)
     if version == "0.3.0":
         required.add("RESTAURANT.ar.md")
     if not required.issubset(names):

@@ -11,7 +11,15 @@ Caddyfile
 .env
 .env.*
 bin
-data
+data/*
+!data/saudi-geography/
+data/saudi-geography/*
+!data/saudi-geography/regions_lite.json
+!data/saudi-geography/cities_lite.json
+!data/saudi-geography/districts_lite.json
+!data/saudi-geography/LICENSE
+!data/saudi-geography/UPSTREAM-README.md
+!data/saudi-geography/SOURCE.md
 auth
 backups
 artifacts

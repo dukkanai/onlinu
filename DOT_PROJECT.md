@@ -163,3 +163,26 @@ branch and verify it on GitHub. Existing CI formatting and missing geography dat
 require fixes; local PostgreSQL is required to run the skipped integration cases.
 The network-restricted cloud runner cannot currently validate all WebRTC tests.
 Do not claim full runtime acceptance from the successful client build.
+
+## Saudi geography restoration — 2026-10-05
+
+The user authorized investigating and implementing this fix during the voice
+call. The original source was already identified in project code and plans:
+`homaily/Saudi-Arabia-Regions-Cities-and-Districts`, revision
+`7e322945fa9f6d696a54ba3e9038e0e750e9692d`.
+
+- Restored the three Lite JSON files plus original license and upstream README.
+  All five SHA-256 checksums exactly match the existing pinned importer; no
+  data/hash edits. Attribution and provenance: `data/saudi-geography/SOURCE.md`.
+- Narrow allowlists retain these public inputs in Git, Docker build context
+  and portable source archives; unrelated runtime/private data stays excluded.
+- Docker runtime includes `/app/data/saudi-geography`. Database import stays
+  opt-in through `RESTAURANT_GEOGRAPHY_DATA_DIR`; no production/DB changes made.
+- Existing pinned-data race test now passes. Installer/packaging suite: 37 pass,
+  including three new regression tests for allowlisting and private exclusions.
+- Go vet and build pass. Full root race suite still fails only the five known
+  WebRTC/media sandbox cases, with geography failure eliminated. PostgreSQL
+  integration cases remain unvalidated without isolated DB services. Docker
+  image build was not run (Docker unavailable).
+- Earlier missing-geography blocker is resolved and no files are needed from
+  the user for this dataset. Existing gofmt CI errors are a separate open issue.
