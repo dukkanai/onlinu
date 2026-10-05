@@ -113,6 +113,8 @@ try {
   assert.equal(card.isError,undefined);
   const cardPath='/checkout/'+card.structuredContent.checkoutId;
   const cardPage=await send(cardPath,{cookie:alice.cookie});
+  assert.match(cardPage.headers['content-security-policy'],/form-action 'self' https:\/\/checkout\.stripe\.com /);
+  assert.equal(cardPage.headers['content-security-policy'].includes('*'),false);
   assert.match(cardPage.data,/<option value="stripe">/);
   const cardConfirm=await send(cardPath+'/confirm',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl},
     body:{...contact,paymentMethod:'card',paymentProvider:'stripe',csrf}});
@@ -120,6 +122,37 @@ try {
   const pay=(cookie,token=csrf)=>send(cardPath+'/payment',{method:'POST',cookie,headers:{origin:baseUrl},body:{csrf:token}});
   assert.equal((await pay(alice.cookie,'bad')).status,403);
   assert.equal((await pay(bob.cookie)).status,403);
+  if(process.env.CORE_BROWSER_TEST==='1'){
+    const {chromium}=await import('playwright-core');
+    const browser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,
+      args:['--no-sandbox','--disable-dev-shm-usage','--disable-background-networking']});
+    try{
+      const context=await browser.newContext({locale:'ar-SA'});
+      await context.addCookies([{name:'__Host-platform_session',value:alice.cookie.split('=')[1],url:baseUrl,secure:true,httpOnly:true,sameSite:'Lax'}]);
+      let providerVisits=0;
+      await context.route('**/*',async route=>{
+        const request=route.request(),url=new URL(request.url());
+        if(url.origin===baseUrl){
+          const response=await route.fetch({url:local+url.pathname+url.search,headers:{...await request.allHeaders(),host:'platform.example'},maxRedirects:0});
+          await route.fulfill({response});return;
+        }
+        if(url.origin==='https://checkout.stripe.com'){
+          assert.equal((await request.allHeaders()).cookie,undefined,'Provider must not receive the platform cookie');
+          providerVisits++;
+          await route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><title>Synthetic provider</title><h1>Mock payment page</h1>'});return;
+        }
+        await route.abort();throw new Error('Unexpected browser destination');
+      });
+      const page=await context.newPage();page.setDefaultTimeout(8000);
+      await page.goto(baseUrl+cardPath);
+      await page.getByRole('button',{name:'الانتقال لصفحة الدفع'}).click();
+      await page.waitForURL('https://checkout.stripe.com/**');
+      assert.equal(providerVisits,1);
+      await page.goBack();await page.waitForURL(baseUrl+cardPath);
+      assert.match(await page.locator('body').innerText(),/حالة الدفع: pending/);
+      console.log('Verified Chromium payment form, provider-bound CSP redirect, private cookie isolation and Back navigation using intercepted test origins');
+    }finally{await browser.close();}
+  }
   const payment=await pay(alice.cookie);assert.equal(payment.status,303);
   assert.match(payment.headers.location,/^https:\/\/checkout\.stripe\.com\//);
   assert.equal((await pay(alice.cookie)).headers.location,payment.headers.location);

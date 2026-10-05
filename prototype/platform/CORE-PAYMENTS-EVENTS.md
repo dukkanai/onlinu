@@ -68,6 +68,14 @@ owner-only source events, callback signatures, failed-cursor-save recovery and
 OAuth revocation. No real payment, WhatsApp account or ChatGPT callback endpoint
 was contacted. Source-level Docker packaging is not a completed image build.
 
+The control image subsequently built successfully in CI run `37286386290`,
+including runtime imports as a non-root user. A separate Chromium checkout
+regression is enabled in CI with `CORE_BROWSER_TEST=1`: provider navigation is
+intercepted, never sent to a real payment account. It checks the form-action CSP,
+redirect, cookie isolation and Back navigation. The cloud shell's Unix-socket
+restriction prevents Chromium startup locally; its browser result must be read
+from the final CI job rather than inferred from the HTTP integration test.
+
 Production acceptance still requires actual provider/account flows, image/host
 tests, operational limits and retention policy, full staff/Flutter parity,
 licensing gates and approved deployment. No automatic outbox deletion is enabled.

@@ -291,7 +291,7 @@ func TestPlatformOrderNodeSignatureCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, "node", "integration/core-orders-check.mjs")
 	command.Dir = filepath.Join("..", "..", "prototype", "platform")

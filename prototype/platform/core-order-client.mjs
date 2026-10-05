@@ -13,12 +13,13 @@ export const coreOrderView = z.object({ number: z.string().regex(/^R[0-9]{8,20}$
   mode: z.enum(['pickup','delivery','table']), updatedAt: z.string().datetime({ offset: true }),
   paymentMethod: z.string().max(40).optional(), paymentProvider: z.string().max(40).optional(),
 });
-export function allowedPaymentURL(provider, raw) {
-  if(typeof raw!=='string'||!raw.startsWith('https://'))return false;
-  const hosts={stripe:['checkout.stripe.com'],moyasar:['checkout.moyasar.com'],tap:['checkout.tap.company','payment.tap.company','tap.company'],
+const paymentHosts={stripe:['checkout.stripe.com'],moyasar:['checkout.moyasar.com'],tap:['checkout.tap.company','payment.tap.company','tap.company'],
     paytabs:['secure.paytabs.sa'],geidea:['www.ksamerchant.geidea.net','ksamerchant.geidea.net','merchant.geidea.net'],
     myfatoorah:['sa.myfatoorah.com','demo.myfatoorah.com','portal.myfatoorah.com']};
-  try {const url=new URL(raw),authority=raw.slice(8).split(/[/?#]/)[0];return !url.username&&!url.password&&!authority.includes(':')&&!!hosts[provider]?.includes(url.hostname);}
+export const paymentFormSources=Object.values(paymentHosts).flat().map(host=>'https://'+host).join(' ');
+export function allowedPaymentURL(provider, raw) {
+  if(typeof raw!=='string'||!raw.startsWith('https://'))return false;
+  try {const url=new URL(raw),authority=raw.slice(8).split(/[/?#]/)[0];return !url.username&&!url.password&&!authority.includes(':')&&!!paymentHosts[provider]?.includes(url.hostname);}
   catch{return false;}
 }
 const paymentView=z.object({attemptId:z.string().max(128),status:z.string().max(40),provider:z.string().max(40),mode:z.enum(['','test','live']),

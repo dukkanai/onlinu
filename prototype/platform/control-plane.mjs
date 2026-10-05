@@ -7,7 +7,7 @@ import { createAuth, problem } from './auth.mjs';
 import { createOidcLogin } from './oidc.mjs';
 import { createCoreAdapter } from './core-adapter.mjs';
 import { createMcpHandler } from './mcp.mjs';
-import { createCoreOrderClient } from './core-order-client.mjs';
+import { createCoreOrderClient, paymentFormSources } from './core-order-client.mjs';
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
@@ -158,6 +158,9 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       }
       const checkoutRoute=/^\/checkout\/([a-f0-9-]{36})(?:\/(confirm|payment|refresh-payment))?$/.exec(url.pathname);
       if(checkoutRoute && checkouts) {
+        // Browsers also apply form-action to the payment POST's redirect target.
+        // Keep the allowlist identical to the validated provider URL policy.
+        res.setHeader('content-security-policy', `default-src 'none'; form-action 'self' ${paymentFormSources}; frame-ancestors 'none'; base-uri 'none'`);
         const who=await auth.authenticate(req,{cookieOnly:true});
         if(!who) {
           if(req.method==='GET')return redirect(res,'/auth/login?returnTo='+encodeURIComponent('/checkout/'+checkoutRoute[1]));
