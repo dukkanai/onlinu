@@ -33,7 +33,8 @@ func restaurantInitCancellationSchema(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS restaurant_order_support_requests (
 	 order_number text NOT NULL REFERENCES restaurant_orders(number), request_id text NOT NULL,
 	 kind text NOT NULL, reason text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
-	 PRIMARY KEY(order_number,request_id));`)
+	 PRIMARY KEY(order_number,request_id));
+ CREATE INDEX IF NOT EXISTS restaurant_order_support_pending_idx ON restaurant_orders(created_at,number) WHERE document->'cancellation'->>'status'='requested' OR document @> '{"complaints":[{"status":"open"}]}'::jsonb;`)
 	return err
 }
 

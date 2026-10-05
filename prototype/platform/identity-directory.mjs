@@ -8,7 +8,7 @@ import { problem } from './auth.mjs';
 
 export const RESTAURANT_PERMISSIONS = Object.freeze([
   'orders:read', 'orders:update', 'menu:read', 'menu:update', 'stock:read', 'stock:update',
-  'delivery:read', 'delivery:assign', 'payments:read', 'payments:collect', 'refunds:manage',
+  'delivery:read', 'delivery:assign', 'payments:read', 'payments:collect', 'refunds:manage', 'support:manage',
   'settings:read', 'settings:update', 'channels:manage', 'members:manage',
   'couriers:link', 'courier:read', 'courier:update', 'courier:collect',
 ]);
@@ -194,7 +194,7 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
     // couriers:link is retained for listing/revocation only; courier-service
     // rechecks active status for every nonempty binding and candidates hide grants.
     const settlement = ['orders:read', 'orders:update', 'delivery:read', 'delivery:assign',
-      'payments:read', 'payments:collect', 'refunds:manage','couriers:link','courier:read','courier:update','courier:collect'];
+      'payments:read', 'payments:collect', 'refunds:manage', 'support:manage','couriers:link','courier:read','courier:update','courier:collect'];
     if (rows[0].tenant_status === 'suspended' && !settlement.includes(permission)) throw problem(403, 'tenant_suspended');
     return safeRow(rows[0]);
   }

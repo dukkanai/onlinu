@@ -377,3 +377,12 @@ provider transactions in development.
 bridge. Drafts remain private; publication/restore use independent appearance
 and catalog review versions, original validation and transactional staff audit.
 No production appearance is changed by implementation tests.
+
+## Cancellation/complaint bridge work
+
+`prototype/platform/SUPPORT-MANAGEMENT.md` scopes the original customer-support
+queue and reviewed staff decisions. `support:manage` is distinct from kitchen
+order updates; existing memberships do not gain it automatically. Approval of a
+paid cancellation creates only the original unauthorised refund intent and marks
+card payment for review, without dispatching money. Browser/native forms and
+remote acceptance must be recorded independently of backend unit/HTTP tests.

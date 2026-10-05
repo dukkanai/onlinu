@@ -52,6 +52,7 @@ class CoreMembership {
                 'payments:read',
                 'payments:collect',
                 'refunds:manage',
+                'support:manage',
                 'couriers:link',
                 'courier:read',
                 'courier:update',

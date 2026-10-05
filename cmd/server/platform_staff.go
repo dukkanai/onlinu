@@ -41,6 +41,7 @@ func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(
 	s.registerPlatformStaffServiceRoutes(mux, wrap)
 	s.registerPlatformStaffFinanceRoutes(mux, wrap)
 	s.registerPlatformStaffBrandRoutes(mux, wrap)
+	s.registerPlatformStaffSupportRoutes(mux, wrap)
 	s.registerPlatformStaffRefundRoutes(mux, wrap)
 	s.registerPlatformStaffDispatchRoutes(mux, wrap)
 	s.registerPlatformCourierWorkRoutes(mux, wrap)

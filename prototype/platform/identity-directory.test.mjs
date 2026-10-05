@@ -196,3 +196,19 @@ test('persistent tenant identity, roles, concurrency and OAuth revocation', {
     assert.equal(resolutions, 2);
   });
 });
+
+test('support management is explicit and old memberships never expand during initialization',{skip:!process.env.IDENTITY_TEST_DATABASE_URL},async t=>{
+ const url=new URL(process.env.IDENTITY_TEST_DATABASE_URL);assert.equal(url.pathname,'/astracalls_identity_test');assert.equal(url.searchParams.has('dbname'),false);
+ const schema='support_grants_'+randomBytes(8).toString('hex'),admin=new pg.Pool({connectionString:url.href});await admin.query(`CREATE SCHEMA ${schema}`);
+ const pool=new pg.Pool({connectionString:url.href,options:`-c search_path=${schema}`});t.after(async()=>{await pool.end();await admin.query(`DROP SCHEMA ${schema} CASCADE`);await admin.end();});
+ const directory=createIdentityDirectory({pool,trustedIssuers:[issuer]});await directory.init();
+ const owner=await directory.verifiedIdentity({issuer,subject:'owner'}),kitchen=await directory.verifiedIdentity({issuer,subject:'kitchen'});
+ await pool.query('UPDATE platform_identities SET platform_admin=TRUE WHERE id=$1',[owner.id]);await directory.createTenant(owner.id,{id:'support-test',name:'Synthetic',ownerId:owner.id});await directory.setTenantStatus(owner.id,'support-test',{status:'active',expectedVersion:1});
+ await directory.setMembership(owner.id,'support-test',kitchen.id,{role:'kitchen',enabled:true,expectedVersion:null});
+ await directory.authorize(kitchen.id,'support-test','orders:update');await assert.rejects(directory.authorize(kitchen.id,'support-test','support:manage'),{code:'forbidden'});
+ await pool.query('UPDATE platform_memberships SET permissions=$1 WHERE principal_id=$2',[JSON.stringify(RESTAURANT_PERMISSIONS.filter(v=>v!=='support:manage')),owner.id]);await directory.init();
+ await assert.rejects(directory.authorize(owner.id,'support-test','support:manage'),{code:'forbidden'});
+ await directory.setMembership(owner.id,'support-test',owner.id,{role:'owner',permissions:[...RESTAURANT_PERMISSIONS],enabled:true,expectedVersion:1});await directory.authorize(owner.id,'support-test','support:manage');
+ await directory.setTenantStatus(owner.id,'support-test',{status:'suspended',expectedVersion:2});await directory.authorize(owner.id,'support-test','support:manage');
+ await directory.setTenantStatus(owner.id,'support-test',{status:'closed',expectedVersion:3});await assert.rejects(directory.authorize(owner.id,'support-test','support:manage'),{code:'forbidden'});
+});

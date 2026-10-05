@@ -164,3 +164,11 @@ test('appearance draft transport binds independent versions, exact scope and exp
  const result=await client.brandCommand('restaurant-a',randomUUID(),'draft',input);assert.equal(result.providerSecret,undefined);assert.equal(result.draft.storefrontTemplate,'editorial');assert.equal(calls,1);
  assert.throws(()=>client.brandCommand('restaurant-a',randomUUID(),'publish',input),{code:'invalid_request'});
 });
+
+test('support decision binds request identity and explicit rejection without exposing receipt capabilities',async()=>{
+ const id=randomUUID(),subject=randomUUID(),input={version:1,reviewed:true,approve:false,reason:'Synthetic rejection'};let calls=0;
+ const result={...view,version:2,cancellationPending:false,openComplaints:0,demo:true,cancellation:{id,status:'rejected',reason:'Synthetic customer reason',decisionReason:input.reason,requestedAt:view.updatedAt,decidedAt:view.updatedAt,requestedBeforePreparation:false},complaints:[],cancellationHistory:[],historyLimit:20,historyTruncated:false};
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{calls++;assert.ok(url.endsWith('/staff/support/orders/'+view.number+'/'+id+'/decide'));const claims=JSON.parse(Buffer.from(options.headers.authorization.slice(9).split('.')[0],'base64url'));assert.equal(claims.scope,'staff:support:decide');assert.deepEqual(JSON.parse(options.body),input);return json({...result,trackingToken:'private',phone:'private'});}});
+ for(const bad of [{...input,reviewed:false},{...input,approve:undefined},{...input,reason:'  '},{...input,payout:true}])assert.throws(()=>client.supportCommand('restaurant-a',subject,view.number,id,'decide',bad),{code:'invalid_request'});
+ const value=await client.supportCommand('restaurant-a',subject,view.number,id,'decide',input);assert.equal(calls,1);assert.equal(value.cancellation.status,'rejected');assert.equal(value.phone,undefined);assert.equal(value.trackingToken,undefined);
+});

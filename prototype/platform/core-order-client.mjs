@@ -62,6 +62,11 @@ const brandView=z.object({...brandEditFields,template:z.enum(['classic','warm','
 const brandState=z.object({version:brandVersion,catalogVersion:brandVersion,live:brandView,draft:brandView.nullable(),hasPrevious:z.boolean()});
 const brandReview=z.object({version:brandVersion,catalogVersion:brandVersion,reviewed:z.literal(true)}).strict();
 const brandPatch=brandReview.extend(Object.fromEntries(Object.entries(brandEditFields).map(([key,value])=>[key,value.optional()]))).strict().refine(v=>Object.keys(v).length>3);
+const supportCancellation=z.object({id:uuid,status:z.enum(['requested','approved','rejected']),reason:z.string().max(4000),decisionReason:z.string().max(4000),requestedAt:z.string().datetime({offset:true}),decidedAt:z.string().datetime({offset:true}).optional(),requestedBeforePreparation:z.boolean()});
+const supportComplaint=z.object({id:uuid,status:z.enum(['open','resolved']),reason:z.string().max(4000),resolution:z.string().max(4000),requestedAt:z.string().datetime({offset:true}),resolvedAt:z.string().datetime({offset:true}).optional()});
+const supportSummary=coreOrderView.extend({cancellationPending:z.boolean(),openComplaints:z.number().int().min(0).max(10)});
+const supportDetail=supportSummary.extend({demo:z.boolean(),cancellation:supportCancellation.nullable(),complaints:z.array(supportComplaint).max(10),cancellationHistory:z.array(supportCancellation).max(20),historyLimit:z.literal(20),historyTruncated:z.boolean()});
+const supportCommand=z.object({version:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),reviewed:z.literal(true),approve:z.boolean().optional(),reason:z.string().trim().min(1).max(4000)}).strict();
 const serviceFields={acceptingOrders:z.boolean(),deliveryEnabled:z.boolean(),pickupEnabled:z.boolean(),tableEnabled:z.boolean()};
 const serviceView=z.object({version:z.number().int().positive(),...serviceFields});
 const servicePatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),...Object.fromEntries(Object.entries(serviceFields).map(([key,value])=>[key,value.optional()]))}).strict().refine(v=>Object.keys(v).length>1);
@@ -137,6 +142,15 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     },
     brand(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/brand',undefined,'','staff:settings:read',brandState);},
     brandCommand(tenantId,subject,action,input){if(!['draft','publish','revert'].includes(action))throw problem(400,'invalid_request');const parsed=(action==='draft'?brandPatch:brandReview).safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/brand/'+action,parsed.data,'','staff:brand:'+action,brandState);},
+    support(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/support',undefined,'','staff:support:read',z.object({orders:z.array(supportSummary).max(100),limit:z.literal(100),hasMore:z.boolean()}),2_000_000);},
+    async supportDetail(tenantId,subject,number){if(!/^R[0-9]{8,20}$/.test(number??''))throw problem(400,'invalid_request');const result=await request(tenantId,subject,'GET','/platform-api/staff/support/orders/'+number,undefined,'','staff:support:read',supportDetail);if(result.number!==number)throw problem(503,'restaurant_unavailable');return result;},
+    supportCommand(tenantId,subject,number,id,action,input){
+      const parsed=supportCommand.safeParse(input);
+      if(!/^R[0-9]{8,20}$/.test(number??'')||!uuid.safeParse(id).success||!['decide','resolve'].includes(action)||!parsed.success||action==='decide'&&parsed.data.approve===undefined||action==='resolve'&&parsed.data.approve!==undefined)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST','/platform-api/staff/support/orders/'+number+'/'+id+'/'+action,parsed.data,'','staff:support:'+action,supportDetail).then(value=>{
+        if(value.number!==number||value.version!==parsed.data.version+1||action==='decide'&&(value.cancellation?.id!==id||value.cancellation?.status!==(parsed.data.approve?'approved':'rejected'))||action==='resolve'&&!value.complaints.some(c=>c.id===id&&c.status==='resolved'))throw problem(503,'order_outcome_unknown');return value;
+      });
+    },
     finance(tenantId,subject,number){if(!/^R[0-9]{8,20}$/.test(number??''))throw problem(400,'invalid_request');return request(tenantId,subject,'GET','/platform-api/staff/orders/'+number+'/finance',undefined,'','staff:payments:read',financeView,2_000_000);},
     service(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/service',undefined,'','staff:settings:read',serviceView);},
     patchService(tenantId,subject,input){const parsed=servicePatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/service',parsed.data,'','staff:settings:update',serviceView);},

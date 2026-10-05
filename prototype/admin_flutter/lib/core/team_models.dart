@@ -13,6 +13,7 @@ const permissionLabels = {
   'payments:read': 'عرض المدفوعات',
   'payments:collect': 'تأكيد التحصيل',
   'refunds:manage': 'إدارة الاسترداد',
+  'support:manage': 'إدارة الإلغاء والشكاوى',
   'settings:read': 'عرض الإعدادات',
   'settings:update': 'تعديل الإعدادات',
   'channels:manage': 'إدارة قنوات الطلب',

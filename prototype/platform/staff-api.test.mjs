@@ -68,3 +68,12 @@ test('appearance commands require current read/write grants and preserve action 
  grants.add('settings:update');revoke=true;await assert.rejects(api({method:'POST'},{},{id:'staff'},new URL(base+'/publish')),{code:'forbidden'});assert.equal(calls.length,0);
  grants.add('settings:update');revoke=false;await api({method:'POST'},{},{id:'staff'},new URL(base+'/revert'));assert.equal(calls.length,1);assert.equal(calls[0][2],'revert');
 });
+
+test('order-update alone never authorizes cancellation decisions and support grants are rechecked',async()=>{
+ const grants=new Set(['orders:read','orders:update']);let calls=0,revoke=false;
+ const api=createStaffApi({directory:{async authorize(a,t,p){if(!grants.has(p))throw Object.assign(Error(),{code:'forbidden'});}},body:async()=>{if(revoke)grants.delete('support:manage');return{version:1,reviewed:true,approve:false,reason:'Synthetic rejection'};},orderClient:{async supportCommand(){calls++;return{};}},json:(_,status,data)=>({status,data})});
+ const url=new URL('https://platform.example/api/restaurants/a/staff/support/orders/R1234567890/11111111-1111-4111-8111-111111111111/decide');
+ await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(calls,0);
+ grants.add('support:manage');revoke=true;await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(calls,0);
+ grants.add('support:manage');revoke=false;assert.equal((await api({method:'POST'},{},{id:'staff'},url)).status,200);assert.equal(calls,1);
+});
