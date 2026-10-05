@@ -70,6 +70,24 @@ func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(
 			}
 		}))
 	}
+	mux.HandleFunc("POST /platform-api/staff/menu/categories/{categoryId}", wrap("staff:menu:update", func(w http.ResponseWriter, r *http.Request, body []byte, actor string) {
+		if r.URL.RawQuery != "" {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		var input restaurantMenuCategoryPatch
+		if !decodeRestaurantBody(w, r, &input) {
+			return
+		}
+		ctx := context.WithValue(r.Context(), platformStaffActorKey{}, platformStaffActor{actor, "staff:menu:update"})
+		category, err := s.orders.store.PatchMenuCategory(ctx, r.PathValue("categoryId"), input)
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, category)
+	}))
 	mux.HandleFunc("GET /platform-api/staff/menu/items/{itemId}", wrap("staff:menu:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
 		if r.URL.RawQuery != "" {
 			writeRestaurantError(w, restaurantFail(400, "invalid_request"))

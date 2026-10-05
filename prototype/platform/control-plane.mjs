@@ -245,6 +245,31 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         await orderClient.createMenuCategory(tenantId,who.id,{expectedVersion:Number(input.expectedVersion),category:{id:input.id,name:input.name,sort:Number(input.sort)}});
         return redirect(res,`/manage/${tenantId}/menu`,303);
       }
+      const menuCategory=/^\/manage\/([a-z0-9-]{1,64})\/menu\/categories\/([A-Za-z0-9][A-Za-z0-9_-]{0,79})$/.exec(url.pathname);
+      if(menuCategory&&orderClient&&req.method==='POST'){
+        const who=await browser(req),[,tenantId,categoryId]=menuCategory;
+        if(url.search)throw problem(400,'invalid_request');
+        const input=await body(req);auth.verifyCsrf(req,input.csrf);await directory.authorize(who.id,tenantId,'menu:update');
+        if(Object.keys(input).some(key=>!['csrf','expectedVersion','name','sort'].includes(key))||!/^\d{1,16}$/.test(input.expectedVersion??'')||!/^\d{1,5}$/.test(input.sort??''))throw problem(400,'invalid_request');
+        await orderClient.patchMenuCategory(tenantId,who.id,categoryId,{expectedVersion:Number(input.expectedVersion),name:input.name,sort:Number(input.sort)});
+        return redirect(res,`/manage/${tenantId}/menu`,303);
+      }
+      const menuOption=/^\/manage\/([a-z0-9-]{1,64})\/menu\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79})\/options(?:\/([A-Za-z0-9][A-Za-z0-9_-]{0,79}))?$/.exec(url.pathname);
+      if(menuOption&&orderClient&&req.method==='POST'){
+        const who=await browser(req),[,tenantId,itemId,optionId]=menuOption;
+        if(url.search)throw problem(400,'invalid_request');
+        const input=await body(req);auth.verifyCsrf(req,input.csrf);await directory.authorize(who.id,tenantId,'menu:update');
+        const allowed=optionId?['csrf','expectedVersion','name','price','available']:['csrf','expectedVersion','name','price','available','id'];
+        const priceMinor=menuPriceMinor(input.price);
+        if(Object.keys(input).some(key=>!allowed.includes(key))||priceMinor===null||!['true','false'].includes(input.available)||!/^\d{1,16}$/.test(input.expectedVersion??''))throw problem(400,'invalid_request');
+        const menu=await orderClient.menuItem(tenantId,who.id,itemId);
+        if(menu.version!==Number(input.expectedVersion))throw problem(409,'catalog_changed');
+        const options=[...(menu.item.options??[])],option={id:optionId??input.id,name:input.name,priceMinor,available:input.available==='true'};
+        if(optionId){const index=options.findIndex(value=>value.id===optionId);if(index<0)throw problem(404,'not_found');options[index]=option;}
+        else {if(options.some(value=>value.id===input.id))throw problem(409,'conflict');options.push(option);}
+        await orderClient.patchMenuItem(tenantId,who.id,itemId,{expectedVersion:menu.version,options});
+        return redirect(res,`/manage/${tenantId}/menu/items/${itemId}`,303);
+      }
       const managementMenu=/^\/manage\/([a-z0-9-]{1,64})\/menu(?:\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79}))?$/.exec(url.pathname);
       if(managementMenu&&orderClient){
         const [,tenantId,itemId]=managementMenu;
@@ -253,7 +278,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         if(req.method==='GET'){
           const membership=await directory.authorize(who.id,tenantId,'menu:read');
           const menu=itemId?await orderClient.menuItem(tenantId,who.id,itemId):await orderClient.menu(tenantId,who.id);
-          htmlHeaders(res);res.end(itemId?staffMenuItemPage({tenantId,membership,menu,csrf:auth.csrfToken(req)}):staffMenuPage({tenantId,menu,membership,csrf:auth.csrfToken(req),newItemId:randomUUID(),newCategoryId:randomUUID()}));return;
+          htmlHeaders(res);res.end(itemId?staffMenuItemPage({tenantId,membership,menu,csrf:auth.csrfToken(req),newOptionId:randomUUID()}):staffMenuPage({tenantId,menu,membership,csrf:auth.csrfToken(req),newItemId:randomUUID(),newCategoryId:randomUUID()}));return;
         }
         if(req.method==='POST'&&itemId){
           const input=await body(req);auth.verifyCsrf(req,input.csrf);
@@ -334,6 +359,12 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const who = await browser(req);
         if (req.method !== 'GET') auth.verifyCsrf(req);
         if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { principal: who, csrfToken: auth.csrfToken(req) });
+        const categoryEditRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu\/categories\/([A-Za-z0-9][A-Za-z0-9_-]{0,79})$/.exec(url.pathname);
+        if(categoryEditRoute&&orderClient&&req.method==='POST'){
+          if(url.search)throw problem(400,'invalid_request');
+          const [,tenantId,categoryId]=categoryEditRoute;await directory.authorize(who.id,tenantId,'menu:update');
+          return json(res,200,await orderClient.patchMenuCategory(tenantId,who.id,categoryId,await body(req)));
+        }
         const menuCreateRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu\/(items|categories)$/.exec(url.pathname);
         if(menuCreateRoute&&orderClient&&req.method==='POST'){
           if(url.search)throw problem(400,'invalid_request');

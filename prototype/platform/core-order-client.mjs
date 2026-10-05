@@ -124,6 +124,11 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
       const parsed=schema.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');
       return request(tenantId,subject,'POST','/platform-api/staff/menu/categories',parsed.data,'','staff:menu:update',z.object({version:z.number().int().positive(),category}));
     },
+    patchMenuCategory(tenantId,subject,categoryId,input){
+      const schema=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),name:z.string().min(1).max(240),sort:z.number().int().min(0).max(10000)}).strict();
+      const parsed=schema.safeParse(input);if(!menuId.safeParse(categoryId).success||!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST',`/platform-api/staff/menu/categories/${categoryId}`,parsed.data,'','staff:menu:update',z.object({version:z.number().int().positive(),category:coreCatalogSchema.shape.categories.element}));
+    },
     stock(tenantId,subject){
       return request(tenantId,subject,'GET','/platform-api/staff/stock',undefined,'','staff:stock:read',z.object({items:z.array(stockItem).max(5000)}),2_000_000);
     },

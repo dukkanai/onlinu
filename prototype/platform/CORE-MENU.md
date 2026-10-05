@@ -70,6 +70,23 @@ apply. No existing orders, settings, table QR codes or brand configuration are
 rewritten by these narrow operations.
 
 An ambiguous create is not retried automatically: reload the menu and inspect the
-stable submitted ID before deciding whether another edit is needed. Category
-rename/reorder, options/media UI and deletion/archive workflows remain separate
+stable submitted ID before deciding whether another edit is needed. Media upload UI and deletion/archive workflows remain separate
 work; native React management remains available.
+
+## Editing category names/order and per-item options
+
+Category edits use a narrow versioned `name`/`sort` payload, preserving category
+IDs, item assignments and all settings. The same original catalog transaction
+records `category_update` attribution. Staff browser/API routes recheck current
+membership and tenant state before signing.
+
+The item page now offers scoped option add/edit/disable forms. The control plane
+loads the current item, requires the submitted catalog version and merges only
+one option before the original version-checked SaveCatalog. A concurrent edit
+cannot be overwritten. New-option IDs are stable within each form; repeated or
+stale forms cannot silently append duplicates. Maximum 50 options, exact minor
+unit parsing and original name/price/ID validation remain in force. Disabling an
+option preserves historical order snapshots; nothing deletes old receipts.
+
+Images/uploads and broader management parity remain open; these plain Arabic
+forms are not a claim of complete Flutter or visual-management parity.

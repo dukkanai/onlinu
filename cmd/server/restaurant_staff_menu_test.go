@@ -130,3 +130,41 @@ func TestRestaurantStaffMenuCreatePreservesSettingsAndAudits(t *testing.T) {
 		t.Fatal("failed create did not roll back", err)
 	}
 }
+
+func TestRestaurantStaffMenuCategoryEditPreservesItemsAndAudits(t *testing.T) {
+	_, store, db := restaurantOrdersFixtureDB(t)
+	ctx := context.WithValue(context.Background(), platformStaffActorKey{}, platformStaffActor{"platform:synthetic-menu", "staff:menu:update"})
+	before, err := store.GetCatalog(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := restaurantMenuCategoryPatch{ExpectedVersion: before.Version, Name: "Main renamed", Sort: 9}
+	changed, err := store.PatchMenuCategory(ctx, "main", patch)
+	if err != nil || changed.Category.Name != patch.Name || changed.Category.Sort != 9 {
+		t.Fatal(changed, err)
+	}
+	after, err := store.GetCatalog(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before.Items, after.Items) || !reflect.DeepEqual(before.Settings, after.Settings) || !reflect.DeepEqual(before.Tables, after.Tables) {
+		t.Fatal("category rename changed other catalog data")
+	}
+	_, err = store.PatchMenuCategory(ctx, "main", patch)
+	restaurantOrdersRequireError(t, err, "catalog_changed")
+	patch.ExpectedVersion = changed.Version
+	_, err = store.PatchMenuCategory(ctx, "missing", patch)
+	restaurantOrdersRequireError(t, err, "not_found")
+	var kind, target, actor string
+	if err = db.QueryRow("SELECT kind,target_id,actor_id FROM restaurant_catalog_audit WHERE version=$1", changed.Version).Scan(&kind, &target, &actor); err != nil || kind != "category_update" || target != "main" || actor != "platform:synthetic-menu" {
+		t.Fatal(kind, target, actor, err)
+	}
+	patch.Name = ""
+	if _, err = store.PatchMenuCategory(ctx, "main", patch); err == nil {
+		t.Fatal("accepted empty category name")
+	}
+	after, err = store.GetCatalog(ctx, false)
+	if err != nil || after.Version != changed.Version {
+		t.Fatal("invalid category update mutated catalog", err)
+	}
+}

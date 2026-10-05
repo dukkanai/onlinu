@@ -187,3 +187,45 @@ func (s *restaurantStore) CreateMenuCategory(ctx context.Context, input restaura
 	}
 	return restaurantStaffMenuCategory{}, restaurantFail(409, "catalog_changed")
 }
+
+type restaurantMenuCategoryPatch struct {
+	ExpectedVersion int64  `json:"expectedVersion"`
+	Name            string `json:"name"`
+	Sort            int    `json:"sort"`
+}
+
+func (s *restaurantStore) PatchMenuCategory(ctx context.Context, id string, input restaurantMenuCategoryPatch) (restaurantStaffMenuCategory, error) {
+	if input.ExpectedVersion < 1 {
+		return restaurantStaffMenuCategory{}, restaurantFail(400, "invalid_request")
+	}
+	catalog, err := s.GetCatalog(ctx, false)
+	if err != nil {
+		return restaurantStaffMenuCategory{}, err
+	}
+	if catalog.Version != input.ExpectedVersion {
+		return restaurantStaffMenuCategory{}, restaurantFail(409, "catalog_changed")
+	}
+	found := false
+	for i := range catalog.Categories {
+		if catalog.Categories[i].ID == id {
+			catalog.Categories[i].Name = input.Name
+			catalog.Categories[i].Sort = input.Sort
+			found = true
+			break
+		}
+	}
+	if !found {
+		return restaurantStaffMenuCategory{}, restaurantFail(404, "not_found")
+	}
+	ctx = context.WithValue(ctx, restaurantMenuTargetKey{}, restaurantMenuTarget{"category_update", id})
+	saved, err := s.SaveCatalog(ctx, catalog)
+	if err != nil {
+		return restaurantStaffMenuCategory{}, err
+	}
+	for _, category := range saved.Categories {
+		if category.ID == id {
+			return restaurantStaffMenuCategory{saved.Version, category}, nil
+		}
+	}
+	return restaurantStaffMenuCategory{}, restaurantFail(409, "catalog_changed")
+}

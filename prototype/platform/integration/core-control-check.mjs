@@ -298,7 +298,7 @@ try {
       await page.getByLabel('السعر بالريال السعودي').fill('12.00');
       await page.getByLabel('الوصف').fill('Synthetic menu browser edit');
       await page.getByRole('button',{name:'حفظ الصنف',exact:true}).click();
-      await page.locator(`input[name="expectedVersion"][value="${menuBeforeBrowser.version+1}"]`).waitFor({state:'attached'});
+      await page.locator(`input[name="expectedVersion"][value="${menuBeforeBrowser.version+1}"]`).first().waitFor({state:'attached'});
       const menuAfterBrowser=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
       assert.equal(menuAfterBrowser.item.priceMinor,1200);assert.equal(menuAfterBrowser.item.description,'Synthetic menu browser edit');
       assert.deepEqual(menuAfterBrowser.item.options,menuBeforeBrowser.item.options);
@@ -318,6 +318,30 @@ try {
       const createdMenu=(await send(menuPath,{cookie:alice.cookie})).data;
       const browserItem=createdMenu.items.find(item=>item.name==='Browser water');
       assert.ok(browserItem);assert.equal(browserItem.priceMinor,250);assert.equal(browserItem.available,false);
+      const addOption=page.locator('form[action$="/options"]');
+      await addOption.getByLabel('اسم الإضافة',{exact:true}).fill('Browser lemon');
+      await addOption.getByLabel('سعر الإضافة',{exact:true}).fill('٠٫٧٥');
+      await addOption.getByLabel('تفعيل الإضافة',{exact:true}).selectOption('true');
+      await addOption.getByRole('button',{name:'إضافة الخيار',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${createdMenu.version+1}"]`).first().waitFor({state:'attached'});
+      const optionsAfter=(await send(menuPath+'/items/'+browserItem.id,{cookie:alice.cookie})).data;
+      assert.equal(optionsAfter.item.options.length,1);assert.equal(optionsAfter.item.options[0].priceMinor,75);
+      assert.equal(optionsAfter.item.options[0].available,true);
+      const editOption=page.locator(`form[action$="/options/${optionsAfter.item.options[0].id}"]`);
+      await editOption.getByLabel('تفعيل الإضافة',{exact:true}).selectOption('false');
+      await editOption.getByRole('button',{name:'حفظ الإضافة',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${optionsAfter.version+1}"]`).first().waitFor({state:'attached'});
+      assert.equal((await send(menuPath+'/items/'+browserItem.id,{cookie:alice.cookie})).data.item.options[0].available,false);
+      await page.goto(baseUrl+'/manage/restaurant-a/menu');
+      const renameCategory=page.locator(`form[action$="/categories/${browserItem.categoryId}"]`);
+      await renameCategory.getByLabel('اسم القسم',{exact:true}).fill('Browser beverages');
+      await renameCategory.getByLabel('ترتيب القسم',{exact:true}).fill('2');
+      await renameCategory.getByRole('button',{name:'حفظ القسم',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${optionsAfter.version+2}"]`).first().waitFor({state:'attached'});
+      const renamedCategory=(await send(menuPath,{cookie:alice.cookie})).data.categories.find(category=>category.id===browserItem.categoryId);
+      assert.equal(renamedCategory.name,'Browser beverages');assert.equal(renamedCategory.sort,2);
+
+
 
       const registration=await app.auth.register({redirect_uris:['https://client.example/callback'],token_endpoint_auth_method:'none',grant_types:['authorization_code'],response_types:['code']});
       const verifier=randomBytes(32).toString('base64url');
@@ -336,6 +360,20 @@ try {
       console.log('Verified authenticated staff navigation and real browser OAuth consent -> registered callback -> PKCE exchange using synthetic identities');
     }finally{await browser.close();}
   }
+  const beforeOption=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
+  const optionPath='/manage/restaurant-a/menu/items/rice/options/extra';
+  const optionChange={csrf,expectedVersion:String(beforeOption.version),name:'Extra revised',price:'4.00',available:'true'};
+  const optionPost=(who,input)=>send(optionPath,{method:'POST',cookie:who.cookie,headers:{origin:baseUrl},body:input});
+  assert.equal((await optionPost(bob,{...optionChange,csrf:bobMe.data.csrfToken})).status,403);
+  assert.equal((await optionPost(alice,{...optionChange,csrf:'bad'})).status,403);
+  assert.equal((await optionPost(alice,optionChange)).status,303);
+  assert.equal((await optionPost(alice,optionChange)).status,409,'Stale option form cannot replace newer catalog changes');
+  assert.equal((await rpc('quote_cart',cart)).structuredContent.totalMinor,3700);
+  const originalReceipt=(await send(path,{cookie:alice.cookie})).data;
+  assert.match(originalReceipt,/35\.00/);assert.doesNotMatch(originalReceipt,/Extra revised/);
+  const afterOption=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
+  assert.equal(afterOption.item.priceMinor,beforeOption.item.priceMinor);assert.equal(afterOption.item.options.length,beforeOption.item.options.length);
+  assert.equal((await optionPost(alice,{...optionChange,expectedVersion:String(afterOption.version),name:'Extra',price:'3.00'})).status,303);
   const createMenu=(who,kind,body)=>send(menuPath+'/'+kind,{method:'POST',cookie:who.cookie,headers:{origin:baseUrl,'x-csrf-token':who.id===alice.id?csrf:bobMe.data.csrfToken},body});
   const latestMenu=(await send(menuPath,{cookie:alice.cookie})).data;
   const categoryInput={expectedVersion:latestMenu.version,category:{id:'api-drinks',name:'API drinks',sort:0}};
@@ -343,7 +381,12 @@ try {
   assert.equal((await send(menuPath+'/categories',{method:'POST',token:alice.token,body:categoryInput})).status,403);
   const newCategory=await createMenu(alice,'categories',categoryInput);assert.equal(newCategory.status,201,JSON.stringify(newCategory.data));
   assert.equal((await createMenu(alice,'categories',categoryInput)).status,409,'A repeated stale creation cannot duplicate a category');
-  const itemInput={expectedVersion:newCategory.data.version,item:{id:'api-water',categoryId:'api-drinks',name:'API water',description:'',priceMinor:250,imageUrl:'',available:false,sort:0,options:[]}};
+  const categoryEdit={expectedVersion:newCategory.data.version,name:'Renamed API drinks',sort:3};
+  const editCategory=(who,input)=>send(menuPath+'/categories/api-drinks',{method:'POST',cookie:who.cookie,headers:{origin:baseUrl,'x-csrf-token':who.id===alice.id?csrf:bobMe.data.csrfToken},body:input});
+  assert.equal((await editCategory(bob,categoryEdit)).status,403);
+  const categoryChanged=await editCategory(alice,categoryEdit);assert.equal(categoryChanged.status,200);assert.equal(categoryChanged.data.category.name,categoryEdit.name);
+  assert.equal((await editCategory(alice,categoryEdit)).status,409);
+  const itemInput={expectedVersion:categoryChanged.data.version,item:{id:'api-water',categoryId:'api-drinks',name:'API water',description:'',priceMinor:250,imageUrl:'',available:false,sort:0,options:[]}};
   assert.equal((await createMenu(bob,'items',itemInput)).status,403);
   const newItem=await createMenu(alice,'items',itemInput);assert.equal(newItem.status,201,JSON.stringify(newItem.data));
   assert.equal(newItem.data.item.available,false);
