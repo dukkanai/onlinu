@@ -1,3 +1,4 @@
+import {checkNativeDart} from './native-dart-check.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { createServer, request as httpRequest } from 'node:http';
@@ -144,6 +145,7 @@ try {
   assert.equal((await staffPost(bob,`/${order.number}/cash`,{version:order.version})).status,403);
   const advanced=await staffPost(bob,`/${order.number}/status`,{status:'accepted',version:order.version});
   assert.equal(advanced.status,200,JSON.stringify(advanced));
+  let settlementVersion=advanced.data.version;
   assert.equal((await staffPost(bob,`/${order.number}/status`,{status:'preparing',version:order.version})).status,409);
   await app.directory.setMembership(alice.id,'restaurant-a',bob.id,{role:'kitchen',enabled:false,expectedVersion:1});
   assert.equal((await send(staffPath,{cookie:bob.cookie})).status,403,'Revoked staff membership applies on the next request');
@@ -513,6 +515,12 @@ try {
   const refresh=await send(cardPath+'/refresh-payment',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl},body:{csrf}});
   assert.equal(refresh.status,303);assert.equal(refresh.headers.location,cardPath);
   assert.match((await send(cardPath,{cookie:alice.cookie})).data,/حالة الدفع: paid/);
+  if(process.env.CORE_FLUTTER_TEST_BIN){
+    await checkNativeDart({app,browserCookie:alice.cookie,principalId:alice.id,orderNumber:order.number});
+    const nativeAdvanced=await send(staffPath+'/'+order.number,{cookie:alice.cookie});
+    assert.equal(nativeAdvanced.status,200);assert.equal(nativeAdvanced.data.status,'preparing');
+    assert.equal(nativeAdvanced.data.version,advanced.data.version+1);settlementVersion=nativeAdvanced.data.version;
+  }
   await app.auth.revoke(alice.token);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_subscriptions WHERE active')).rows[0].n,0);
   await app.directory.setTenantStatus(alice.id,'restaurant-a',{status:'suspended',expectedVersion:2});
@@ -521,9 +529,9 @@ try {
   assert.equal((await send(stockPath,{cookie:alice.cookie})).status,403,'Stock management requires an active tenant');
   assert.equal((await send(menuPath,{cookie:alice.cookie})).status,403,'Menu management requires an active tenant');
   assert.equal((await send(new URL(publicImageURL).pathname)).status,404,'Suspended tenant images are not newly served by the platform');
-  const cash=await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version});
+  const cash=await staffPost(alice,`/${order.number}/cash`,{version:settlementVersion});
   assert.equal(cash.status,200);assert.equal(cash.data.paymentStatus,'paid');
-  assert.equal((await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version})).status,409);
+  assert.equal((await staffPost(alice,`/${order.number}/cash`,{version:settlementVersion})).status,409);
   console.log('Verified live staff membership, customer OAuth exclusion, kitchen cash denial, version conflicts, revocation and suspended-tenant settlement without restaurant master keys');
   console.log('Verified transactional original-core events, owner-only ingestion, signed callback, crash-safe cursor deduplication and OAuth revocation; callback transport mocked');
   console.log('Verified MCP preview -> owned handoff -> CSRF-protected browser confirmation -> signed original Go order -> private MCP status; duplicate confirmation stays one order');

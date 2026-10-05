@@ -342,7 +342,11 @@ func TestPlatformOrderNodeSignatureCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	timeout := 45 * time.Second
+	if os.Getenv("CORE_FLUTTER_TEST_BIN") != "" {
+		timeout = 120 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	command := exec.CommandContext(ctx, "node", "integration/core-orders-check.mjs")
 	command.Dir = filepath.Join("..", "..", "prototype", "platform")

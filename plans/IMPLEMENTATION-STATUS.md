@@ -5,12 +5,12 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 15:18 UTC
+## Latest verified position — 2026-10-05 15:44 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `f7bc1f5d4277b96c2f825f042a956cc9ac0e691a`, CI [37327358158](https://github.com/dukkanai/onlinu/actions/runs/37327358158), all jobs successful.
+- Latest published and fully verified commit: `26df6346f090c70fc3db992d75874738d8a28cda`, CI [37332186092](https://github.com/dukkanai/onlinu/actions/runs/37332186092), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Published native category/draft-item creation passed all CI jobs (60 Flutter tests and actual Windows creation/form smoke). Current locally verified increment: category rename/sort, description/options editing, explicit blocked-write feedback, freshness labels and live accessibility announcements; 69 Flutter tests pass. Expanded Windows smoke and settled screenshot capture are pending for this increment.
+- Published native category/options editing and feedback passed all CI jobs (69 Flutter tests and actual Windows forms/store/build). Current locally verified increment: actual Dart HTTP/TLS/PKCE and typed reads/writes against the Node broker and original Go/PostgreSQL core, including refresh replay/cache clearing. Its remote CI result is pending.
 - Native Windows PKCE client, order/cash UI, actual OS-store/rendering smoke and unsigned build are verified at the published commit above. The synthetic screenshot was inspected; no Arabic clipping observed.
 - POS integration is explicitly deferred by the owner’s voice instruction; continue current development without choosing/connecting a vendor.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
@@ -337,3 +337,19 @@ logical Windows assertions passed, but the capture helper now explicitly waits
 for settled frames. New screenshots must be inspected before treating that visual
 check as complete. Full native-to-control-plane protocol acceptance is the next
 verification focus; real account/provider acceptance is still outstanding.
+
+
+### Actual native HTTP protocol acceptance — 2026-10-05
+
+`26df634` passed all jobs in CI37332186092. An additional local live integration
+now runs the actual Dart client/controller over strictly verified per-run fixture
+TLS into the real Node broker and original Go/PostgreSQL core. It covers PKCE,
+seeded consent, order advancement, versioned catalogue/options/category/stock and
+channel operations, draft creation, refresh rotation and replay revocation/cache
+clearing. The original three-order/provider deduplication checks still pass.
+Platform191 tests and the Go race integration passed; verbose evidence explicitly
+confirms the Dart path ran. A compile-time test-header constant typo was fixed
+before these successful runs. No real identity provider, merchant device, provider
+payment or production service is used. See the new native acceptance document.
+Linux CI now installs checksum-pinned Flutter and runs this path alongside the
+existing browser/core tests; the current increment awaits its own remote result.

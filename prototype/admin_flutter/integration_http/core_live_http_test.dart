@@ -1,0 +1,210 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:restaurant_admin_prototype/core/api.dart';
+import 'package:restaurant_admin_prototype/core/auth.dart';
+import 'package:restaurant_admin_prototype/core/controller.dart';
+import 'package:restaurant_admin_prototype/core/session_store.dart';
+import 'package:restaurant_admin_prototype/core/transport.dart';
+
+const base = 'https://platform.example';
+
+class EphemeralStore implements CoreSessionStore {
+  String? value;
+  @override
+  Future<String?> read() async => value;
+  @override
+  Future<void> write(String input) async {
+    value = input;
+  }
+
+  @override
+  Future<void> delete() async {
+    value = null;
+  }
+}
+
+HttpClient fixtureClient(SecurityContext context, int port,
+    {String? verifyHost}) {
+  final client = HttpClient(context: context)..findProxy = (_) => 'DIRECT';
+  client.connectionTimeout = const Duration(seconds: 5);
+  client.connectionFactory = (uri, proxyHost, proxyPort) async {
+    if (uri.origin != base || proxyHost != null || proxyPort != null)
+      throw StateError('Fixture routing cannot leave the reserved origin');
+    final tcp = await Socket.startConnect(InternetAddress.loopbackIPv4, port);
+    Socket? raw;
+    final secured = tcp.socket.then((socket) {
+      raw = socket;
+      return SecureSocket.secure(socket,
+          host: verifyHost ?? uri.host, context: context);
+    });
+    return ConnectionTask.fromSocket<Socket>(secured, () {
+      tcp.cancel();
+      raw?.destroy();
+    });
+  };
+  return client;
+}
+
+void main() {
+  test(
+      'real native TLS protocol, typed core operations and refresh-family revocation',
+      () async {
+    final env = Platform.environment;
+    expect(env['CORE_NATIVE_LIVE_TEST'] == '1', true,
+        reason: 'Run only through the isolated Go/Node fixture');
+    final port = int.parse(env['CORE_NATIVE_TLS_PORT']!);
+    expect(port >= 1024 && port <= 65535, true);
+    final cookie = env['CORE_NATIVE_BROWSER_COOKIE']!;
+    expect(
+        RegExp(r'^__Host-platform_session=[A-Za-z0-9_-]{43}$').hasMatch(cookie),
+        true);
+    final context = SecurityContext(withTrustedRoots: false)
+      ..setTrustedCertificates(env['CORE_NATIVE_CERT_FILE']!);
+    // Trust exactly the generated fixture certificate, still verify its hostname.
+    // No badCertificateCallback and no OS trust/DNS/proxy settings are changed.
+    final bad = BoundedCoreTransport(base,
+        client: fixtureClient(context, port, verifyHost: 'wrong.example'));
+    await expectLater(
+        bad.request('GET', '/health'), throwsA(isA<CoreException>()));
+    bad.close();
+    final browser = fixtureClient(context, port);
+    addTearDown(() => browser.close(force: true));
+    final transport =
+            BoundedCoreTransport(base, client: fixtureClient(context, port)),
+        store = EphemeralStore();
+    var now = DateTime.now();
+    final auth = CoreAuth(base,
+        store: store,
+        transport: transport,
+        now: () => now,
+        launch: (authorization) async {
+          expect(authorization.origin, base);
+          final get = await browser.getUrl(authorization);
+          get.followRedirects = false;
+          get.headers.set(HttpHeaders.cookieHeader, cookie);
+          final consent = await get.close();
+          expect(consent.statusCode, 200);
+          expect(consent.certificate != null, true);
+          final html = await utf8.decoder.bind(consent).join();
+          final csrf = RegExp(r'name="csrf" value="([A-Za-z0-9_-]+)"')
+              .firstMatch(html)
+              ?.group(1);
+          expect(csrf != null, true);
+          final approve =
+              await browser.postUrl(Uri.parse('$base/native/oauth/authorize'));
+          approve.followRedirects = false;
+          approve.headers.set(HttpHeaders.cookieHeader, cookie);
+          approve.headers.set('origin', base);
+          approve.headers.contentType = ContentType.json;
+          approve.write(jsonEncode({
+            ...authorization.queryParameters,
+            'csrf': csrf,
+            'approve': 'yes'
+          }));
+          final response = await approve.close();
+          expect(response.statusCode, 303);
+          final callback =
+              Uri.parse(response.headers.value(HttpHeaders.locationHeader)!);
+          await response.drain<void>();
+          expect(callback.scheme, 'http');
+          expect(callback.host, '127.0.0.1');
+          expect(callback.path, '/oauth/callback');
+          // A new client ensures no browser cookie/Origin crosses to the callback.
+          final local = HttpClient();
+          try {
+            final request = await local.getUrl(callback);
+            request.followRedirects = false;
+            final accepted = await request.close();
+            expect(accepted.statusCode, 200);
+            await accepted.drain<void>();
+          } finally {
+            local.close(force: true);
+          }
+          return true;
+        });
+    addTearDown(auth.close);
+    await auth.login();
+    expect(auth.hasSession, true);
+    expect(store.value!.contains('access_token'), false);
+    final api = CoreApi(auth),
+        controller = CoreController(CoreApi(auth),
+            pollInterval: const Duration(hours: 1));
+    addTearDown(controller.dispose);
+    await controller.start();
+    expect(controller.profile!.id, env['CORE_NATIVE_PRINCIPAL']);
+    expect(controller.selectedTenant, 'restaurant-a');
+    final number = env['CORE_NATIVE_ORDER']!;
+    expect(controller.orders.any((v) => v.number == number), true);
+    await controller.showDetail(number);
+    expect(controller.detail!.totalMinor, 3500);
+    expect(controller.detail!.items.isNotEmpty, true);
+    final existing = controller.orders.firstWhere((v) => v.number == number);
+    expect(existing.status, 'accepted');
+    await controller.change(existing);
+    expect(controller.orders.firstWhere((v) => v.number == number).status,
+        'preparing');
+
+    final menu = await api.menu('restaurant-a'), item = menu.items.first;
+    await api.patchMenu(menu, item,
+        name: item.name,
+        categoryId: item.categoryId,
+        price: item.priceMinor,
+        available: item.available);
+    final detail = await api.menuDetails('restaurant-a', item.id);
+    await api.patchMenuDetails(detail,
+        description: detail.description, options: detail.options);
+    final current = await api.menu('restaurant-a'),
+        category = current.categories.first;
+    await api.patchCategory(current, category,
+        name: category.name, sort: category.sort);
+    final stock = (await api.stock('restaurant-a')).first;
+    final recounted = await api.setStock('restaurant-a', stock,
+        tracked: stock.tracked, available: stock.tracked ? stock.available : 0);
+    expect(recounted.held, stock.held);
+    expect(recounted.version > stock.version, true);
+    final channels = await api.channels('restaurant-a');
+    expect(channels.length, 4);
+    expect(channels.any((v) => !v.adapterImplemented), true);
+    final enabled = channels.firstWhere((v) => v.adapterImplemented);
+    final changedChannel = await api.setChannel(
+        'restaurant-a', enabled, !enabled.newOrdersEnabled);
+    final restoredChannel = await api.setChannel(
+        'restaurant-a', changedChannel, enabled.newOrdersEnabled);
+    expect(restoredChannel.newOrdersEnabled, enabled.newOrdersEnabled);
+    final beforeCreate = await api.menu('restaurant-a');
+    await api.createMenuCategory(beforeCreate,
+        id: 'native-live-category', name: 'تصنيف اختبار Dart', sort: 10);
+    final withCategory = await api.menu('restaurant-a');
+    await api.createMenuItem(withCategory,
+        id: 'native-live-item',
+        name: 'صنف اختبار Dart',
+        categoryId: 'native-live-category',
+        price: 725,
+        sort: 10);
+    final created = (await api.menu('restaurant-a'))
+        .items
+        .firstWhere((v) => v.id == 'native-live-item');
+    expect(created.available, false);
+    expect(created.priceMinor, 725);
+
+    final before = jsonDecode(store.value!) as Map<String, dynamic>;
+    now = now.add(const Duration(minutes: 16));
+    await api.profile();
+    final after = jsonDecode(store.value!) as Map<String, dynamic>;
+    expect(before['refreshToken'] != after['refreshToken'], true);
+    final reused =
+        await transport.request('POST', '/native/oauth/token', body: {
+      'grant_type': 'refresh_token',
+      'client_id': nativeClientId,
+      'resource': '$base/native/api',
+      'refresh_token': before['refreshToken']
+    });
+    expect(reused.status, 400);
+    await controller.refresh();
+    expect(auth.hasSession, false);
+    expect(controller.profile, isNull);
+    expect(controller.orders, isEmpty);
+    expect(store.value, isNull);
+  }, timeout: const Timeout(Duration(seconds: 45)));
+}
