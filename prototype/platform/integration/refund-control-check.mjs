@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {createCoreOrderClient} from '../core-order-client.mjs';
+const fixture=JSON.parse(process.env.CORE_REFUND_FIXTURE);
+const client=createCoreOrderClient({issuer:'https://platform.example',privateKey:fixture.privateKey,restaurants:[{id:'restaurant-a',baseUrl:fixture.baseUrl}]}),actor=randomUUID();
+const before=await client.refund('restaurant-a',actor,fixture.number,fixture.refundId);
+assert.equal(before.authorized,false);assert.equal(before.submitted,false);
+const review={version:before.version,reviewed:true,amountMinor:before.amountMinor,currency:before.currency,provider:before.provider,demo:before.demo};
+await assert.rejects(client.refundCommand('restaurant-a',actor,fixture.number,fixture.refundId,'authorize',{...review,amountMinor:review.amountMinor+1}),{code:'conflict'});
+const after=await client.refundCommand('restaurant-a',actor,fixture.number,fixture.refundId,'authorize',review);
+assert.equal(after.authorized,true);assert.equal(after.version,before.version+1);assert.equal(after.submitted,false);
+const recovered=await client.refund('restaurant-a',actor,fixture.number,fixture.refundId);
+assert.equal(recovered.id,after.id);assert.equal(recovered.version,after.version);
+const refresh=await client.refundCommand('restaurant-a',actor,fixture.number,fixture.refundId,'refresh',{...review,version:after.version});
+assert.equal(refresh.version,after.version);assert.equal(refresh.submitted,false);
+console.log('Verified actual Node-signed existing-refund review, mismatch rejection, authorization and same-ID recovery through original Go; synthetic captured payment and no provider payout.');

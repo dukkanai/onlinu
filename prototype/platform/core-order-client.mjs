@@ -53,6 +53,9 @@ const menuPatch=z.object({expectedVersion:z.number().int().positive().max(Number
 
 const financeAmount=z.number().int().min(0).max(100_000_000);
 const financeView=z.object({number:z.string().regex(/^R[0-9]{8,20}$/),orderVersion:z.number().int().positive(),totalMinor:financeAmount,currency:z.literal('SAR'),paymentMethod:z.string().max(40),paymentStatus:z.string().max(40),provider:z.string().max(40),demo:z.boolean(),capturedMinor:financeAmount,reservedMinor:financeAmount,refundedMinor:financeAmount,availableMinor:financeAmount,limit:z.literal(100),capability:z.object({automatic:z.boolean(),partial:z.boolean(),manual:z.boolean(),reason:z.string().max(100)}),refunds:z.array(z.object({id:z.string().uuid(),version:z.number().int().positive(),status:z.enum(['requested','processing','succeeded','failed','review','manual_reported']),provider:z.string().max(40),currency:z.literal('SAR'),amountMinor:financeAmount,taxMinor:financeAmount,confirmation:z.string().max(40),authorized:z.boolean(),submitted:z.boolean(),createdAt:z.string().datetime({offset:true}),updatedAt:z.string().datetime({offset:true})})).max(100)});
+const refundDetail=financeView.shape.refunds.element.extend({number:coreOrderView.shape.number,orderVersion:coreOrderView.shape.version,orderTotalMinor:financeAmount,capturedMinor:financeAmount,demo:z.boolean(),reason:z.string().max(4000),providerReference:z.string().max(4096),manualReference:z.string().max(4096),resolutionReason:z.string().max(4000),capability:financeView.shape.capability});
+const refundCommand=z.object({version:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),reviewed:z.literal(true),amountMinor:financeAmount.refine(n=>n>0),currency:z.literal('SAR'),provider:z.string().max(40),demo:z.boolean(),reference:z.string().max(200).optional(),reason:z.string().max(1000).optional()}).strict();
+function refundPath(number,refundId){if(!/^R[0-9]{8,20}$/.test(number??'')||!uuid.safeParse(refundId).success)throw problem(400,'invalid_request');return '/platform-api/staff/orders/'+number+'/refunds/'+refundId;}
 const serviceFields={acceptingOrders:z.boolean(),deliveryEnabled:z.boolean(),pickupEnabled:z.boolean(),tableEnabled:z.boolean()};
 const serviceView=z.object({version:z.number().int().positive(),...serviceFields});
 const servicePatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),...Object.fromEntries(Object.entries(serviceFields).map(([key,value])=>[key,value.optional()]))}).strict().refine(v=>Object.keys(v).length>1);
@@ -118,6 +121,14 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    async refund(tenantId,subject,number,refundId){const value=await request(tenantId,subject,'GET',refundPath(number,refundId),undefined,'','staff:refunds:read',refundDetail);if(value.number!==number||value.id!==refundId)throw problem(503,'restaurant_unavailable');return value;},
+    refundCommand(tenantId,subject,number,refundId,action,input){
+      const path=refundPath(number,refundId),parsed=refundCommand.safeParse(input);
+      if(!['authorize','manual','verify','refresh'].includes(action)||!parsed.success)throw problem(400,'invalid_request');
+      if(['authorize','refresh'].includes(action)&&(parsed.data.reference||parsed.data.reason))throw problem(400,'invalid_request');
+      if(['manual','verify'].includes(action)&&(!parsed.data.reference?.trim()||!parsed.data.reason?.trim()))throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST',path+'/'+action,parsed.data,'','staff:refunds:'+action,refundDetail).then(value=>{if(value.number!==number||value.id!==refundId||value.amountMinor!==parsed.data.amountMinor||value.currency!==parsed.data.currency||value.provider!==parsed.data.provider||value.demo!==parsed.data.demo)throw problem(503,'order_outcome_unknown');return value;});
+    },
     finance(tenantId,subject,number){if(!/^R[0-9]{8,20}$/.test(number??''))throw problem(400,'invalid_request');return request(tenantId,subject,'GET','/platform-api/staff/orders/'+number+'/finance',undefined,'','staff:payments:read',financeView,2_000_000);},
     service(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/service',undefined,'','staff:settings:read',serviceView);},
     patchService(tenantId,subject,input){const parsed=servicePatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/service',parsed.data,'','staff:settings:update',serviceView);},

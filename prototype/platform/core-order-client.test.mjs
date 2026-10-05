@@ -132,3 +132,26 @@ test('service switches sign narrow settings scope and reject omitted, unknown an
  for(const value of [{expectedVersion:1},{expectedVersion:1,acceptingOrders:'false'},{expectedVersion:1,acceptingOrders:null},{expectedVersion:1,paymentMethods:[]}])assert.throws(()=>client.patchService('restaurant-a',actor,value),{code:'invalid_request'});
  const closed=await client.patchService('restaurant-a',actor,{expectedVersion:1,acceptingOrders:false});assert.equal(closed.acceptingOrders,false);assert.equal(closed.expectedVersion,undefined);assert.equal(calls,2);
 });
+
+test('reviewed refund transport binds immutable tuple and scope, strips private capabilities and never retries',async()=>{
+ const subject=randomUUID(),refundId=randomUUID();let calls=0;
+ const reviewed={version:2,reviewed:true,amountMinor:1000,currency:'SAR',provider:'stripe',demo:true};
+ const detail={id:refundId,version:3,status:'requested',provider:'stripe',currency:'SAR',amountMinor:1000,taxMinor:0,confirmation:'',authorized:true,submitted:false,createdAt:view.updatedAt,updatedAt:view.updatedAt,number:view.number,orderVersion:4,orderTotalMinor:3500,capturedMinor:3500,demo:true,reason:'Synthetic cancellation',providerReference:'',manualReference:'',resolutionReason:'',capability:{automatic:true,partial:true,manual:false,reason:''}};
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{
+  calls++;assert.equal(url,config.restaurants[0].baseUrl+'/platform-api/staff/orders/'+view.number+'/refunds/'+refundId+'/authorize');
+  const [payload,signature]=options.headers.authorization.slice(9).split('.');const bytes=Buffer.from(payload,'base64url'),claims=JSON.parse(bytes);
+  assert.equal(verify(null,bytes,publicKey,Buffer.from(signature,'base64url')),true);assert.equal(claims.scope,'staff:refunds:authorize');assert.equal(claims.subject,subject);
+  assert.equal(claims.bodySha256,createHash('sha256').update(options.body).digest('hex'));assert.deepEqual(JSON.parse(options.body),reviewed);
+  return json({...detail,requestId:'private',trackingToken:'private',phone:'private'});
+ }});
+ for(const invalid of [{...reviewed,reviewed:false},{...reviewed,provider:undefined},{...reviewed,amountMinor:0},{...reviewed,unexpected:true}])assert.throws(()=>client.refundCommand('restaurant-a',subject,view.number,refundId,'authorize',invalid),{code:'invalid_request'});
+ assert.equal(calls,0);
+ assert.deepEqual(await client.refundCommand('restaurant-a',subject,view.number,refundId,'authorize',reviewed),{tenantId:'restaurant-a',...detail});assert.equal(calls,1);
+ const uncertain=createCoreOrderClient({...config,fetchImpl:async()=>{calls++;throw Error('lost reply');}});
+ await assert.rejects(uncertain.refundCommand('restaurant-a',subject,view.number,refundId,'authorize',reviewed),{code:'order_outcome_unknown'});assert.equal(calls,2);
+});
+
+test('refund reads reject a mismatched original order or refund identity',async()=>{
+ const id=randomUUID();const client=createCoreOrderClient({...config,fetchImpl:async()=>json({id:randomUUID(),version:1,status:'review',provider:'',currency:'SAR',amountMinor:100,taxMinor:0,confirmation:'',authorized:false,submitted:false,createdAt:view.updatedAt,updatedAt:view.updatedAt,number:view.number,orderVersion:1,orderTotalMinor:100,capturedMinor:100,demo:true,reason:'synthetic',providerReference:'',manualReference:'',resolutionReason:'',capability:{automatic:false,partial:true,manual:true,reason:'manual_review_required'}})});
+ await assert.rejects(client.refund('restaurant-a',randomUUID(),view.number,id),{code:'restaurant_unavailable'});
+});

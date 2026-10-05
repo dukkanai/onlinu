@@ -45,3 +45,16 @@ test('financial read requires both order and payment grants and offers no write 
  await assert.rejects(api({method:'GET'},{},{id:'staff'},url),{code:'forbidden'});grants.add('payments:read');assert.equal((await api({method:'GET'},{},{id:'staff'},url)).status,200);assert.deepEqual(calls,['orders:read','payments:read','orders:read','payments:read']);
  await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'not_found'});
 });
+
+test('existing refund commands require all grants again after reading the body and never retry',async()=>{
+ const grants=new Set(['orders:read','payments:read']),calls=[];
+ const url=new URL('https://platform.example/api/restaurants/a/staff/orders/R1234567890/refunds/11111111-1111-4111-8111-111111111111/authorize');
+ let revoke=false;
+ const api=createStaffApi({directory:{async authorize(actor,tenant,grant){if(!grants.has(grant))throw Object.assign(Error(),{code:'forbidden'});}},body:async()=>{if(revoke)grants.delete('refunds:manage');return {reviewed:true};},orderClient:{async refundCommand(...args){calls.push(args);throw Object.assign(Error(),{code:'order_outcome_unknown'});}},json:()=>assert.fail('unknown outcome cannot be reported as success')});
+ await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(calls.length,0);
+ grants.add('refunds:manage');revoke=true;
+ await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(calls.length,0);
+ grants.add('refunds:manage');revoke=false;
+ await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'order_outcome_unknown'});assert.equal(calls.length,1);
+ assert.deepEqual(calls[0],['a','staff','R1234567890','11111111-1111-4111-8111-111111111111','authorize',{reviewed:true}]);
+});

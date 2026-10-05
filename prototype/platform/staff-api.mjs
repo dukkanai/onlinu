@@ -27,6 +27,16 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
           if(url.search)throw problem(400,'invalid_request');const [,tenantId,kind,parent]=geoRoute;await directory.authorize(who.id,tenantId,'settings:read');
           return json(res,200,await orderClient.geography(tenantId,who.id,kind,parent));
         }
+        const refundRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/orders\/(R[0-9]{8,20})\/refunds\/([a-f0-9-]{36})(?:\/(authorize|manual|verify|refresh))?$/.exec(url.pathname);
+        if(refundRoute&&orderClient){
+          const [,tenantId,number,refundId,action]=refundRoute;
+          if(url.search||!(req.method==='GET'&&!action||req.method==='POST'&&action))throw problem(400,'invalid_request');
+          const authorize=async()=>{for(const grant of ['orders:read','payments:read','refunds:manage'])await directory.authorize(who.id,tenantId,grant);};
+          await authorize();
+          if(req.method==='GET')return json(res,200,await orderClient.refund(tenantId,who.id,number,refundId));
+          const input=await body(req);await authorize();
+          return json(res,200,await orderClient.refundCommand(tenantId,who.id,number,refundId,action,input));
+        }
         const financeRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/orders\/(R[0-9]{8,20})\/finance$/.exec(url.pathname);
         if(financeRoute&&orderClient&&req.method==='GET'){
           if(url.search)throw problem(400,'invalid_request');const [,tenantId,number]=financeRoute;await directory.authorize(who.id,tenantId,'orders:read');await directory.authorize(who.id,tenantId,'payments:read');return json(res,200,await orderClient.finance(tenantId,who.id,number));

@@ -49,7 +49,7 @@ func (p *restaurantPayments) PlatformStaffFinance(ctx context.Context, number st
 	order := summary.order
 	result := platformStaffFinance{Number: order.Number, OrderVersion: order.Version, TotalMinor: order.TotalMinor, Currency: order.Currency, PaymentMethod: order.Payment.Method, PaymentStatus: order.Payment.Status, Provider: order.Payment.Provider, Demo: order.Demo, CapturedMinor: summary.CapturedMinor, ReservedMinor: summary.ReservedMinor, RefundedMinor: summary.RefundedMinor, AvailableMinor: summary.AvailableMinor, Capability: summary.Capability, Refunds: []platformStaffRefundView{}, Limit: 100}
 	for _, r := range summary.Refunds {
-		result.Refunds = append(result.Refunds, platformStaffRefundView{r.ID, r.Version, r.Status, r.Provider, r.Currency, r.AmountMinor, r.TaxMinor, r.Confirmation, r.Authorized, r.Submitted, r.CreatedAt, r.UpdatedAt})
+		result.Refunds = append(result.Refunds, staffRefundView(r))
 	}
 	return result, nil
 }
@@ -70,4 +70,8 @@ func (s *server) registerPlatformStaffFinanceRoutes(mux *http.ServeMux, wrap fun
 		}
 		writeJSON(w, 200, view)
 	}))
+}
+
+func staffRefundView(r restaurantRefund) platformStaffRefundView {
+	return platformStaffRefundView{r.ID, r.Version, r.Status, r.Provider, r.Currency, r.AmountMinor, r.TaxMinor, r.Confirmation, r.Authorized, r.Submitted, r.CreatedAt, r.UpdatedAt}
 }

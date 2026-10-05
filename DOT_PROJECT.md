@@ -363,3 +363,10 @@ Windows financial/picker screenshots were inspected. All data/providers in these
 checks are synthetic. The overall completion ledger remains open; refund command
 UI, broader management/mobile parity, WhatsApp ordering, provisioning/billing,
 real account acceptance and deployment gates still require further work.
+
+## Existing-refund management work
+
+See `prototype/platform/REFUND-MANAGEMENT.md` for the scoped backend increment,
+reviewed immutable facts, original-ledger audit and remaining browser/native
+confirmation work. It does not create a second payment engine or enable real
+provider transactions in development.

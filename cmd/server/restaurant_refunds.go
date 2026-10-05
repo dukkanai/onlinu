@@ -87,7 +87,8 @@ func restaurantInitRefundSchema(ctx context.Context, db *sql.DB) error {
  ALTER TABLE restaurant_refunds ADD COLUMN IF NOT EXISTS authorized boolean NOT NULL DEFAULT false;
  CREATE INDEX IF NOT EXISTS restaurant_refunds_pending_idx ON restaurant_refunds(status,updated_at);
  CREATE UNIQUE INDEX IF NOT EXISTS restaurant_refunds_remote_unique_idx ON restaurant_refunds(order_number,(data->>'providerReference')) WHERE COALESCE(data->>'providerReference','')<>'';
- CREATE TABLE IF NOT EXISTS restaurant_refund_events(id bigserial PRIMARY KEY,refund_id text NOT NULL REFERENCES restaurant_refunds(id),kind text NOT NULL,data jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now());`)
+ CREATE TABLE IF NOT EXISTS restaurant_refund_events(id bigserial PRIMARY KEY,refund_id text NOT NULL REFERENCES restaurant_refunds(id),kind text NOT NULL,data jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+ CREATE TABLE IF NOT EXISTS platform_staff_refund_audit(refund_id TEXT NOT NULL REFERENCES restaurant_refunds(id),version BIGINT NOT NULL,actor_id TEXT NOT NULL,scope TEXT NOT NULL,kind TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),PRIMARY KEY(refund_id,version));`)
 	return err
 }
 
@@ -160,6 +161,9 @@ func restaurantInsertRefundTx(ctx context.Context, tx *sql.Tx, o restaurantOrder
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO restaurant_refund_events(refund_id,kind,data) VALUES($1,'requested',$2)`, r.ID, raw)
 	}
+	if err == nil {
+		err = writePlatformStaffRefundAudit(ctx, tx, r, "requested")
+	}
 	return r, err
 }
 
@@ -222,6 +226,9 @@ func restaurantSaveRefundTx(ctx context.Context, tx *sql.Tx, r *restaurantRefund
 	_, err = tx.ExecContext(ctx, `UPDATE restaurant_refunds SET status=$2,data=$3,authorized=$4,updated_at=now() WHERE id=$1`, r.ID, r.Status, raw, r.Authorized)
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO restaurant_refund_events(refund_id,kind,data) VALUES($1,$2,$3)`, r.ID, kind, raw)
+	}
+	if err == nil {
+		err = writePlatformStaffRefundAudit(ctx, tx, *r, kind)
 	}
 	return err
 }
