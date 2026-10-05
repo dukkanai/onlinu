@@ -6,7 +6,7 @@ import { checkoutSummary, checkoutErrorPage } from './checkout-pages.mjs';
  * Docker socket or production provisioning is exposed by this module. Payment
  * actions reuse the owned original-core handoff rather than accepting money here.
  */
-import { createIdentityDirectory } from './identity-directory.mjs';
+import { createIdentityDirectory, RESTAURANT_PERMISSIONS } from './identity-directory.mjs';
 import { createAuth, problem } from './auth.mjs';
 import { createOidcLogin } from './oidc.mjs';
 import { createCoreAdapter } from './core-adapter.mjs';
@@ -15,7 +15,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffHome, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -237,6 +237,26 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           return redirect(res,'/checkout/'+checkoutId,303);
         }
       }
+      const managementMembers=/^\/manage\/([a-z0-9-]{1,64})\/members(?:\/([a-f0-9-]{36}))?$/.exec(url.pathname);
+      if(managementMembers){
+        if(req.headers.authorization)throw problem(403,'browser_session_required');
+        const [,tenantId,targetId]=managementMembers;
+        if(url.search)throw problem(400,'invalid_request');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
+        const who=await browser(req);
+        if(req.method==='GET'&&!targetId){const members=await directory.members(who.id,tenantId);htmlHeaders(res);res.end(staffMembersPage({tenantId,members,actorId:who.id,csrf:auth.csrfToken(req)}));return;}
+        if(req.method==='POST'){
+          const input=await body(req);auth.verifyCsrf(req,input.csrf);
+          const allowed=['csrf','expectedVersion','role','enabled','permissionsMode','displayName',...(!targetId?['principalId']:[]),...RESTAURANT_PERMISSIONS.map(permission=>'perm:'+permission)];
+          if(Object.keys(input).some(key=>!allowed.includes(key))||!['true','false'].includes(input.enabled)||!['role','custom'].includes(input.permissionsMode)||
+            (targetId?!/^\d{1,16}$/.test(input.expectedVersion??''):input.expectedVersion!==''))throw problem(400,'invalid_request');
+          const permissions=RESTAURANT_PERMISSIONS.filter(permission=>input['perm:'+permission]==='yes');
+          if(RESTAURANT_PERMISSIONS.some(permission=>input['perm:'+permission]!==undefined&&input['perm:'+permission]!=='yes'))throw problem(400,'invalid_request');
+          await directory.setMembership(who.id,tenantId,targetId??input.principalId,{role:input.role,enabled:input.enabled==='true',displayName:input.displayName,
+            expectedVersion:targetId?Number(input.expectedVersion):null,...(input.permissionsMode==='custom'?{permissions}:{})});
+          return redirect(res,`/manage/${tenantId}/members`,303);
+        }
+      }
       const createMenu=/^\/manage\/([a-z0-9-]{1,64})\/menu\/new-(item|category)$/.exec(url.pathname);
       if(createMenu&&orderClient&&req.method==='POST'){
         const who=await browser(req),[,tenantId,kind]=createMenu;
@@ -359,13 +379,13 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         }
       }
       const management=/^\/manage(?:\/([a-z0-9-]{1,64})\/orders(?:\/(R[0-9]{8,20})(?:\/(status|cash))?)?)?$/.exec(url.pathname);
-      if(management&&orderClient){
+      if(management&&(orderClient||!management[1])){
         if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
         const who=await browser(req),[,tenantId,number,action]=management;
         if(url.search)throw problem(400,'invalid_request');
         if(req.method==='GET'&&!action){
           let html;
-          if(!tenantId)html=staffHome(who);
+          if(!tenantId)html=staffHome(who,{coreEnabled:!!orderClient});
           else{
             const membership=await directory.authorize(who.id,tenantId,'orders:read');
             const {orders}=number?{orders:[await orderClient.staffOrder(tenantId,who.id,number)]}:await orderClient.staffOrders(tenantId,who.id);
@@ -458,6 +478,8 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       const code = status === 500 || !/^[a-z_]{1,80}$/.test(error.code ?? '') ? 'request_failed' : error.code;
       const checkoutError=req.url?.startsWith('/checkout/') && req.headers.accept?.includes('text/html') ? checkoutErrorPage(code) : null;
       if(checkoutError){htmlHeaders(res,status);res.end(checkoutError);return;}
+      const staffError=req.url?.startsWith('/manage/')&&req.headers.accept?.includes('text/html')?staffErrorPage(code):null;
+      if(staffError){htmlHeaders(res,status);res.end(staffError);return;}
       json(res, status, { error: code });
     }
   }

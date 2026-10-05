@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage,staffMenuPage,staffMenuItemPage,menuPriceMinor} from './staff-pages.mjs';
+import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage,staffMenuPage,staffMenuItemPage,menuPriceMinor,staffMembersPage,staffErrorPage} from './staff-pages.mjs';
 const order={number:'R2026000001',version:2,status:'accepted',paymentStatus:'unpaid',paymentMethod:'cash_on_delivery',mode:'delivery',totalMinor:3500};
 test('staff pages display only authorized actions and escape dynamic content',()=>{
   const kitchen={permissions:['orders:read','orders:update'],tenantStatus:'active'};
@@ -72,4 +72,12 @@ test('image forms use native multipart and preview only own content-addressed me
  const html=staffMenuItemPage(config);assert.match(html,/enctype="multipart\/form-data"/);assert.match(html,/accept="image\/png,image\/jpeg"/);assert.match(html,/src="\/restaurant-media\/a\/a{64}\.png"/);
  const external=staffMenuItemPage({...config,menu:{...config.menu,item:{...item,imageUrl:'https://images.example/private.jpg'}}});assert.doesNotMatch(external,/<img/);
  assert.doesNotMatch(staffMenuItemPage({...config,membership:{permissions:['menu:read']}}),/<form/);
+});
+
+test('member editor escapes aliases and names permissions without exposing login claims',()=>{
+ const html=staffMembersPage({tenantId:'a',csrf:'token',actorId:'owner',members:[{principalId:'worker',displayName:'<Chef>',version:2,role:'kitchen',enabled:true,permissions:['orders:read']}]});
+ assert.match(html,/&lt;Chef&gt;/);assert.doesNotMatch(html,/<Chef>/);assert.match(html,/name="perm:orders:read" value="yes" checked/);
+ assert.match(html,/معرّف حساب الموظف/);assert.match(html,/آخر مالك نشط/);assert.match(staffErrorPage('last_owner_required'),/عيّن مالكًا آخر/);assert.equal(staffErrorPage('secret'),null);
+ const home=staffHome({id:'own-id',memberships:[{tenantId:'a',role:'owner',permissions:['orders:read','members:manage']}]},{coreEnabled:false});
+ assert.match(home,/own-id/);assert.match(home,/\/a\/members/);assert.doesNotMatch(home,/\/a\/orders/);
 });

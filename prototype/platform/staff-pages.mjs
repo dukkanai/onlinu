@@ -1,17 +1,18 @@
+import {RESTAURANT_PERMISSIONS} from './identity-directory.mjs';
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const labels={new:'جديد',accepted:'مقبول',preparing:'قيد التحضير',ready:'جاهز',out_for_delivery:'خرج للتوصيل',completed:'مكتمل',cancelled:'ملغي',
   unpaid:'غير مدفوع',pending:'بانتظار التحقق',paid:'مدفوع',failed:'فشل الدفع',refunded:'مسترد',review:'يحتاج مراجعة'};
 const label=value=>escape(labels[value]??value);
 const page=(title,body)=>`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title><h1>${escape(title)}</h1>${body}</html>`;
 
-export function staffHome(principal){
-  const sections=[['orders:read','orders',''],['menu:read','menu','منيو '],['stock:read','stock','مخزون '],['channels:manage','channels','قنوات ']];
+export function staffHome(principal,{coreEnabled=true}={}){
+  const sections=[['orders:read','orders',''],['menu:read','menu','منيو '],['stock:read','stock','مخزون '],['channels:manage','channels','قنوات '],['members:manage','members','فريق ']].filter(([,path])=>coreEnabled||path==='members');
   const memberships=principal.memberships.filter(member=>sections.some(([permission])=>member.permissions.includes(permission)));
   const rows=memberships.map(member=>{
     const links=sections.filter(([permission])=>member.permissions.includes(permission)).map(([,path,prefix])=>`<a href="/manage/${escape(member.tenantId)}/${path}">${escape(prefix+member.tenantId)}</a>`).join(' · ');
     return `<li>${links} (${escape(member.role)})</li>`;
   }).join('');
-  return page('إدارة المطاعم',`<p>اختر المطعم. لا يظهر هنا إلا ما تسمح به عضويتك الحالية.</p><ul>${rows}</ul>${memberships.length?'':'<p>لا توجد عضوية تسمح بالإدارة.</p>'}<a href="/">الصفحة الرئيسية</a>`);
+  return page('إدارة المطاعم',`<p>معرّف حسابك الداخلي: <span dir="ltr">${escape(principal.id??'')}</span>. شاركه مع مالك المطعم لإضافة عضويتك؛ هذا ليس كلمة مرور.</p><p>اختر المطعم. لا يظهر هنا إلا ما تسمح به عضويتك الحالية.</p><ul>${rows}</ul>${memberships.length?'':'<p>لا توجد عضوية تسمح بالإدارة.</p>'}<a href="/">الصفحة الرئيسية</a>`);
 }
 
 export function menuPriceMinor(value){
@@ -73,4 +74,17 @@ export function staffOrdersPage({tenantId,membership,orders,csrf}){
     return `<article><h2><a href="/manage/${escape(tenantId)}/orders/${escape(order.number)}">${escape(order.number)}</a></h2><p>الحالة: ${label(order.status)}. الدفع: ${label(order.paymentStatus)}.</p><p>الإجمالي: ${escape((order.totalMinor/100).toFixed(2))} SAR. الإصدار: ${escape(order.version)}</p>${detail}${status}${cash}</article>`;
   }).join('');
   return page('طلبات '+tenantId,`<nav><a href="/manage">مطاعمي</a> · <a href="/manage/${escape(tenantId)}/orders">تحديث القائمة</a></nav>${membership.tenantStatus==='suspended'?'<p>المطعم موقوف عن العمل الجديد؛ متابعة وتسوية الطلبات القائمة متاحة وفق صلاحياتك.</p>':''}<p>${orders.some(order=>Array.isArray(order.items))?'تفاصيل الأصناف وتعليمات التنفيذ محفوظة كما كانت عند الطلب.':'أحدث 100 طلب.'} هذه واجهة تشغيل أولية؛ تبقى إدارة المطعم الأصلية متاحة للوظائف الأخرى.</p>${cards||'<p>لا توجد طلبات.</p>'}`);
+}
+
+const roleNames={owner:'مالك',manager:'مدير',supervisor:'مشرف',kitchen:'مطبخ',cashier:'كاشير',courier:'مندوب'};
+const permissionNames={'orders:read':'عرض الطلبات','orders:update':'تحديث الطلبات','menu:read':'عرض المنيو','menu:update':'تعديل المنيو','stock:read':'عرض المخزون','stock:update':'تعديل المخزون','delivery:read':'عرض التوصيل','delivery:assign':'تعيين التوصيل','payments:read':'عرض المدفوعات','payments:collect':'تأكيد التحصيل النقدي','refunds:manage':'إدارة الاسترداد','settings:read':'عرض الإعدادات','settings:update':'تعديل الإعدادات','channels:manage':'إدارة القنوات','members:manage':'إدارة الفريق'};
+export function staffMembersPage({tenantId,members,csrf,actorId}){
+ const roleSelect=selected=>`<label>الدور <select name="role" aria-label="الدور">${Object.entries(roleNames).map(([key,name])=>`<option value="${key}" ${selected===key?'selected':''}>${name}</option>`).join('')}</select></label>`;
+ const enabledSelect=value=>`<label>حالة العضوية <select name="enabled" aria-label="حالة العضوية"><option value="true" ${value?'selected':''}>مفعّلة</option><option value="false" ${!value?'selected':''}>موقوفة</option></select></label>`;
+ const rows=members.map(member=>`<section><h2>${escape(member.displayName||member.principalId)}${member.principalId===actorId?' (أنت)':''}</h2><p dir="ltr">${escape(member.principalId)}</p><form method="post" action="/manage/${escape(tenantId)}/members/${escape(member.principalId)}"><input type="hidden" name="csrf" value="${escape(csrf)}"><input type="hidden" name="expectedVersion" value="${escape(member.version)}"><label>الاسم داخل المطعم <input name="displayName" maxlength="100" value="${escape(member.displayName??'')}"></label>${roleSelect(member.role)}${enabledSelect(member.enabled)}<label>اختيار الصلاحيات <select name="permissionsMode" aria-label="اختيار الصلاحيات"><option value="custom">الصلاحيات المحددة أدناه</option><option value="role">الصلاحيات الافتراضية للدور المختار</option></select></label><fieldset><legend>الصلاحيات التفصيلية</legend>${RESTAURANT_PERMISSIONS.map(permission=>`<label><input type="checkbox" name="perm:${permission}" value="yes" ${member.permissions.includes(permission)?'checked':''}>${permissionNames[permission]}</label>`).join('')}</fieldset><button>حفظ العضوية</button></form></section>`).join('');
+ return page('فريق '+tenantId,`<a href="/manage">مطاعمي</a><p>لا يمكن تعطيل آخر مالك نشط. عضوية المالك تشمل جميع الصلاحيات. الاسم المعروض تسمية داخل المطعم ولا يربط حسابات بالبريد أو الهاتف.</p>${rows}<section><h2>إضافة حساب مسجل</h2><p>يجب أن يسجّل الموظف الدخول أولًا ويشارك معرّف حسابه من صفحة الإدارة. لم تُرسل أي دعوة أو رسالة نيابةً عنك.</p><form method="post" action="/manage/${escape(tenantId)}/members"><input type="hidden" name="csrf" value="${escape(csrf)}"><input type="hidden" name="expectedVersion" value=""><input type="hidden" name="permissionsMode" value="role"><label>معرّف حساب الموظف <input name="principalId" required maxlength="36" dir="ltr"></label><label>اسم الموظف داخل المطعم <input name="displayName" maxlength="100"></label>${roleSelect('kitchen')}${enabledSelect(false)}<button>إضافة العضوية</button></form><p>تبدأ العضوية موقوفة افتراضيًا للمراجعة؛ اختر التفعيل حين تتأكد من الحساب والصلاحيات.</p></section>`);
+}
+export function staffErrorPage(code){
+ const messages={authentication_required:'انتهت جلسة الدخول أو لم تبدأ بعد. ارجع إلى الإدارة وسجّل الدخول قبل إعادة المحاولة.',tenant_suspended:'المطعم معلّق حاليًا ولا يسمح بهذا الإجراء.',version_conflict:'تغيّرت العضوية. افتح صفحة الفريق من جديد وراجع أحدث البيانات.',catalog_changed:'تغيّر المنيو. حدّث الصفحة قبل إعادة التعديل.',last_owner_required:'لا يمكن تعطيل أو تغيير دور آخر مالك نشط. عيّن مالكًا آخر أولًا.',invalid_owner_permissions:'يجب أن تشمل عضوية المالك جميع الصلاحيات.',forbidden:'لا تملك الصلاحية المطلوبة لهذا الإجراء.',identity_disabled:'الحساب غير متاح أو لم يسجّل الدخول بعد. تحقق من معرّفه.',invalid_request:'تحقق من الحقول المدخلة قبل إعادة المحاولة.',tenant_closed:'المطعم مغلق ولا يمكن تعديل عضوياته.',order_outcome_unknown:'تعذر تأكيد نتيجة التغيير. حدّث الصفحة وتحقق من الحالة قبل إعادة الإرسال.'};
+ return messages[code]?page('تعذر إتمام التغيير',`<p>${messages[code]}</p><a href="/manage">العودة إلى الإدارة</a>`):null;
 }

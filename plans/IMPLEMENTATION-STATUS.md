@@ -5,13 +5,13 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 11:51 UTC
+## Latest verified position — 2026-10-05 12:08 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `db9ae2b4121149590e66a9ba4ff5131ccedc65a2`, CI [37304792692](https://github.com/dukkanai/onlinu/actions/runs/37304792692), all jobs successful.
+- Latest published and fully verified commit: `3183508d9bd93c1b9aabff1e96f08a46d0a0b5cf`, CI [37306155756](https://github.com/dukkanai/onlinu/actions/runs/37306155756), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Current unpublished increment: bounded original-core image upload, versioned assignment, own-origin image delivery/MCP mapping and tests.
-- Still incomplete: broader management and Flutter parity, media upload UI, WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
+- Current unpublished increment: staff membership browser UI, granular permission/enable controls, aliases and transactional permission-history audit.
+- Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
 - Historical verification entries below describe their exact commits; they are not a claim that the entire SaaS is complete.
 
 ## Acceptance order
@@ -180,9 +180,19 @@ and unit cases passed; this browser correction requires a new complete CI run.
 CI37304792692 on db9ae2b passed all server, client and control-image jobs,
 including corrected Chromium option/category flows and HTML error status test.
 
-### Original-core menu media (in progress, 2026-10-05)
+### Original-core menu media (verified, 2026-10-05)
 
 - Staff-only bounded multipart upload → raw-byte signed core upload → existing Go image normalizer → versioned/audited item image assignment.
 - Fixed-origin, content-hash-checked public media delivery and absolute own-origin MCP menu/brand image URLs; no arbitrary URL fetch or credential forwarding.
 - Local multipart/Go normalization/permission/CSRF/stale/ownership tests and Chrome preview cases added. Native browser-selected-file submission has a separate loopback-only synthetic ingress test because CDP omits binary file parts; this is not a replacement for separately tested HTTPS identity/origin checks. Remote execution is pending.
 - Local aggregate: 594 Go passes, five known sandbox netlink failures and one codec skip; 170 platform, eight tenant, 80 client and 37 deployment tests pass. Vet/build/type-check pass. New remote browser/runtime verification pending. No production image, credential or storage configuration changed.
+
+Media3183508 passed all CI37306155756 jobs, including native Chromium file
+selection/multipart upload through the loopback-only test ingress and image
+preview. Existing HTTPS browser identity/origin tests also passed.
+
+### Staff membership UI (in progress, 2026-10-05)
+
+- Added verified-account-ID onboarding, display aliases, role presets/custom permissions, enable/disable forms and friendly browser errors over existing directory authority/version/last-owner protections. No email linking or invitations.
+- Added backward-compatible central columns for aliases and before/after permission audit snapshots, committed with membership changes. Historical rows remain empty rather than fabricated; audit does not copy alias text.
+- Local final platform suite172/172 and focused actual Go/control-plane integration pass after correcting bearer HTML access to refuse before login redirect. Baseline Go594 passes/5known localnetlink failures/1codec skip, tenant8/client80/deployment37 and builds remain passing at their tested boundaries. New remote membership browser flow pending.

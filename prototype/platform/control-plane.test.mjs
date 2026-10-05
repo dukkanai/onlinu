@@ -84,6 +84,35 @@ test('control-plane HTTP enforces subject identity, browser CSRF and tenant auth
     await assert.rejects(app.directory.authorize(other.id, 'a', 'orders:update'), { code: 'forbidden' });
   });
 
+  await t.test('staff member forms preserve identity binding, granular permissions and last-owner safety',async()=>{
+    const fresh=await make('new-staff');
+    const memberPath='/manage/a/members';
+    const login=await request(memberPath);assert.equal(login.status,302);assert.match(login.headers.get('location'),/returnTo=/);
+    assert.equal((await request(login.headers.get('location'))).status,302);
+    assert.match((await request('/manage',{who:fresh})).data,new RegExp(fresh.id));
+    assert.equal((await request(memberPath,{who:other})).status,403);
+    const create={csrf:owner.csrf,expectedVersion:'',principalId:fresh.id,role:'kitchen',enabled:'false',permissionsMode:'role',displayName:'<Chef>'};
+    assert.equal((await request(memberPath,{who:owner,method:'POST',body:{...create,csrf:'bad'}})).status,403);
+    assert.equal((await request(memberPath,{who:owner,method:'POST',body:create})).status,303);
+    assert.equal((await request(memberPath,{who:owner,method:'POST',body:create})).status,409);
+    await assert.rejects(app.directory.authorize(fresh.id,'a','orders:read'),{code:'forbidden'});
+    assert.match((await request(memberPath,{who:owner})).data,/&lt;Chef&gt;/);
+    const edit={csrf:owner.csrf,expectedVersion:'1',role:'kitchen',enabled:'true',permissionsMode:'custom',displayName:'<Chef>','perm:orders:read':'yes'};
+    const target=memberPath+'/'+fresh.id;
+    assert.equal((await request(target,{who:owner,method:'POST',body:edit})).status,303);
+    assert.equal((await request(target,{who:owner,method:'POST',body:edit})).status,409);
+    await app.directory.authorize(fresh.id,'a','orders:read');
+    await assert.rejects(app.directory.authorize(fresh.id,'a','orders:update'),{code:'forbidden'});
+    const preserved=await app.directory.setMembership(owner.id,'a',fresh.id,{role:'kitchen',enabled:true,permissions:['orders:read'],expectedVersion:2});
+    assert.equal(preserved.displayName,'<Chef>');
+    const audit=(await pool.query("SELECT details FROM platform_identity_audit WHERE target_id=$1 AND action='membership_changed' ORDER BY id DESC LIMIT 1",[fresh.id])).rows[0].details;
+    assert.equal(audit.before.version,2);assert.equal(audit.after.version,3);assert.deepEqual(audit.after.permissions,['orders:read']);assert.equal(JSON.stringify(audit).includes('<Chef>'),false);
+    const blocked=await request(memberPath+'/'+owner.id,{who:owner,method:'POST',headers:{accept:'text/html'},body:{csrf:owner.csrf,expectedVersion:'1',role:'owner',enabled:'false',permissionsMode:'role',displayName:'Owner'}});
+    assert.equal(blocked.status,409);assert.match(blocked.data,/آخر مالك نشط/);
+    const oauth=await app.auth.issue(owner.id,['orders:read']);
+    assert.equal((await request(memberPath,{headers:{authorization:'Bearer '+oauth.accessToken}})).status,403);
+  });
+
   await t.test('OAuth consent and PKCE work for actual directory identity', async () => {
     const registration = await request('/oauth/register', { method: 'POST', body: {
       redirect_uris: ['https://client.example/callback'], token_endpoint_auth_method: 'none',

@@ -218,4 +218,6 @@ Menu creation (2026-10-05, f66c9d4; CI37303346507 passed): versioned staff categ
 
 Option/category editing is verified by db9ae2b / CI37304792692: Arabic staff forms add/edit/disable options and rename/reorder categories through versioned original-core operations. No historical order is repriced.
 
-Image bridge (under verification): original tenant media storage/normalization, staff upload, versioned item assignment and bounded own-origin public delivery. See `prototype/platform/CORE-MEDIA.md` for limits, backups, orphan files and native browser-upload test boundary.
+Image bridge (3183508 / CI37306155756 verified): original tenant media storage/normalization, staff upload, versioned item assignment and bounded own-origin public delivery. See `prototype/platform/CORE-MEDIA.md` for limits, backups, orphan files and native browser-upload test boundary.
+
+Staff membership UI is under verification at `/manage/{tenant}/members`; see `prototype/platform/CORE-MEMBERS.md` for verified-ID onboarding, roles, aliases, transactional permission audit and migration/rollback boundaries.

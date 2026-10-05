@@ -25,6 +25,7 @@ const version = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER - 1);
 const memberInput = z.object({ role: z.enum(['owner', 'manager', 'supervisor', 'kitchen', 'cashier', 'courier']),
   permissions: z.array(z.enum(RESTAURANT_PERMISSIONS)).max(RESTAURANT_PERMISSIONS.length).optional(),
   enabled: z.boolean(), expectedVersion: version.nullable(),
+  displayName:z.string().trim().max(100).regex(/^[^\x00-\x1f\x7f]*$/).optional(),
 }).strict();
 function parse(schema, input) {
   const result = schema.safeParse(input);
@@ -33,7 +34,7 @@ function parse(schema, input) {
 }
 function safeRow(row) {
   return { principalId: row.principal_id, tenantId: row.tenant_id, role: row.role,
-    permissions: row.permissions, enabled: row.enabled, version: Number(row.version),
+    permissions: row.permissions, enabled: row.enabled, version: Number(row.version), displayName:row.display_name??'',
     ...(row.tenant_status ? { tenantStatus: row.tenant_status } : {}) };
 }
 
@@ -50,9 +51,9 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
     catch (error) { await db.query('ROLLBACK'); throw error; }
     finally { db.release(); }
   }
-  async function audit(db, actor, action, tenantId, target) {
-    await db.query('INSERT INTO platform_identity_audit(actor_id,action,tenant_id,target_id) VALUES($1,$2,$3,$4)',
-      [actor, action, tenantId, target]);
+  async function audit(db, actor, action, tenantId, target, details={}) {
+    await db.query('INSERT INTO platform_identity_audit(actor_id,action,tenant_id,target_id,details) VALUES($1,$2,$3,$4,$5)',
+      [actor, action, tenantId, target,JSON.stringify(details)]);
   }
   async function enabledIdentity(db, principalId) {
     parse(key, principalId);
@@ -83,11 +84,13 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
         enabled BOOLEAN NOT NULL DEFAULT TRUE, version BIGINT NOT NULL DEFAULT 1 CHECK(version>0),
         PRIMARY KEY(tenant_id,principal_id)
       );
+      ALTER TABLE platform_memberships ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT '';
       CREATE TABLE IF NOT EXISTS platform_identity_audit (
         id BIGSERIAL PRIMARY KEY, actor_id UUID NOT NULL REFERENCES platform_identities(id),
         action TEXT NOT NULL, tenant_id TEXT REFERENCES platform_tenants(id), target_id UUID REFERENCES platform_identities(id),
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+      ALTER TABLE platform_identity_audit ADD COLUMN IF NOT EXISTS details JSONB NOT NULL DEFAULT '{}'::jsonb;
     `);
   }
   async function verifiedIdentity(input) {
@@ -168,11 +171,12 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
           WHERE m.tenant_id=$1 AND m.principal_id<>$2 AND m.role='owner' AND m.enabled=TRUE AND i.enabled=TRUE LIMIT 1`, [tenantId, principalId]);
         if (!others.rows.length) throw problem(409, 'last_owner_required');
       }
-      const result = await db.query(`INSERT INTO platform_memberships(tenant_id,principal_id,role,permissions,enabled)
-        VALUES($1,$2,$3,$4,$5) ON CONFLICT(tenant_id,principal_id) DO UPDATE SET
-        role=EXCLUDED.role,permissions=EXCLUDED.permissions,enabled=EXCLUDED.enabled,version=platform_memberships.version+1 RETURNING *`,
-        [tenantId, principalId, change.role, JSON.stringify(permissions), change.enabled]);
-      await audit(db, actorId, 'membership_changed', tenantId, principalId);
+      const result = await db.query(`INSERT INTO platform_memberships(tenant_id,principal_id,role,permissions,enabled,display_name)
+        VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(tenant_id,principal_id) DO UPDATE SET
+        role=EXCLUDED.role,permissions=EXCLUDED.permissions,enabled=EXCLUDED.enabled,display_name=EXCLUDED.display_name,version=platform_memberships.version+1 RETURNING *`,
+        [tenantId, principalId, change.role, JSON.stringify(permissions), change.enabled,change.displayName??row?.display_name??'']);
+      const snapshot=value=>value?{role:value.role,permissions:value.permissions,enabled:value.enabled,version:Number(value.version)}:null;
+      await audit(db, actorId, 'membership_changed', tenantId, principalId,{before:snapshot(row),after:snapshot(result.rows[0]),displayNameChanged:(row?.display_name??'')!==result.rows[0].display_name});
       return safeRow(result.rows[0]);
     });
   }

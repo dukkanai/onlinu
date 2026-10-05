@@ -37,7 +37,7 @@ try {
     const browser=await app.auth.issue(id,undefined,{kind:'browser'}),oauth=await app.auth.issue(id,['orders:read','orders:write','events:read']);
     return{id,cookie:`__Host-platform_session=${browser.accessToken}`,token:oauth.accessToken};
   };
-  const alice=await make('alice'),bob=await make('bob');
+  const alice=await make('alice'),bob=await make('bob'),charlie=await make('charlie');
   await pool.query('UPDATE platform_identities SET platform_admin=TRUE WHERE id=$1',[alice.id]);
   await app.directory.createTenant(alice.id,{id:'restaurant-a',name:'Actual Go fixture',ownerId:alice.id});
   await app.directory.setTenantStatus(alice.id,'restaurant-a',{status:'active',expectedVersion:1});
@@ -369,6 +369,31 @@ try {
 
 
 
+      await page.goto(baseUrl+'/manage/restaurant-a/members');
+      const addMember=page.locator('form[action="/manage/restaurant-a/members"]');
+      await addMember.getByLabel('معرّف حساب الموظف',{exact:true}).fill(charlie.id);
+      await addMember.getByLabel('اسم الموظف داخل المطعم',{exact:true}).fill('Synthetic cook');
+      assert.equal(await addMember.getByLabel('حالة العضوية',{exact:true}).inputValue(),'false');
+      await addMember.getByRole('button',{name:'إضافة العضوية',exact:true}).click();
+      const memberForm=page.locator(`form[action="/manage/restaurant-a/members/${charlie.id}"]`);
+      await memberForm.locator('input[name="expectedVersion"][value="1"]').waitFor({state:'attached'});
+      await assert.rejects(app.directory.authorize(charlie.id,'restaurant-a','orders:read'),{code:'forbidden'});
+      for(const checkbox of await memberForm.locator('input[type="checkbox"]').all())await checkbox.uncheck();
+      await memberForm.getByLabel('عرض الطلبات',{exact:true}).check();
+      await memberForm.getByLabel('حالة العضوية',{exact:true}).selectOption('true');
+      await memberForm.getByRole('button',{name:'حفظ العضوية',exact:true}).click();
+      await memberForm.locator('input[name="expectedVersion"][value="2"]').waitFor({state:'attached'});
+      await app.directory.authorize(charlie.id,'restaurant-a','orders:read');
+      await assert.rejects(app.directory.authorize(charlie.id,'restaurant-a','orders:update'),{code:'forbidden'});
+      await memberForm.getByLabel('حالة العضوية',{exact:true}).selectOption('false');
+      await memberForm.getByRole('button',{name:'حفظ العضوية',exact:true}).click();
+      await memberForm.locator('input[name="expectedVersion"][value="3"]').waitFor({state:'attached'});
+      await assert.rejects(app.directory.authorize(charlie.id,'restaurant-a','orders:read'),{code:'forbidden'});
+      const ownerForm=page.locator(`form[action="/manage/restaurant-a/members/${alice.id}"]`);
+      await ownerForm.getByLabel('حالة العضوية',{exact:true}).selectOption('false');
+      await ownerForm.getByRole('button',{name:'حفظ العضوية',exact:true}).click();
+      await page.getByText('لا يمكن تعطيل أو تغيير دور آخر مالك نشط. عيّن مالكًا آخر أولًا.',{exact:true}).waitFor();
+      await app.directory.authorize(alice.id,'restaurant-a','members:manage');
       const registration=await app.auth.register({redirect_uris:['https://client.example/callback'],token_endpoint_auth_method:'none',grant_types:['authorization_code'],response_types:['code']});
       const verifier=randomBytes(32).toString('base64url');
       const grant={client_id:registration.client_id,redirect_uri:'https://client.example/callback',response_type:'code',resource:baseUrl+'/mcp',
