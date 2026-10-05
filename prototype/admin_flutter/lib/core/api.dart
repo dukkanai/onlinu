@@ -3,11 +3,18 @@ import 'auth.dart';
 import 'models.dart';
 import 'team_models.dart';
 import 'business_profile.dart';
+import 'delivery_models.dart';
 import 'transport.dart';
 
 abstract interface class CoreGateway {
   CoreSession get session;
   Future<CoreProfile> profile();
+  Future<CoreDelivery> delivery(String tenant);
+  Future<void> setDeliveryPricing(CoreDelivery expected,
+      {required String mode, required int fee, required int minimum});
+  Future<void> setDeliveryZone(CoreDelivery expected,
+      {required String district, required bool enabled, required int? fee});
+  Future<CoreGeography> geography(String tenant, String kind, {String? parent});
   Future<CoreBusinessProfile> businessProfile(String tenant);
   Future<void> patchBusinessProfile(
       CoreBusinessProfile expected, Map<String, String> changes);
@@ -83,7 +90,9 @@ class CoreApi implements CoreGateway {
         'version_conflict',
         'last_owner_required',
         'invalid_owner_permissions',
-        'identity_disabled'
+        'identity_disabled',
+        'invalid_delivery_zones',
+        'invalid_geography'
       };
       final raw = reply.data['error'];
       throw CoreException(safe.contains(raw) ? raw as String : 'request_failed',
@@ -97,6 +106,80 @@ class CoreApi implements CoreGateway {
       '/native/api/restaurants/${tenantKey(tenant)}/staff/orders';
   void _tenant(Map<String, dynamic> data, String tenant) {
     if (data['tenantId'] != tenant) invalidResponse();
+  }
+
+  @override
+  Future<CoreDelivery> delivery(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/delivery');
+    _tenant(data, tenant);
+    return CoreDelivery(data, tenantId: tenant);
+  }
+
+  @override
+  Future<CoreGeography> geography(String tenant, String kind,
+      {String? parent}) async {
+    if (!{'regions', 'cities', 'districts'}.contains(kind) ||
+        (kind == 'regions' ? parent != null : parent == null))
+      throw const CoreException('invalid_request');
+    final data = await _request('GET',
+        '/native/api/restaurants/${tenantKey(tenant)}/staff/geography/$kind${parent == null ? '' : '/${menuKey(parent)}'}');
+    _tenant(data, tenant);
+    return CoreGeography(data, kind, parent: parent);
+  }
+
+  @override
+  Future<void> setDeliveryPricing(CoreDelivery expected,
+      {required String mode, required int fee, required int minimum}) async {
+    if (!{'flat', 'district'}.contains(mode))
+      throw const CoreException('invalid_request');
+    deliveryAmount(fee);
+    deliveryAmount(minimum);
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/delivery/pricing',
+        body: {
+          'expectedVersion': expected.version,
+          'mode': mode,
+          'feeMinor': fee,
+          'minimumMinor': minimum
+        });
+    try {
+      _tenant(data, expected.tenantId);
+      final result = CoreDelivery(data, tenantId: expected.tenantId);
+      if (result.version <= expected.version ||
+          result.mode != mode ||
+          result.fee != fee ||
+          result.minimum != minimum) invalidResponse();
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
+  }
+
+  @override
+  Future<void> setDeliveryZone(CoreDelivery expected,
+      {required String district,
+      required bool enabled,
+      required int? fee}) async {
+    menuKey(district);
+    if (fee != null) deliveryAmount(fee);
+    if (enabled && fee == null) throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/delivery/zone',
+        body: {
+          'expectedVersion': expected.version,
+          'zone': {'districtId': district, 'enabled': enabled, 'feeMinor': fee}
+        });
+    try {
+      _tenant(data, expected.tenantId);
+      final result = CoreDelivery(data, tenantId: expected.tenantId);
+      final zones = result.zones.where((v) => v.id == district);
+      if (result.version <= expected.version ||
+          zones.length != 1 ||
+          zones.single.enabled != enabled ||
+          zones.single.fee != fee) invalidResponse();
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
   }
 
   @override

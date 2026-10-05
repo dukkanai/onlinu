@@ -398,6 +398,27 @@ try {
 
 
 
+      await page.goto(baseUrl+'/manage/restaurant-a/delivery');
+      await page.getByLabel('المنطقة',{exact:true}).selectOption('sa-r-1');
+      await page.getByRole('button',{name:'عرض المدن',exact:true}).click();
+      await page.locator('select[name="city"] option[value="sa-c-1"]').waitFor({state:'attached'});
+      await page.getByLabel('المدينة',{exact:true}).selectOption('sa-c-1');
+      await page.getByRole('button',{name:'عرض الأحياء',exact:true}).click();
+      await page.locator('select[name="districtId"] option[value="sa-d-1"]').waitFor({state:'attached'});
+      const zoneForm=page.locator('form[action$="/delivery/zone"]').filter({has:page.locator('select[name="districtId"]')});
+      await zoneForm.getByLabel('الحي',{exact:true}).selectOption('sa-d-1');
+      await zoneForm.getByLabel('حالة الحي',{exact:true}).selectOption('true');
+      await zoneForm.getByLabel('رسم الحي بالريال',{exact:true}).fill('٠');
+      await zoneForm.getByLabel('راجعت أثر التغيير على الطلبات الجديدة',{exact:true}).check();
+      await zoneForm.getByRole('button',{name:'حفظ حي التوصيل',exact:true}).click();
+      await page.waitForURL(/\/delivery\?filter=sa-d-1$/);
+      const zoneState=(await send('/api/restaurants/restaurant-a/staff/delivery',{cookie:alice.cookie})).data;
+      assert.equal(zoneState.zones.find(v=>v.districtId==='sa-d-1').feeMinor,0);
+      const deliveryPricing=page.locator('form[action$="/delivery/pricing"]');
+      await deliveryPricing.getByLabel('راجعت أثر التغيير على الطلبات الجديدة',{exact:true}).check();
+      await deliveryPricing.getByRole('button',{name:'حفظ تسعير التوصيل',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${zoneState.version+1}"]`).first().waitFor({state:'attached'});
+
       const beforeProfile=(await send(profilePath,{cookie:alice.cookie})).data;
       await page.goto(baseUrl+'/manage/restaurant-a/profile');
       await page.getByLabel('ساعات العمل (نص معلوماتي)',{exact:true}).fill('Synthetic browser hours');

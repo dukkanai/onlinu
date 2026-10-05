@@ -181,6 +181,58 @@ void main() {
     expect(controller.channels, isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets(
+      'Windows geographic selection and zero-fee review preserve delivery semantics',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile =
+          profileFixture(permissions: ['settings:read', 'settings:update']);
+    final c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الدخول عبر المتصفح'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'مناطق التوصيل'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('إعداد حي جديد'));
+    await tester.pumpAndSettle();
+    Future<void> select(String label, String value) async {
+      final field = find.widgetWithText(DropdownButtonFormField<String>, label);
+      await tester.ensureVisible(field);
+      await tester.pumpAndSettle();
+      await tester.tap(field);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(value).last);
+      await tester.pumpAndSettle();
+    }
+
+    await select('المنطقة', 'منطقة تجريبية');
+    await select('المدينة', 'مدينة تجريبية');
+    await select('الحي', 'حي تجريبي');
+    final fee = find.widgetWithText(TextField, 'رسم الحي بالريال');
+    await tester.ensureVisible(fee);
+    await tester.pumpAndSettle();
+    await tester.enterText(fee, '٠');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    final enabled = find.widgetWithText(SwitchListTile, 'الحي مفعّل للتوصيل');
+    await tester.ensureVisible(enabled);
+    await tester.pumpAndSettle();
+    await tester.tap(enabled);
+    await tester.pumpAndSettle();
+    await capture(tester, boundary, 'windows-delivery-zone.png');
+    await tester.tap(find.text('مراجعة التوصيل'));
+    await tester.pumpAndSettle();
+    expect(api.deliveryWrites, 0);
+    await capture(tester, boundary, 'windows-delivery-review.png');
+    await tester.tap(find.text('تأكيد حفظ التوصيل'));
+    await tester.pumpAndSettle();
+    expect(api.deliveryWrites, 1);
+    expect(c.coverage!.zones.single.fee, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('Windows public business profile requires publication review',
       (tester) async {
     final api = FakeCoreGateway()

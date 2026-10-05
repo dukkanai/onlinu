@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -236,6 +236,37 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           if(req.headers.accept?.includes('application/json'))return json(res,200,{order});
           return redirect(res,'/checkout/'+checkoutId,303);
         }
+      }
+      const managementDelivery=/^\/manage\/([a-z0-9-]{1,64})\/delivery(?:\/(pricing|zone))?$/.exec(url.pathname);
+      if(managementDelivery&&orderClient){
+        const [,tenantId,action]=managementDelivery;
+        if(req.headers.authorization)throw problem(403,'browser_session_required');
+        if(!(req.method==='GET'&&!action||req.method==='POST'&&action))throw problem(400,'invalid_request');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname+url.search));
+        const who=await browser(req),membership=await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');
+        if(req.method==='GET'){
+          const query=fields([...url.searchParams]),region=query.region||'',city=query.city||'',search=query.filter||'',pageIndex=Number(query.page||'1')-1;
+          if(Object.keys(query).some(k=>!['region','city','filter','page'].includes(k))||search.length>120||!Number.isInteger(pageIndex)||pageIndex<0||pageIndex>199||city&&!region)throw problem(400,'invalid_request');
+          const data=await orderClient.delivery(tenantId,who.id),regions=await orderClient.geography(tenantId,who.id,'regions');
+          if(region&&!regions.regions.some(v=>v.id===region))throw problem(400,'invalid_request');
+          const cities=region?await orderClient.geography(tenantId,who.id,'cities',region):null;
+          if(city&&!cities.cities.some(v=>v.id===city))throw problem(400,'invalid_request');
+          const districts=city?await orderClient.geography(tenantId,who.id,'districts',city):null;
+          htmlHeaders(res);res.end(staffDeliveryPage({tenantId,data,regions,cities,districts,region,city,search,pageIndex,canUpdate:membership.permissions.includes('settings:update'),csrf:auth.csrfToken(req)}));return;
+        }
+        if(url.search)throw problem(400,'invalid_request');
+        const input=await body(req);auth.verifyCsrf(req,input.csrf);
+        const allowed=action==='pricing'?['csrf','expectedVersion','reviewed','mode','feeMinor','minimumMinor']:['csrf','expectedVersion','reviewed','districtId','enabled','feeMinor'];
+        if(input.reviewed!=='yes'||Object.keys(input).some(k=>!allowed.includes(k)))throw problem(400,'invalid_request');
+        const fee=input.feeMinor===''?null:menuPriceMinor(input.feeMinor);
+        if(action==='pricing'){
+          const minimum=menuPriceMinor(input.minimumMinor);if(fee===null||minimum===null)throw problem(400,'invalid_request');
+          await orderClient.patchDelivery(tenantId,who.id,action,{expectedVersion:Number(input.expectedVersion),mode:input.mode,feeMinor:fee,minimumMinor:minimum});
+        }else{
+          if(!['true','false'].includes(input.enabled)||typeof input.feeMinor!=='string'||input.feeMinor!==''&&fee===null||input.enabled==='true'&&fee===null)throw problem(400,'invalid_request');
+          await orderClient.patchDelivery(tenantId,who.id,action,{expectedVersion:Number(input.expectedVersion),zone:{districtId:input.districtId,enabled:input.enabled==='true',feeMinor:fee}});
+        }
+        return redirect(res,'/manage/'+tenantId+'/delivery'+(action==='zone'?'?filter='+encodeURIComponent(input.districtId):''),303);
       }
       const managementProfile=/^\/manage\/([a-z0-9-]{1,64})\/profile$/.exec(url.pathname);
       if(managementProfile&&orderClient&&['GET','POST'].includes(req.method)){

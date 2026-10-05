@@ -122,3 +122,25 @@ The original catalogue row-lock CAS and transactional actor audit are reused; fo
 Go tests cover preservation, stale versions, validation and rollback on audit failure.
 Real Dart HTTP tests cover the narrow update and stale conflicts. Chromium and Windows
 form acceptance runs in CI; actual merchant data remains outside these synthetic tests.
+
+## Delivery pricing and district coverage increment
+
+Native and browser forms reuse the original flat/district fee policy and original
+geographic hierarchy. Each pricing edit or single-zone edit has catalogue CAS,
+settings permissions and actor-attributed transactional audit. A positive enabled
+flag requires an explicitly configured fee; zero is free, null is unconfigured.
+Retired districts can be disabled but not re-enabled. Public dataset name, GPL-2.0
+license and non-official/incomplete-data warning are retained. Descriptive geographic
+names are not quote authority; the original save transaction validates active parents.
+
+The UI reviews the effect on new orders across channels. Existing order fee snapshots,
+other zones, radius/location requirements, payment settings, table capabilities and
+appearance drafts remain unchanged. No automatic write retry occurs. This increment
+does not implement per-kilometre pricing, native geographic corrections, courier
+assignment/tracking, or changing the restaurant's service/global-opening flags.
+
+Local tests cover historical fee preservation, explicit zero/missing fees, hierarchy,
+stale versions, retired-zone disabling, permission loss and audit rollback. Actual
+Dart TLS tests traverse the geographic hierarchy, save a free zone, toggle pricing
+and restore the original mode. Chromium/Windows form verification is a separate CI
+gate; all data used by these fixtures is synthetic.

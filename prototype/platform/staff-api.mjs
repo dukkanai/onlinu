@@ -5,6 +5,17 @@ import {problem} from './auth.mjs';
 // registry endpoints are deliberately not included here.
 export function createStaffApi({directory,orderClient,body,json,uploadSlots={active:0}}){
   return async(req,res,who,url,{restaurantOnly=false}={})=>{
+        const deliveryRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/delivery(?:\/(pricing|zone))?$/.exec(url.pathname);
+        if(deliveryRoute&&orderClient){
+          const [,tenantId,action]=deliveryRoute;if(url.search||!(req.method==='GET'&&!action||req.method==='POST'&&action))throw problem(400,'invalid_request');
+          await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');
+          return json(res,200,req.method==='GET'?await orderClient.delivery(tenantId,who.id):await orderClient.patchDelivery(tenantId,who.id,action,await body(req)));
+        }
+        const geoRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/geography\/(regions|cities|districts)(?:\/([A-Za-z0-9][A-Za-z0-9_-]{0,79}))?$/.exec(url.pathname);
+        if(geoRoute&&orderClient&&req.method==='GET'){
+          if(url.search)throw problem(400,'invalid_request');const [,tenantId,kind,parent]=geoRoute;await directory.authorize(who.id,tenantId,'settings:read');
+          return json(res,200,await orderClient.geography(tenantId,who.id,kind,parent));
+        }
         const profileRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/profile$/.exec(url.pathname);
         if(profileRoute&&orderClient&&['GET','POST'].includes(req.method)){
           if(url.search)throw problem(400,'invalid_request');

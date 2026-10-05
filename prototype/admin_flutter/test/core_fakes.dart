@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:restaurant_admin_prototype/core/api.dart';
 import 'package:restaurant_admin_prototype/core/team_models.dart';
 import 'package:restaurant_admin_prototype/core/business_profile.dart';
+import 'package:restaurant_admin_prototype/core/delivery_models.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
 import 'package:restaurant_admin_prototype/core/models.dart';
 import 'package:restaurant_admin_prototype/core/transport.dart';
@@ -262,6 +263,95 @@ class FakeCoreGateway implements CoreGateway {
   Completer<CoreStockItem>? stockWriteGate;
   String? writeTenant, writeStatus;
   int? writeVersion;
+  Map<String, dynamic> deliveryData = {
+    'version': 1,
+    'currency': 'SAR',
+    'mode': 'flat',
+    'feeMinor': 500,
+    'minimumMinor': 0,
+    'enabled': true,
+    'acceptingOrders': true,
+    'requireLocation': false,
+    'radiusKm': 0,
+    'zones': <Map<String, dynamic>>[]
+  };
+  int deliveryWrites = 0;
+  @override
+  Future<CoreDelivery> delivery(String tenant) async =>
+      CoreDelivery(deliveryData, tenantId: tenant);
+  @override
+  Future<void> setDeliveryPricing(CoreDelivery expected,
+      {required String mode, required int fee, required int minimum}) async {
+    deliveryWrites++;
+    if (writeError != null) throw writeError!;
+    deliveryData = {
+      ...deliveryData,
+      'version': expected.version + 1,
+      'mode': mode,
+      'feeMinor': fee,
+      'minimumMinor': minimum
+    };
+  }
+
+  @override
+  Future<void> setDeliveryZone(CoreDelivery expected,
+      {required String district,
+      required bool enabled,
+      required int? fee}) async {
+    deliveryWrites++;
+    if (writeError != null) throw writeError!;
+    deliveryData = {
+      ...deliveryData,
+      'version': expected.version + 1,
+      'zones': [
+        ...(deliveryData['zones'] as List)
+            .where((v) => object(v)['districtId'] != district),
+        {
+          'districtId': district,
+          'enabled': enabled,
+          'feeMinor': fee,
+          'nameAr': 'حي تجريبي',
+          'nameEn': 'Test district',
+          'cityName': 'مدينة تجريبية',
+          'regionName': 'منطقة تجريبية',
+          'active': true
+        }
+      ]
+    };
+  }
+
+  @override
+  Future<CoreGeography> geography(String tenant, String kind,
+          {String? parent}) async =>
+      CoreGeography({
+        'version': 1,
+        'source': {
+          'name': 'Synthetic geography',
+          'license': 'Test fixture',
+          'notice': 'Synthetic only'
+        },
+        'regions': [
+          {'id': 'r1', 'nameAr': 'منطقة تجريبية', 'nameEn': 'Region'}
+        ],
+        'cities': [
+          {
+            'id': 'c1',
+            'regionId': 'r1',
+            'nameAr': 'مدينة تجريبية',
+            'nameEn': 'City'
+          }
+        ],
+        'districts': [
+          {
+            'id': 'd1',
+            'regionId': 'r1',
+            'cityId': 'c1',
+            'nameAr': 'حي تجريبي',
+            'nameEn': 'District',
+            'custom': false
+          }
+        ]
+      }, kind, parent: parent);
   CoreBusinessProfile currentBusinessProfile = CoreBusinessProfile({
     'version': 1,
     'name': 'مطعم تجريبي',

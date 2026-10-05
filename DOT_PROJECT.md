@@ -268,3 +268,16 @@ staff/native endpoint is `/staff/profile`; the browser form is
 requires review in the UI. No financial/private configuration, branding draft,
 delivery fee or table capability enters this narrow interface. Opening hours remain
 informational text; changing them does not schedule automatic opening/closing.
+
+### Delivery pricing and district coverage
+
+Signed `/platform-api/staff/delivery` and `/staff/geography` operations project the
+original catalogue and community geography. Central native/browser routes require
+settings read/update permissions. Each write merges either pricing or one zone;
+full settings replacement is not accepted. Required numeric/bool command fields
+cannot silently default to free delivery or disabled state when omitted. Original
+catalogue locking, active-geography validation and atomic audit protect changes.
+Existing order fees stay immutable. Browser zone lists/search are paginated in
+50-row pages; native lists use the same page size. Geographic names are descriptive
+metadata, not financial authority. Global service flags, radius/location settings,
+couriers and per-kilometre pricing are outside this increment.

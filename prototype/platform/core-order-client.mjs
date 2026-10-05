@@ -28,7 +28,7 @@ export function allowedPaymentURL(provider, raw) {
 const paymentView=z.object({attemptId:z.string().max(128),status:z.string().max(40),provider:z.string().max(40),mode:z.enum(['','test','live']),
   url:z.string().url().optional(),widget:z.object({checkoutId:z.string().max(512),scriptUrl:z.string().url(),brands:z.array(z.string().max(40)),returnUrl:z.string().url()}).optional(),
 });
-const safeCodes = new Set(['invalid_request','invalid_quantity','invalid_option','phone_required',
+const safeCodes = new Set(['invalid_request','invalid_delivery_zones','invalid_geography','invalid_quantity','invalid_option','phone_required',
   'address_required','country_required','location_required','outside_delivery_area','invalid_district',
   'district_unavailable','delivery_minimum','delivery_unavailable','store_closed','mode_unavailable',
   'item_unavailable','out_of_stock','payment_required','payment_unavailable','price_changed','conflict',
@@ -52,6 +52,11 @@ const menuPatch=z.object({expectedVersion:z.number().int().positive().max(Number
 const profileFields={name:z.string().min(1).max(120),description:z.string().max(2000),address:z.string().max(1000),phone:z.string().max(40),openingHours:z.string().max(1000),pickupInstructions:z.string().max(2000)};
 const profileView=z.object({version:z.number().int().positive(),...profileFields});
 const profilePatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),...Object.fromEntries(Object.entries(profileFields).map(([key,value])=>[key,value.optional()]))}).strict().refine(value=>Object.keys(value).length>1);
+
+const deliveryZone=z.object({districtId:menuId,enabled:z.boolean(),feeMinor:z.number().int().min(0).max(100_000_000).nullable()}).strict();
+const deliveryView=z.object({version:z.number().int().positive(),currency:z.literal('SAR'),mode:z.enum(['flat','district']),feeMinor:z.number().int().min(0).max(100_000_000),minimumMinor:z.number().int().min(0).max(100_000_000),enabled:z.boolean(),acceptingOrders:z.boolean(),requireLocation:z.boolean(),radiusKm:z.number().min(0).max(500),zones:z.array(deliveryZone.extend({nameAr:z.string().max(4096),nameEn:z.string().max(4096),cityName:z.string().max(4096),regionName:z.string().max(4096),active:z.boolean()})).max(10000)});
+const geographyName={id:menuId,nameAr:z.string().max(4096),nameEn:z.string().max(4096)};
+const geographyView=z.object({version:z.number().int().positive(),source:z.object({name:z.string().max(4096),revision:z.string().max(4096),license:z.string().max(100),notice:z.string().max(4096)}),regions:z.array(z.object(geographyName)).max(10000),cities:z.array(z.object({...geographyName,regionId:menuId})).max(10000),districts:z.array(z.object({...geographyName,regionId:menuId,cityId:menuId,custom:z.boolean()})).max(10000)});
 
 export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchImpl = fetch, now = Date.now }) {
   const source = new URL(issuer);
@@ -101,6 +106,17 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    delivery(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/delivery',undefined,'','staff:settings:read',deliveryView,2_000_000);},
+    patchDelivery(tenantId,subject,action,input){
+      const version=z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1);
+      const schema=action==='pricing'?z.object({expectedVersion:version,mode:z.enum(['flat','district']),feeMinor:z.number().int().min(0).max(100_000_000),minimumMinor:z.number().int().min(0).max(100_000_000)}).strict():z.object({expectedVersion:version,zone:deliveryZone}).strict();
+      const parsed=schema.safeParse(input);if(!['pricing','zone'].includes(action)||!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST','/platform-api/staff/delivery/'+action,parsed.data,'','staff:settings:update',deliveryView,2_000_000);
+    },
+    geography(tenantId,subject,kind,parent){
+      if(!['regions','cities','districts'].includes(kind)||(kind==='regions'?parent!==undefined:!menuId.safeParse(parent).success))throw problem(400,'invalid_request');
+      return request(tenantId,subject,'GET','/platform-api/staff/geography/'+kind+(parent?'/'+parent:''),undefined,'','staff:settings:read',geographyView,2_000_000);
+    },
     profile(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/profile',undefined,'','staff:settings:read',profileView);},
     patchProfile(tenantId,subject,input){const parsed=profilePatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/profile',parsed.data,'','staff:settings:update',profileView);},
     uploadImage(tenantId,subject,bytes){

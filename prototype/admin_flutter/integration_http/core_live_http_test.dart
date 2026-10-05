@@ -186,6 +186,34 @@ void main() {
         throwsA(isA<CoreException>()
             .having((v) => v.code, 'stale profile', 'catalog_changed')));
 
+    final delivery = await api.delivery('restaurant-a');
+    final regions = await api.geography('restaurant-a', 'regions');
+    expect(regions.places.map((v) => v.id), contains('sa-r-1'));
+    expect(regions.license, 'GPL-2.0');
+    final cities =
+        await api.geography('restaurant-a', 'cities', parent: 'sa-r-1');
+    expect(cities.places.single.id, 'sa-c-1');
+    final districts =
+        await api.geography('restaurant-a', 'districts', parent: 'sa-c-1');
+    expect(districts.places.single.id, 'sa-d-1');
+    await api.setDeliveryZone(delivery,
+        district: 'sa-d-1', enabled: true, fee: 0);
+    final zoned = await api.delivery('restaurant-a');
+    expect(zoned.zones.single.fee, 0);
+    expect(zoned.zones.single.label, 'السلام');
+    expect(zoned.zones.single.active, true);
+    await expectLater(
+        api.setDeliveryPricing(delivery,
+            mode: 'district', fee: delivery.fee, minimum: delivery.minimum),
+        throwsA(isA<CoreException>()
+            .having((v) => v.code, 'stale delivery', 'catalog_changed')));
+    await api.setDeliveryPricing(zoned,
+        mode: 'district', fee: delivery.fee, minimum: delivery.minimum);
+    final priced = await api.delivery('restaurant-a');
+    expect(priced.mode, 'district');
+    await api.setDeliveryPricing(priced,
+        mode: delivery.mode, fee: delivery.fee, minimum: delivery.minimum);
+
     final menu = await api.menu('restaurant-a'), item = menu.items.first;
     await api.patchMenu(menu, item,
         name: item.name,

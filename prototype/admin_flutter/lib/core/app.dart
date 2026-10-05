@@ -8,6 +8,7 @@ import 'channels_pane.dart';
 import 'menu_pane.dart';
 import 'team_pane.dart';
 import 'business_pane.dart';
+import 'delivery_pane.dart';
 
 class CoreApp extends StatefulWidget {
   const CoreApp({super.key, required this.controller});
@@ -269,6 +270,16 @@ class CoreScreen extends StatelessWidget {
                                         unawaited(c.selectSection(
                                             CoreSection.business));
                                       }),
+                          if (member.can('settings:read'))
+                            ChoiceChip(
+                                label: const Text('مناطق التوصيل'),
+                                selected: c.section == CoreSection.coverage,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(c.selectSection(
+                                            CoreSection.coverage));
+                                      }),
                           if (member.can('members:manage'))
                             ChoiceChip(
                                 label: const Text('الفريق'),
@@ -290,6 +301,11 @@ class CoreScreen extends StatelessWidget {
                                             CoreSection.channels));
                                       }),
                         ]),
+                      if (c.section == CoreSection.coverage &&
+                          member?.can('settings:read') == true)
+                        DeliveryPane(
+                            key: ValueKey('coverage-${c.selectedTenant}'),
+                            controller: c),
                       if (c.section == CoreSection.business &&
                           member?.can('settings:read') == true)
                         BusinessPane(

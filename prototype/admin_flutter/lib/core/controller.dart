@@ -5,9 +5,10 @@ import 'auth.dart';
 import 'models.dart';
 import 'team_models.dart';
 import 'business_profile.dart';
+import 'delivery_models.dart';
 import 'transport.dart';
 
-enum CoreSection { orders, stock, channels, menu, team, business }
+enum CoreSection { orders, stock, channels, menu, team, business, coverage }
 
 extension CoreSectionPermission on CoreSection {
   String get permission => switch (this) {
@@ -16,7 +17,8 @@ extension CoreSectionPermission on CoreSection {
         CoreSection.channels => 'channels:manage',
         CoreSection.menu => 'menu:read',
         CoreSection.team => 'members:manage',
-        CoreSection.business => 'settings:read'
+        CoreSection.business => 'settings:read',
+        CoreSection.coverage => 'settings:read'
       };
 }
 
@@ -33,6 +35,7 @@ class CoreController extends ChangeNotifier {
   List<CoreChannel> channels = const [];
   CoreMenu? menu;
   CoreBusinessProfile? business;
+  CoreDelivery? coverage;
   List<CoreTeamMember> team = const [];
   CoreProfile? profile;
   String? selectedTenant;
@@ -68,6 +71,7 @@ class CoreController extends ChangeNotifier {
   void _clearData() {
     menu = null;
     business = null;
+    coverage = null;
     team = const [];
     channels = const [];
     stock = const [];
@@ -217,6 +221,10 @@ class CoreController extends ChangeNotifier {
         final result = await api.channels(tenant);
         if (!_current(generation)) return;
         channels = result;
+      } else if (section == CoreSection.coverage) {
+        final result = await api.delivery(tenant);
+        if (!_current(generation)) return;
+        coverage = result;
       } else if (section == CoreSection.business) {
         final result = await api.businessProfile(tenant);
         if (!_current(generation)) return;
@@ -619,6 +627,72 @@ class CoreController extends ChangeNotifier {
     }
   }
 
+  Future<CoreGeography> geography(String kind, {String? parent}) async {
+    final tenant = selectedTenant, generation = _generation;
+    if (!signedIn ||
+        tenant == null ||
+        section != CoreSection.coverage ||
+        membership?.can('settings:read') != true)
+      throw const CoreException('forbidden');
+    try {
+      final result = await api.geography(tenant, kind, parent: parent);
+      if (!_current(generation) || tenant != selectedTenant)
+        throw const CoreException('cancelled');
+      if (!signedIn || membership?.can('settings:read') != true)
+        throw const CoreException('forbidden', status: 403);
+      return result;
+    } catch (error) {
+      if (_current(generation)) {
+        _failure(error);
+        _emit();
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> deliveryPricing(CoreDelivery expected,
+          {required String mode, required int fee, required int minimum}) =>
+      _deliveryWrite(
+          expected,
+          () => api.setDeliveryPricing(expected,
+              mode: mode, fee: fee, minimum: minimum));
+  Future<void> deliveryZone(CoreDelivery expected,
+          {required String district,
+          required bool enabled,
+          required int? fee}) =>
+      _deliveryWrite(
+          expected,
+          () => api.setDeliveryZone(expected,
+              district: district, enabled: enabled, fee: fee));
+  Future<void> _deliveryWrite(
+      CoreDelivery expected, Future<void> Function() write) async {
+    if (!_writeGuard(
+        expected.tenantId, 'settings:update', CoreSection.coverage)) return;
+    if (coverage == null || coverage!.version != expected.version) {
+      message = 'تغيرت رسوم أو مناطق التوصيل. افتح النسخة الحالية.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await write();
+      if (_current(generation))
+        message = 'حُفظت إعدادات التوصيل. رسوم الطلبات السابقة لم تتغير.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
   Future<void> patchBusiness(
       CoreBusinessProfile expected, Map<String, String> changes) async {
     if (!_writeGuard(
@@ -774,6 +848,10 @@ String errorMessage(Object error) {
     'access_denied' => 'أُلغي تسجيل الدخول.',
     'secure_storage_unavailable' =>
       'تعذر الوصول إلى مخزن النظام الآمن. لن تُحفظ الجلسة في ملف عادي.',
+    'invalid_delivery_zones' =>
+      'تحقق من أن الحي متاح وأن له رسم توصيل محددًا. الصفر يعني توصيلًا مجانيًا.',
+    'invalid_geography' =>
+      'تعذر اختيار هذه المنطقة أو المدينة. حدّث البيانات الجغرافية.',
     'identity_disabled' =>
       'يجب أن يسجل الموظف الدخول بحساب موثّق أولًا وأن يكون حسابه مفعّلًا.',
     'last_owner_required' => 'لا يمكن تعطيل أو إزالة آخر مالك مفعّل للمطعم.',

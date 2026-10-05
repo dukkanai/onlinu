@@ -305,6 +305,9 @@ func TestPlatformOrderNodeSignatureCompatibility(t *testing.T) {
 	if _, err = s.restaurant.SaveCatalog(context.Background(), catalog); err != nil {
 		t.Fatal(err)
 	}
+	if err = restaurantImportGeographyRecords(context.Background(), s.restaurant.db, restaurantGeographyFixtureRecords(), "synthetic-platform-geography"); err != nil {
+		t.Fatal(err)
+	}
 	payments, err := newRestaurantPayments(context.Background(), s.restaurant.db, s.orders, "https://restaurant.test")
 	if err != nil {
 		t.Fatal(err)
