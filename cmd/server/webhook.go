@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -12,37 +14,84 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-var webhookClient = &http.Client{Timeout: 10 * time.Second}
+var webhookClient = &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
 // dispatchWebhook envia um evento para a URL de webhook da sessão (se houver),
-// de forma assíncrona. Formato: {session, event, timestamp, data}.
+// via a durable at-least-once outbox. Receivers must deduplicate by delivery ID.
 func (s *Session) dispatchWebhook(event string, data any) {
 	url := s.getWebhook()
 	if url == "" {
 		return
 	}
+	id := newSessionID()
+	chatKey := ""
+	if fields, ok := data.(map[string]any); ok {
+		if chat, ok := fields["chat"].(string); ok {
+			chatKey = chat
+		}
+	}
 	body, err := json.Marshal(map[string]any{
-		"session":   s.id,
-		"event":     event,
-		"timestamp": time.Now().UnixMilli(),
-		"data":      data,
+		"deliveryId": id,
+		"session":    s.id,
+		"event":      event,
+		"timestamp":  time.Now().UnixMilli(),
+		"data":       data,
 	})
 	if err != nil {
 		return
 	}
-	go func() {
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(body))
-		if err != nil {
+	if s.mgr == nil || s.mgr.store == nil {
+		return
+	}
+	// Never log the target URL: it may include receiver credentials.
+	if _, err = s.mgr.store.db.ExecContext(s.mgr.appCtx, `INSERT INTO session_webhook_outbox(id,session_id,target,event,payload,chat_key) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, id, s.id, url, event, body, chatKey); err != nil {
+		s.log.Error("webhook enqueue failed; delivery not guaranteed", "event", event, "err", err)
+	}
+}
+
+func (m *SessionManager) drainSessionWebhooks(ctx context.Context) {
+	for n := 0; n < 10; n++ {
+		token := newSessionID()
+		var id, target string
+		var body []byte
+		var attempts int
+		err := m.store.db.QueryRowContext(ctx, `WITH candidate AS (
+ SELECT q.id FROM session_webhook_outbox q WHERE NOT q.dead AND q.next_at<=now() AND (q.lease_until IS NULL OR q.lease_until<now())
+ AND NOT EXISTS(SELECT 1 FROM session_webhook_outbox prior WHERE prior.session_id=q.session_id AND prior.chat_key=q.chat_key AND NOT prior.dead AND (prior.created_at,prior.id)<(q.created_at,q.id))
+ ORDER BY q.created_at,q.id FOR UPDATE SKIP LOCKED LIMIT 1)
+ UPDATE session_webhook_outbox q SET lease_token=$1,lease_until=now()+interval '1 minute' FROM candidate c WHERE q.id=c.id RETURNING q.id,q.target,q.payload,q.attempts`, token).Scan(&id, &target, &body, &attempts)
+		if errors.Is(err, sql.ErrNoRows) {
 			return
 		}
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := webhookClient.Do(req)
 		if err != nil {
-			s.log.Debug("webhook post failed", "url", url, "err", err)
+			m.log.Error("webhook claim failed", "err", err)
 			return
 		}
-		_ = resp.Body.Close()
-	}()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Astra-Delivery-ID", id)
+			req.Header.Set("Idempotency-Key", id)
+			var response *http.Response
+			response, err = webhookClient.Do(req)
+			if err == nil {
+				response.Body.Close()
+				if response.StatusCode < 200 || response.StatusCode >= 300 {
+					err = errors.New("webhook non-success status")
+				}
+			}
+		}
+		if err == nil {
+			_, err = m.store.db.ExecContext(ctx, `DELETE FROM session_webhook_outbox WHERE id=$1 AND lease_token=$2`, id, token)
+		} else {
+			attempts++
+			delay := outboxBackoff(attempts)
+			_, err = m.store.db.ExecContext(ctx, `UPDATE session_webhook_outbox SET attempts=$3,next_at=$4,dead=$5,lease_until=NULL,lease_token='' WHERE id=$1 AND lease_token=$2`, id, token, attempts, time.Now().Add(delay), attempts >= cwMaxAttempts)
+		}
+		if err != nil {
+			m.log.Error("webhook result persistence failed; receiver may see retry", "delivery_id", id)
+		}
+	}
 }
 
 // summarizeMessage extrai os campos úteis de uma mensagem recebida e inclui o

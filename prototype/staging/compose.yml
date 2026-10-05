@@ -1,0 +1,230 @@
+# Isolated, authenticated staging with synthetic data only.
+# Never run this project against the prototype or legacy volumes.
+name: restaurant-saas-staging
+
+x-service: &service
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"]
+  restart: unless-stopped
+  stop_grace_period: 20s
+  pids_limit: 128
+  mem_limit: 256m
+  cpus: 0.50
+  logging:
+    driver: json-file
+    options: {max-size: 5m, max-file: "2"}
+
+x-postgres: &postgres
+  image: postgres:16-bookworm
+  command: [postgres, -c, shared_buffers=32MB, -c, max_connections=40, -c, work_mem=2MB, -c, maintenance_work_mem=32MB]
+  healthcheck:
+    test: [CMD-SHELL, "pg_isready -U staging_bootstrap -d postgres"]
+    interval: 3s
+    timeout: 3s
+    retries: 30
+  restart: unless-stopped
+  mem_limit: 192m
+  cpus: 0.50
+  pids_limit: 128
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options: {max-size: 5m, max-file: "2"}
+
+services:
+  platform-db:
+    <<: *postgres
+    environment:
+      POSTGRES_USER: staging_bootstrap
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/platform_bootstrap_password
+      APP_DB: staging_platform
+      APP_ROLE: staging_platform_app
+      APP_PASSWORD_FILE: /run/secrets/platform_app_password
+    secrets: [platform_bootstrap_password, platform_app_password]
+    volumes:
+      - platform-db:/var/lib/postgresql/data
+      - ./init-app-db.sh:/docker-entrypoint-initdb.d/01-app.sh:ro
+    networks: [platform-data]
+  tenant-a-db:
+    <<: *postgres
+    environment:
+      POSTGRES_USER: staging_bootstrap
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/tenant_a_bootstrap_password
+      APP_DB: staging_restaurant_a
+      APP_ROLE: staging_restaurant_a_app
+      APP_PASSWORD_FILE: /run/secrets/tenant_a_app_password
+    secrets: [tenant_a_bootstrap_password, tenant_a_app_password]
+    volumes:
+      - tenant-a-db:/var/lib/postgresql/data
+      - ./init-app-db.sh:/docker-entrypoint-initdb.d/01-app.sh:ro
+    networks: [tenant-a-data]
+  tenant-b-db:
+    <<: *postgres
+    environment:
+      POSTGRES_USER: staging_bootstrap
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/tenant_b_bootstrap_password
+      APP_DB: staging_restaurant_b
+      APP_ROLE: staging_restaurant_b_app
+      APP_PASSWORD_FILE: /run/secrets/tenant_b_app_password
+    secrets: [tenant_b_bootstrap_password, tenant_b_app_password]
+    volumes:
+      - tenant-b-db:/var/lib/postgresql/data
+      - ./init-app-db.sh:/docker-entrypoint-initdb.d/01-app.sh:ro
+    networks: [tenant-b-data]
+  identity-db:
+    <<: *postgres
+    environment:
+      POSTGRES_USER: staging_bootstrap
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/identity_bootstrap_password
+      APP_DB: staging_identity
+      APP_ROLE: staging_identity_app
+      APP_PASSWORD_FILE: /run/secrets/identity_app_password
+    secrets: [identity_bootstrap_password, identity_app_password]
+    volumes:
+      - identity-db:/var/lib/postgresql/data
+      - ./init-app-db.sh:/docker-entrypoint-initdb.d/01-app.sh:ro
+    networks: [identity-data]
+  tenant-a:
+    <<: *service
+    mem_limit: 128m
+    build: ../tenant
+    image: restaurant-saas-staging-tenant:local
+    depends_on: {tenant-a-db: {condition: service_healthy}}
+    environment:
+      TENANT_ID: demo-a
+      SYNTHETIC_MODE: "true"
+      TENANT_SERVICE_TOKEN_FILE: /run/secrets/tenant_a_token
+      DATABASE_URL_FILE: /run/secrets/tenant_a_database_url
+    secrets: [tenant_a_token, tenant_a_database_url]
+    networks: [tenant-a-api, tenant-a-data]
+  tenant-b:
+    <<: *service
+    mem_limit: 128m
+    build: ../tenant
+    image: restaurant-saas-staging-tenant:local
+    depends_on: {tenant-b-db: {condition: service_healthy}}
+    environment:
+      TENANT_ID: demo-b
+      SYNTHETIC_MODE: "true"
+      TENANT_SERVICE_TOKEN_FILE: /run/secrets/tenant_b_token
+      DATABASE_URL_FILE: /run/secrets/tenant_b_database_url
+    secrets: [tenant_b_token, tenant_b_database_url]
+    networks: [tenant-b-api, tenant-b-data]
+  identity:
+    <<: *service
+    # Official v2.45.1 digest verified before preparing this configuration.
+    image: ghcr.io/dexidp/dex:v2.45.1@sha256:8499afd690c437f52301efd2b05b2455da5bd2dfc20332cd697dc9937f808462
+    user: dex:dex
+    mem_limit: 192m
+    command: [dex, serve, /run/secrets/dex_config]
+    depends_on: {identity-db: {condition: service_healthy}}
+    secrets: [dex_config]
+    ports: ["127.0.0.1:15556:5556"]
+    networks: [identity-data, identity-ingress]
+  platform:
+    <<: *service
+    build: ../platform
+    image: restaurant-saas-staging-platform:local
+    depends_on:
+      platform-db: {condition: service_healthy}
+      tenant-a: {condition: service_started}
+      tenant-b: {condition: service_started}
+      identity: {condition: service_started}
+    environment:
+      AUTH_MODE: oidc
+      PROTOTYPE_SYNTHETIC_ONLY: "1"
+      PROTOTYPE_ALLOW_REMOTE: "1"
+      PUBLIC_BASE_URL: https://almujeeb.info
+      PORT: "3000"
+      DATABASE_URL_FILE: /run/secrets/platform_database_url
+      EVENTS_ENCRYPTION_KEY_FILE: /run/secrets/events_encryption_key
+      SESSION_CSRF_KEY_FILE: /run/secrets/session_csrf_key
+      TENANT_A_URL: http://tenant-a:8080
+      TENANT_B_URL: http://tenant-b:8080
+      TENANT_A_TOKEN_FILE: /run/secrets/tenant_a_token
+      TENANT_B_TOKEN_FILE: /run/secrets/tenant_b_token
+      PAYMENT_MODE: local-simulator
+      OIDC_ISSUER: https://almujeeb.info/identity
+      OIDC_CLIENT_ID: restaurant-staging-web
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      OIDC_IDENTITY_MAP_FILE: /run/secrets/oidc_identity_map
+      OAUTH_REDIRECT_URIS: https://chatgpt.com/connector_platform_oauth_redirect
+    secrets:
+      - platform_database_url
+      - events_encryption_key
+      - session_csrf_key
+      - tenant_a_token
+      - tenant_b_token
+      - oidc_client_secret
+      - oidc_identity_map
+    ports: ["127.0.0.1:18788:3000"]
+    networks: [platform-data, tenant-a-api, tenant-b-api, egress]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health',{headers:{Host:'almujeeb.info'}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+networks:
+  platform-data: {internal: true}
+  tenant-a-api: {internal: true}
+  tenant-b-api: {internal: true}
+  tenant-a-data: {internal: true}
+  tenant-b-data: {internal: true}
+  identity-data: {internal: true}
+  # Docker suppresses host port publication when every attached network is
+  # internal. Only Dex joins this bridge; its DB remains on identity-data.
+  # New name permits a safe Compose recreate without removing the old network.
+  identity-ingress: {}
+  egress: {}
+
+volumes:
+  platform-db: {}
+  tenant-a-db: {}
+  tenant-b-db: {}
+  identity-db: {}
+
+secrets:
+  platform_bootstrap_password:
+    file: /home/chatbot/.local/share/almujeeb-staging/platform-bootstrap-password
+  platform_app_password:
+    file: /home/chatbot/.local/share/almujeeb-staging/platform-app-password
+  platform_database_url:
+    file: /home/chatbot/.local/share/almujeeb-staging/platform-database-url
+  tenant_a_bootstrap_password:
+    file: /home/chatbot/.local/share/almujeeb-staging/tenant-a-bootstrap-password
+  tenant_a_app_password:
+    file: /home/chatbot/.local/share/almujeeb-staging/tenant-a-app-password
+  tenant_a_database_url:
+    file: /home/chatbot/.local/share/almujeeb-staging/tenant-a-database-url
+  tenant_b_bootstrap_password:
+    file: /home/chatbot/.local/share/almujeeb-staging/tenant-b-bootstrap-password
+  tenant_b_app_password:
+    file: /home/chatbot/.local/share/almujeeb-staging/tenant-b-app-password
+  tenant_b_database_url:
+    file: /home/chatbot/.local/share/almujeeb-staging/tenant-b-database-url
+  identity_bootstrap_password:
+    file: /home/chatbot/.local/share/almujeeb-staging/identity-bootstrap-password
+  identity_app_password:
+    file: /home/chatbot/.local/share/almujeeb-staging/identity-app-password
+  tenant_a_token:
+    file: /home/chatbot/.local/share/almujeeb-staging/tenant-a-token
+  tenant_b_token:
+    file: /home/chatbot/.local/share/almujeeb-staging/tenant-b-token
+  events_encryption_key:
+    file: /home/chatbot/.local/share/almujeeb-staging/events-encryption-key
+  session_csrf_key:
+    file: /home/chatbot/.local/share/almujeeb-staging/session-csrf-key
+  oidc_client_secret:
+    file: /home/chatbot/.local/share/almujeeb-staging/oidc-client-secret
+  oidc_identity_map:
+    file: /home/chatbot/.local/share/almujeeb-staging/oidc-identity-map.json
+  dex_config:
+    file: /home/chatbot/.local/share/almujeeb-staging/dex-config.yaml

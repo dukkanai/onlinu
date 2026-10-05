@@ -1,0 +1,14 @@
+.ra-delivery-zones { min-width: 0; }
+.ra-delivery-zones summary { cursor: pointer; font-weight: 700; padding-block: .75rem; }
+.ra-zone-list { display: grid; gap: .8rem; margin-block: 1rem; }
+.ra-zone-row, .ra-zone-correction { border: 1px solid var(--ra-line, #d9e1df); border-radius: 12px; padding: 1rem; min-width: 0; }
+.ra-zone-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; margin-block-end: .6rem; overflow-wrap: anywhere; }
+.ra-zone-row > small { display: block; margin-block: .5rem; }
+.ra-zone-row .ra-row, .ra-zone-correction .ra-row { flex-wrap: wrap; }
+.ra-zone-correction { margin-block: 1rem; }
+.ra-zone-correction h3 { margin-block-start: 0; }
+.ra-delivery-zones details > fieldset > button { margin-block: .4rem; }
+.ra-configured-zones { margin-block: 1rem; }
+.ra-configured-zone { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; min-width: 0; border-block-end: 1px solid var(--ra-line, #d9e1df); padding-block: .75rem; }
+.ra-configured-zone code { overflow-wrap: anywhere; }
+.ra-configured-zone > span { flex: 1 1 10rem; overflow-wrap: anywhere; }

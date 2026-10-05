@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 
 type SwitchProps = {
+  id?: string;
   checked: boolean;
   onCheckedChange: (value: boolean) => void;
   disabled?: boolean;

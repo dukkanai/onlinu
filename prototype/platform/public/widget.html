@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>body{font:15px/1.7 system-ui;color:#153c36;margin:0;padding:18px;background:#f4f6ef}h2{margin:0 0 8px}button{font:inherit;background:#1a654d;color:white;border:0;border-radius:8px;padding:9px 15px;margin:5px;cursor:pointer}button:disabled{opacity:.55;cursor:default}article{background:white;border:1px solid #dce4d9;border-radius:12px;margin:10px 0;padding:15px}p{margin:6px 0}small{color:#6a7153}#error{color:#923b20}input{width:55px;font:inherit;margin:5px}label{display:block}</style>
+</head>
+<body>
+  <h2>دليل المطاعم التجريبي</h2><small>مطعمان وهميان · لا بيانات شخصية ولا دفع حقيقي</small>
+  <p id="error" role="status"></p><button id="browse">عرض المطاعم</button><div id="result"></div>
+  <script>
+  (() => {
+    const output = document.getElementById('result');
+    const error = document.getElementById('error');
+    let viewGeneration = 0;
+    const text = (tag, value) => { const element = document.createElement(tag); element.textContent = value; return element; };
+    async function call(name, args) {
+      if (!window.openai?.callTool) throw new Error('تحتاج هذه الواجهة إلى جسر ChatGPT. استخدم أدوات الإضافة النصية عند غياب الواجهة.');
+      const result = await window.openai.callTool(name, args);
+      if (result.isError) throw new Error('لم تكتمل العملية. راجع صلاحيات الربط وحالة السلة.');
+      return result.structuredContent ?? result;
+    }
+    function startView() {
+      const generation = ++viewGeneration;
+      output.replaceChildren(text('p', 'جارٍ التحميل…'));
+      error.textContent = '';
+      return () => generation === viewGeneration;
+    }
+    const button = (label, callback, isCurrent) => {
+      const element = text('button', label);
+      let busy = false;
+      element.onclick = async () => {
+        if (busy || !isCurrent()) return;
+        busy = true; element.disabled = true; error.textContent = '';
+        try { await callback(); }
+        catch (problem) { if (isCurrent()) error.textContent = problem.message; }
+        finally { busy = false; element.disabled = false; }
+      };
+      return element;
+    };
+    function restaurants(data, isCurrent) {
+      if (!isCurrent()) return;
+      output.replaceChildren();
+      for (const restaurant of data.restaurants ?? []) {
+        const card = text('article', '');
+        card.append(text('h3', restaurant.name), text('p', restaurant.cuisine), button('المنيو', () => loadMenu(restaurant.id), isCurrent));
+        output.append(card);
+      }
+    }
+    async function loadMenu(tenantId) {
+      const isCurrent = startView();
+      try {
+        const menu = await call('get_restaurant_menu', { tenantId });
+        if (!isCurrent()) return;
+        let cartGeneration = 0;
+        let quoteRequest = 0;
+        let activeQuote = null;
+        const inputs = [];
+        const quoteSlot = text('div', ''); quoteSlot.id = 'quote-slot';
+        output.replaceChildren(text('h3', menu.name));
+        for (const item of menu.items) {
+          const label = text('label', `${item.name} — ${(item.priceMinor / 100).toFixed(2)} ر.س `);
+          const input = document.createElement('input');
+          input.type = 'number'; input.min = '0'; input.max = '20'; input.value = '0'; input.dataset.item = item.id;
+          input.oninput = () => { cartGeneration++; activeQuote = null; quoteSlot.replaceChildren(); };
+          inputs.push({ itemId: item.id, input }); label.append(input); output.append(label);
+        }
+        const quoteCart = async () => {
+          const cartVersion = cartGeneration;
+          const request = ++quoteRequest;
+          activeQuote = null; quoteSlot.replaceChildren();
+          const items = Object.freeze(inputs.map(({ itemId, input }) => Object.freeze({ itemId, quantity: Number(input.value) })).filter(item => item.quantity > 0));
+          const quoteIsCurrent = () => isCurrent() && cartVersion === cartGeneration && request === quoteRequest;
+          let quote;
+          try { quote = await call('quote_cart', { tenantId, items }); }
+          catch (problem) { if (quoteIsCurrent()) throw problem; return; }
+          if (!quoteIsCurrent()) return;
+          const snapshot = Object.freeze({ tenantId, items, expectedTotalMinor: quote.totalMinor, idempotencyKey: crypto.randomUUID() });
+          activeQuote = snapshot;
+          const card = text('article', `الإجمالي ${(snapshot.expectedTotalMinor / 100).toFixed(2)} ر.س`);
+          const checkoutIsCurrent = () => quoteIsCurrent() && activeQuote === snapshot;
+          card.append(button('متابعة إلى موقع التأكيد', async () => {
+            const session = await call('prepare_checkout', snapshot);
+            if (!checkoutIsCurrent()) return;
+            if (window.openai?.openExternal) window.openai.openExternal({ href: session.checkoutUrl });
+            else card.append(text('p', 'افتح رابط التأكيد الذي تعيده الأداة في المحادثة.'));
+          }, checkoutIsCurrent));
+          quoteSlot.replaceChildren(card);
+        };
+        output.append(button('حساب السلة', quoteCart, isCurrent), quoteSlot);
+      } catch (problem) { if (isCurrent()) error.textContent = problem.message; }
+    }
+    document.getElementById('browse').onclick = async () => {
+      const isCurrent = startView();
+      try { restaurants(await call('search_restaurants', {}), isCurrent); }
+      catch (problem) { if (isCurrent()) error.textContent = problem.message; }
+    };
+    if (window.openai?.toolOutput?.restaurants) restaurants(window.openai.toolOutput, startView());
+    window.addEventListener('openai:set_globals', event => {
+      if (event.detail?.globals?.toolOutput?.restaurants) restaurants(event.detail.globals.toolOutput, startView());
+    });
+  })();
+  </script>
+</body>
+</html>

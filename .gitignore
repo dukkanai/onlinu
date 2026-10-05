@@ -49,3 +49,16 @@ Thumbs.db
 # binário do go build no root
 /server
 /prints/
+.env
+.env.*
+!.env.example
+/backups/
+/artifacts/
+__pycache__/
+*.pyc
+
+# Local private keys and certificate bundles
+*.pem
+*.key
+*.p12
+*.pfx

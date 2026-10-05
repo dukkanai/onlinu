@@ -4,6 +4,7 @@ import { getClientId } from "@/lib/client-id";
 import { listSessions } from "@/services/sessions";
 import type { SessionInfo } from "@/types/session";
 import type { WebAuthnPublicKey } from "@/lib/passkey";
+import { getSessionProvider, isPairingState } from "@/lib/session-provider";
 
 type State = {
   sessions: SessionInfo[];
@@ -26,41 +27,52 @@ const pickActive = (sessions: SessionInfo[], current: string | null): string | n
   return sessions[0]?.id ?? null;
 };
 
+export const refreshSessions = async (): Promise<void> => {
+  const sessions = await listSessions();
+  useSessions.setState((s) => ({ sessions, activeId: pickActive(sessions, s.activeId) }));
+};
+
 let wired = false;
 export const ensureSessionsWired = (): void => {
   if (wired) return;
   wired = true;
   eventStream.connect(getClientId());
 
-  void listSessions()
-    .then((sessions) => useSessions.setState((s) => ({ sessions, activeId: pickActive(sessions, s.activeId) })))
-    .catch(() => {});
+  void refreshSessions().catch(() => {});
 
   eventStream.on((ev: BrokerEvent) => {
     if (ev.type === "session-list") {
       useSessions.setState((s) => {
-        const ids = new Set(ev.sessions.map((x) => x.id));
+        const ids = new Set(ev.sessions.filter((x) => getSessionProvider(x) === "qr" && !x.paired && isPairingState(x.state)).map((x) => x.id));
         const qrs: Record<string, string> = {};
         for (const [id, qr] of Object.entries(s.qrs)) if (ids.has(id)) qrs[id] = qr;
         const codes: Record<string, string> = {};
         for (const [id, code] of Object.entries(s.codes)) if (ids.has(id)) codes[id] = code;
-        return { sessions: ev.sessions, qrs, codes, activeId: pickActive(ev.sessions, s.activeId) };
+        const passkeys: Record<string, WebAuthnPublicKey> = {};
+        for (const [id, passkey] of Object.entries(s.passkeys)) if (ids.has(id)) passkeys[id] = passkey;
+        return { sessions: ev.sessions, qrs, codes, passkeys, activeId: pickActive(ev.sessions, s.activeId) };
       });
     } else if (ev.type === "session-qr") {
-      useSessions.setState((s) => ({ qrs: { ...s.qrs, [ev.sessionId]: ev.qr } }));
+      useSessions.setState((s) => {
+        const session = s.sessions.find((x) => x.id === ev.sessionId);
+        if (getSessionProvider(session) === "meta" || session?.state === "logged_out" || session?.paired) return s;
+        return { qrs: { ...s.qrs, [ev.sessionId]: ev.qr } };
+      });
     } else if (ev.type === "auth-state") {
       useSessions.setState((s) => {
         const sessions = s.sessions.map((x) =>
           x.id === ev.sessionId ? { ...x, state: ev.state, paired: ev.paired } : x,
         );
         const qrs = { ...s.qrs };
-        if (ev.paired) delete qrs[ev.sessionId];
+        const session = sessions.find((x) => x.id === ev.sessionId);
+        const clearPairing = ev.paired || !isPairingState(ev.state) || getSessionProvider(session) === "meta";
+        if (clearPairing) delete qrs[ev.sessionId];
         else if (ev.qr) qrs[ev.sessionId] = ev.qr;
         const codes = { ...s.codes };
-        if (ev.paired) delete codes[ev.sessionId];
+        if (clearPairing) delete codes[ev.sessionId];
         else if (ev.code) codes[ev.sessionId] = ev.code;
         const passkeys = { ...s.passkeys };
-        if (ev.state === "passkey_request" && ev.passkey) {
+        if (!clearPairing && ev.state === "passkey_request" && ev.passkey) {
           passkeys[ev.sessionId] = ev.passkey as WebAuthnPublicKey;
         } else {
           delete passkeys[ev.sessionId];

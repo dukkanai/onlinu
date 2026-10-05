@@ -38,6 +38,11 @@ func detectPublicIP() string {
 
 func getBrowserAPI(log *slog.Logger) *webrtc.API {
 	browserAPIOnce.Do(func() {
+		// Meta is ICE-Lite: Pion would otherwise infer DTLS server from our
+		// controlling ICE role. We must answer as DTLS client. Normal browser
+		// offers already use that same client role, so QR media is unchanged.
+		se := webrtc.SettingEngine{}
+		_ = se.SetAnsweringDTLSRole(webrtc.DTLSRoleClient)
 		publicIP := os.Getenv("WACALLS_PUBLIC_IP")
 		udpPort, _ := strconv.Atoi(os.Getenv("WACALLS_UDP_PORT"))
 		if publicIP == "auto" {
@@ -49,10 +54,9 @@ func getBrowserAPI(log *slog.Logger) *webrtc.API {
 			}
 		}
 		if publicIP == "" || udpPort == 0 {
-			browserAPI = webrtc.NewAPI()
+			browserAPI = webrtc.NewAPI(webrtc.WithSettingEngine(se))
 			return
 		}
-		se := webrtc.SettingEngine{}
 		se.SetNAT1To1IPs([]string{publicIP}, webrtc.ICECandidateTypeHost)
 		se.SetNetworkTypes([]webrtc.NetworkType{
 			webrtc.NetworkTypeUDP4, webrtc.NetworkTypeUDP6,
@@ -61,7 +65,9 @@ func getBrowserAPI(log *slog.Logger) *webrtc.API {
 		udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: udpPort})
 		if err != nil {
 			log.Error("browser webrtc: bind udp mux failed; falling back to ephemeral", "port", udpPort, "err", err)
-			browserAPI = webrtc.NewAPI()
+			fallback := webrtc.SettingEngine{}
+			_ = fallback.SetAnsweringDTLSRole(webrtc.DTLSRoleClient)
+			browserAPI = webrtc.NewAPI(webrtc.WithSettingEngine(fallback))
 			return
 		}
 		se.SetICEUDPMux(webrtc.NewICEUDPMux(nil, udpConn))

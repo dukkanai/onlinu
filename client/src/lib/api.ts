@@ -24,8 +24,8 @@ export const apiGet = async <T>(path: string): Promise<T> => {
   return r.json() as Promise<T>;
 };
 
-export const apiPost = async <T>(path: string, body: unknown): Promise<T> => {
-  const r = await fetch(apiUrl(path), { method: "POST", headers: baseHeaders(), body: JSON.stringify(body) });
+export const apiPost = async <T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> => {
+  const r = await fetch(apiUrl(path), { method: "POST", headers: baseHeaders(), body: JSON.stringify(body), signal });
   if (!r.ok) {
     guard(r.status);
     const text = await r.text().catch(() => "");

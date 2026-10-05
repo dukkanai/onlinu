@@ -58,6 +58,8 @@ export class WSAudioBridge {
     private callId: string,
     micDeviceId: string | null = null,
     events: WSAudioEvents = {},
+    private inputStream?: MediaStream,
+    private onRemoteStream?: (stream: MediaStream) => void,
   ) {
     this.micDeviceId = micDeviceId;
     this.events = events;
@@ -67,7 +69,7 @@ export class WSAudioBridge {
     this.events.onState?.("connecting");
 
     // Solicita microfone
-    this.micStream = await navigator.mediaDevices.getUserMedia({
+    this.micStream = this.inputStream ?? await navigator.mediaDevices.getUserMedia({
       audio: this.micDeviceId
         ? { deviceId: { exact: this.micDeviceId }, sampleRate: SAMPLE_RATE, channelCount: 1,
             echoCancellation: true, noiseSuppression: true, autoGainControl: true }
@@ -90,15 +92,20 @@ export class WSAudioBridge {
 
     await new Promise<void>((resolve, reject) => {
       const ws = this.ws!;
+      const timeout = setTimeout(() => { reject(new Error("WebSocket connection timed out")); this.disconnect(); }, 15_000);
       ws.onopen = () => {
+        clearTimeout(timeout);
         this.events.onState?.("connected");
         resolve();
       };
       ws.onerror = () => {
+        clearTimeout(timeout);
         this.events.onError?.(new Error("WebSocket connection failed"));
         reject(new Error("WebSocket connection failed"));
       };
       ws.onclose = () => {
+        clearTimeout(timeout);
+        reject(new Error("WebSocket connection closed"));
         this.events.onState?.("disconnected");
         this.stopCapture();
       };
@@ -153,6 +160,7 @@ export class WSAudioBridge {
       // Cria um destino MediaStream para o VU meter do peer
       this.remoteDestination = this.playbackCtx.createMediaStreamDestination();
       this.remoteStream = this.remoteDestination.stream;
+      this.onRemoteStream?.(this.remoteStream);
     }
     const ctx = this.playbackCtx;
 
@@ -169,7 +177,8 @@ export class WSAudioBridge {
 
     const src = ctx.createBufferSource();
     src.buffer = audioBuffer;
-    src.connect(ctx.destination);
+    // The translation leg consumes the original stream; never play it locally.
+    if (!this.onRemoteStream) src.connect(ctx.destination);
     if (this.remoteDestination) {
       src.connect(this.remoteDestination);
     }
@@ -197,7 +206,7 @@ export class WSAudioBridge {
     this.playbackCtx?.close().catch(() => {});
     this.playbackCtx = null;
     this.playCursor = 0;
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws && this.ws.readyState < WebSocket.CLOSING) {
       this.ws.close(1000, "call ended");
     }
     this.ws = null;
@@ -232,9 +241,21 @@ export const openWSCall = async (
   sid: string,
   callId: string,
   micDeviceId: string | null,
+  inputStream?: MediaStream,
+  onRemoteStream?: (stream: MediaStream) => void,
+  signal?: AbortSignal,
 ): Promise<OpenWSCall> => {
-  const bridge = new WSAudioBridge(sid, callId, micDeviceId);
-  await bridge.connect();
+  const bridge = new WSAudioBridge(sid, callId, micDeviceId, {}, inputStream, onRemoteStream);
+  const close = () => { signal?.removeEventListener("abort", close); bridge.disconnect(); };
+  signal?.addEventListener("abort", close, { once: true });
+  try {
+    signal?.throwIfAborted();
+    await bridge.connect();
+    signal?.throwIfAborted();
+  } catch (error) {
+    close();
+    throw error;
+  }
 
   return {
     get micStream() {
@@ -247,6 +268,6 @@ export const openWSCall = async (
     remoteVideoStream: null,
     setLocalVideo: async () => false,
     setMicEnabled: (on: boolean) => bridge.setMicEnabled(on),
-    close: () => bridge.disconnect(),
+    close,
   };
 };

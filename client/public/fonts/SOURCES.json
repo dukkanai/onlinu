@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 1,
+  "retrieved": "2026-09-28",
+  "license": "SIL Open Font License 1.1",
+  "provider": "Google Fonts",
+  "providerStylesheet": "https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@200..1000&family=Tajawal:wght@400;500;700;800&display=swap",
+  "googleFontsRepositoryRevision": "23e54b51ddffbc7713c583748e3bd86f62b1fa4a",
+  "note": "WOFF2 bytes are unmodified official Google Fonts CDN artifacts, not a claimed local build of the repository revision. The pinned repository supplies corresponding family source metadata and copyright/OFL notices. License text is stored with LF line endings.",
+  "families": [
+    {
+      "name": "Amiri",
+      "cssFamily": "Astra Amiri",
+      "cdnVersion": "v30",
+      "repository": "https://github.com/google/fonts/tree/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/amiri",
+      "upstreamRepository": "https://github.com/aliftype/amiri",
+      "upstreamRevision": "04d40ee68cc6b8cb6870eca81a8a7451165aa95a",
+      "licenseFile": "amiri-OFL.txt"
+    },
+    {
+      "name": "Cairo",
+      "cssFamily": "Astra Cairo",
+      "cdnVersion": "v31",
+      "repository": "https://github.com/google/fonts/tree/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/cairo",
+      "upstreamRepository": "https://github.com/Gue3bara/Cairo",
+      "upstreamRevision": "73d16933c6a0f341c27a69e401da83dcb0d53114",
+      "licenseFile": "cairo-OFL.txt"
+    },
+    {
+      "name": "Tajawal",
+      "cssFamily": "Astra Tajawal",
+      "cdnVersion": "v12",
+      "repository": "https://github.com/google/fonts/tree/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/tajawal",
+      "upstreamRepository": "https://github.com/googlefonts/tajawal",
+      "upstreamRevision": "2085b8942f234e7afb83dc03c77713d0d5471cc9",
+      "licenseFile": "tajawal-OFL.txt"
+    }
+  ],
+  "files": [
+    {
+      "file": "amiri-400-arabic.woff2",
+      "bytes": 108560,
+      "sha256": "9abf8a10b4a2f27b698740522c9beec9ded7728aeef0738ac0d6e175bf6249d7",
+      "family": "Amiri",
+      "weight": "400",
+      "style": "normal",
+      "subset": "arabic",
+      "source": "https://fonts.gstatic.com/s/amiri/v30/J7aRnpd8CGxBHpUrtLMA7w.woff2"
+    },
+    {
+      "file": "amiri-400-latin-ext.woff2",
+      "bytes": 10444,
+      "sha256": "199be132b6fbb2fef143b30bae2eb04c63268758d29c03ff057b52cbee91636e",
+      "family": "Amiri",
+      "weight": "400",
+      "style": "normal",
+      "subset": "latin-ext",
+      "source": "https://fonts.gstatic.com/s/amiri/v30/J7aRnpd8CGxBHpUgtLMA7w.woff2"
+    },
+    {
+      "file": "amiri-400-latin.woff2",
+      "bytes": 19544,
+      "sha256": "d600850a2b0f3d862559d0bb040bca877e0f75cf9ee71a893bbd5089a224e3cd",
+      "family": "Amiri",
+      "weight": "400",
+      "style": "normal",
+      "subset": "latin",
+      "source": "https://fonts.gstatic.com/s/amiri/v30/J7aRnpd8CGxBHpUutLM.woff2"
+    },
+    {
+      "file": "amiri-700-arabic.woff2",
+      "bytes": 99968,
+      "sha256": "c775d9f8c3a7cf0d0c2bb5246dd699e8c09bf6f8758e1be0b98939331b18bcce",
+      "family": "Amiri",
+      "weight": "700",
+      "style": "normal",
+      "subset": "arabic",
+      "source": "https://fonts.gstatic.com/s/amiri/v30/J7acnpd8CGxBHp2VkaY6zp5yGw.woff2"
+    },
+    {
+      "file": "amiri-700-latin-ext.woff2",
+      "bytes": 10860,
+      "sha256": "caca5182eb8536799ec861cbf33c14ed6f5213f3abcd99fffd61adadbc9c66d0",
+      "family": "Amiri",
+      "weight": "700",
+      "style": "normal",
+      "subset": "latin-ext",
+      "source": "https://fonts.gstatic.com/s/amiri/v30/J7acnpd8CGxBHp2VkaYxzp5yGw.woff2"
+    },
+    {
+      "file": "amiri-700-latin.woff2",
+      "bytes": 20300,
+      "sha256": "f53eb332acb23ec7e09e2487909c56cf841d649c970084d6a74d82aa9534f737",
+      "family": "Amiri",
+      "weight": "700",
+      "style": "normal",
+      "subset": "latin",
+      "source": "https://fonts.gstatic.com/s/amiri/v30/J7acnpd8CGxBHp2VkaY_zp4.woff2"
+    },
+    {
+      "file": "amiri-OFL.txt",
+      "bytes": 4388,
+      "sha256": "b185b109c5342bf3fa6d812f3ca37bd52f94d7086536eae804ec1c699144d2dd",
+      "source": "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/amiri/OFL.txt"
+    },
+    {
+      "file": "cairo-200-1000-arabic.woff2",
+      "bytes": 30896,
+      "sha256": "748022f50c427456ad66031e855349be3448ee1f05a5f1eb59574ebe0c686749",
+      "family": "Cairo",
+      "weight": "200 1000",
+      "style": "normal",
+      "subset": "arabic",
+      "source": "https://fonts.gstatic.com/s/cairo/v31/SLXVc1nY6HkvangtZmpQdkhzfH5lkSscQyyS4J0.woff2"
+    },
+    {
+      "file": "cairo-200-1000-latin-ext.woff2",
+      "bytes": 16648,
+      "sha256": "da6ada83c3a87c2f0211325dc0a123702e1d4a940958b3e943ac4f37b31d5371",
+      "family": "Cairo",
+      "weight": "200 1000",
+      "style": "normal",
+      "subset": "latin-ext",
+      "source": "https://fonts.gstatic.com/s/cairo/v31/SLXVc1nY6HkvangtZmpQdkhzfH5lkSscSCyS4J0.woff2"
+    },
+    {
+      "file": "cairo-200-1000-latin.woff2",
+      "bytes": 33820,
+      "sha256": "82c13cbd1352d76e97c3d335caa912ae68fecdc3949a43cf8d149eb892384c1b",
+      "family": "Cairo",
+      "weight": "200 1000",
+      "style": "normal",
+      "subset": "latin",
+      "source": "https://fonts.gstatic.com/s/cairo/v31/SLXVc1nY6HkvangtZmpQdkhzfH5lkSscRiyS.woff2"
+    },
+    {
+      "file": "cairo-OFL.txt",
+      "bytes": 4380,
+      "sha256": "ce39edb04b690f144cd40dc59a1be26dcb089e539c8118289d1081cde4449d6f",
+      "source": "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/cairo/OFL.txt"
+    },
+    {
+      "file": "tajawal-400-arabic.woff2",
+      "bytes": 8932,
+      "sha256": "6c9081fd00db08800850fa7d214593aa94992be5159e97557aa60197252cb95a",
+      "family": "Tajawal",
+      "weight": "400",
+      "style": "normal",
+      "subset": "arabic",
+      "source": "https://fonts.gstatic.com/s/tajawal/v12/Iura6YBj_oCad4k1nzSBC45I.woff2"
+    },
+    {
+      "file": "tajawal-400-latin.woff2",
+      "bytes": 10256,
+      "sha256": "b081f7bf790678b56a2c0502651d6873cbabc09e78fe40655df15f918b1e369b",
+      "family": "Tajawal",
+      "weight": "400",
+      "style": "normal",
+      "subset": "latin",
+      "source": "https://fonts.gstatic.com/s/tajawal/v12/Iura6YBj_oCad4k1nzGBCw.woff2"
+    },
+    {
+      "file": "tajawal-500-arabic.woff2",
+      "bytes": 8940,
+      "sha256": "4255019c1cd986f7cda7869df69baf72730d61304ae14baba4acfeb13085da54",
+      "family": "Tajawal",
+      "weight": "500",
+      "style": "normal",
+      "subset": "arabic",
+      "source": "https://fonts.gstatic.com/s/tajawal/v12/Iurf6YBj_oCad4k1l8KiHrRpiYlJ.woff2"
+    },
+    {
+      "file": "tajawal-500-latin.woff2",
+      "bytes": 9900,
+      "sha256": "9986de5db80ec050300f1cea25d651a5779ae62b91a39b5667ac23d0c7668cbb",
+      "family": "Tajawal",
+      "weight": "500",
+      "style": "normal",
+      "subset": "latin",
+      "source": "https://fonts.gstatic.com/s/tajawal/v12/Iurf6YBj_oCad4k1l8KiHrFpiQ.woff2"
+    },
+    {
+      "file": "tajawal-700-arabic.woff2",
+      "bytes": 9024,
+      "sha256": "fa5e72326681abee3a4952be582e1c2c2abb27932ef262610c078ce89541f919",
+      "family": "Tajawal",
+      "weight": "700",
+      "style": "normal",
+      "subset": "arabic",
+      "source": "https://fonts.gstatic.com/s/tajawal/v12/Iurf6YBj_oCad4k1l4qkHrRpiYlJ.woff2"
+    },
+    {
+      "file": "tajawal-700-latin.woff2",
+      "bytes": 9996,
+      "sha256": "de8f431c146ab1feb612cb7ced0842ae5c4e2f12067d13db0badeca73977200b",
+      "family": "Tajawal",
+      "weight": "700",
+      "style": "normal",
+      "subset": "latin",
+      "source": "https://fonts.gstatic.com/s/tajawal/v12/Iurf6YBj_oCad4k1l4qkHrFpiQ.woff2"
+    },
+    {
+      "file": "tajawal-800-arabic.woff2",
+      "bytes": 9448,
+      "sha256": "5fa525682b4805d95c59943bc4405b993dc9e028fd93cb96f4b50911f3b428b7",
+      "family": "Tajawal",
+      "weight": "800",
+      "style": "normal",
+      "subset": "arabic",
+      "source": "https://fonts.gstatic.com/s/tajawal/v12/Iurf6YBj_oCad4k1l5anHrRpiYlJ.woff2"
+    },
+    {
+      "file": "tajawal-800-latin.woff2",
+      "bytes": 10584,
+      "sha256": "00241262004f96088a827ad4c5d423dbbc0648224e1cd990e5e5ff8e912157c9",
+      "family": "Tajawal",
+      "weight": "800",
+      "style": "normal",
+      "subset": "latin",
+      "source": "https://fonts.gstatic.com/s/tajawal/v12/Iurf6YBj_oCad4k1l5anHrFpiQ.woff2"
+    },
+    {
+      "file": "tajawal-OFL.txt",
+      "bytes": 4371,
+      "sha256": "184de01d11c016e7d7bb2f2f81db9a036171acb5374f006e74a36828faca1f12",
+      "source": "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/tajawal/OFL.txt"
+    }
+  ]
+}

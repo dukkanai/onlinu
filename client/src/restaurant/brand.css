@@ -1,0 +1,68 @@
+@import "./fonts.css";
+
+/* Shared with the real storefront and appearance preview. Status/warning
+   colors intentionally remain semantic, not arbitrary branding controls. */
+/* Defaults also protect loading, payment-return and courier screens when this
+   shared stylesheet remains loaded but no merchant brand is attached. Inline
+   brandVariables on an actual storefront/preview take precedence. */
+.restaurant-storefront{--rs-primary-ink:#fff;--rs-accent:#d6a85f;--rs-accent-ink:#000;--rs-heading:#1f332e;--rs-card:#fffefa;--rs-cart:#fffefa;--rs-radius:14px;--rs-shadow:0 8px 28px #0000000d}
+.restaurant-storefront{font-family:var(--restaurant-body-font,var(--rs-font,Tahoma,Arial,sans-serif));font-size:var(--rs-font-size,15px);line-height:1.8;color:var(--rs-ink)}
+.restaurant-storefront :is(h1,h2,h3,h4,h5,h6,.rs-brand,.ra-preview-heading){font-family:var(--restaurant-heading-font,var(--rs-font,Tahoma,Arial,sans-serif));color:var(--rs-heading,var(--rs-ink));overflow-wrap:anywhere;line-height:1.55;letter-spacing:normal}
+.restaurant-storefront :is(h4,h5,h6){margin:0;font-weight:700}
+.restaurant-storefront :is(button,.rs-button,.rs-add-item,.rs-header nav a){font-family:var(--restaurant-button-font,var(--rs-font,Tahoma,Arial,sans-serif))}
+.restaurant-storefront :is(.rs-header,.rs-panel,.rs-food-card,.rs-modal,.rs-account-card){background:var(--rs-card,var(--rs-paper));color:var(--rs-ink);border-color:var(--rs-line)}
+.restaurant-storefront :is(.rs-panel,.rs-food-card,.rs-modal,.rs-account-card){border-radius:var(--rs-radius,14px);box-shadow:var(--rs-shadow)}
+.restaurant-storefront .rs-cart{background:var(--rs-cart,var(--rs-card))}
+.restaurant-storefront :is(.rs-button,.rs-add-item,.rs-header-cart){background:var(--rs-green);color:var(--rs-primary-ink);border-radius:var(--rs-radius,14px)}
+.restaurant-storefront :is(.rs-button-soft,.rs-button-outline,.rs-icon-button,.rs-categories button){background:var(--rs-accent);color:var(--rs-accent-ink);border-color:var(--rs-line);border-radius:var(--rs-radius,14px)}
+.restaurant-storefront .rs-button.rs-button-soft,.restaurant-storefront .rs-button.rs-button-outline{color:var(--rs-accent-ink)!important;background:var(--rs-accent)}
+.restaurant-storefront .rs-button.rs-button-soft:hover:not(:disabled),.restaurant-storefront .rs-button.rs-button-outline:hover:not(:disabled),.restaurant-storefront .rs-icon-button:hover:not(:disabled){background:var(--rs-accent);color:var(--rs-accent-ink)!important;box-shadow:0 2px 8px #00000020}
+.restaurant-storefront .rs-header-actions .rs-header-cart,.restaurant-storefront .rs-add-item,.restaurant-storefront .rs-add-item:hover:not(:disabled){color:var(--rs-primary-ink)!important;background:var(--rs-green)}
+.restaurant-storefront .rs-categories button.active{background:var(--rs-green);color:var(--rs-primary-ink)}
+.restaurant-storefront :is(.rs-food-content>p,.rs-cart-line p,.rs-info-line,.rs-empty p,.rs-menu-language){color:var(--rs-ink)}
+.restaurant-storefront .rs-food-content>p,.restaurant-storefront .rs-cart-line>div{min-width:0;overflow-wrap:anywhere}
+.restaurant-storefront :is(.rs-food-content strong,.rs-link-button){color:var(--rs-heading,var(--rs-ink))}
+.restaurant-storefront :is(input,select,textarea){font-family:var(--restaurant-body-font,var(--rs-font,Tahoma,Arial,sans-serif));background:var(--rs-card,var(--rs-paper));color:var(--rs-ink);border-color:var(--rs-line)}
+.restaurant-storefront :is(input,textarea)::placeholder{color:var(--rs-ink);opacity:.7}
+.restaurant-storefront .rs-food-image img{object-fit:var(--rs-image-fit,cover)}
+.restaurant-storefront .rs-brand-hero{background:var(--rs-card);border:1px solid var(--rs-line);border-radius:var(--rs-radius);box-shadow:var(--rs-shadow);overflow:hidden}
+.restaurant-storefront .rs-brand-hero :is(h1,p,.rs-hero-actions>span,.rs-eyebrow){color:var(--rs-ink)}
+.restaurant-storefront .rs-brand-hero h1{color:var(--rs-heading)}
+.restaurant-storefront .rs-brand-hero p{white-space:pre-wrap;overflow-wrap:anywhere}
+.restaurant-storefront .rs-hero-badge{background:var(--rs-accent);color:var(--rs-accent-ink);border-color:var(--rs-line)}
+.rs-intro-photo{display:block;width:min(100%,260px);height:120px;object-fit:cover;border-radius:var(--rs-radius);margin-block-start:20px}
+@media(prefers-reduced-motion:reduce){.restaurant-storefront *{scroll-behavior:auto!important;transition:none!important}}
+/* Paired foregrounds remain readable for dark and light custom palettes. */
+.restaurant-storefront :is(.rs-search,.rs-quantity,.rs-mode-options label,.rs-payment-methods label,.rs-auth-tabs,.rs-table-banner){background:var(--rs-card,var(--rs-paper));color:var(--rs-ink);border-color:var(--rs-line)}
+.restaurant-storefront .rs-search input{background:transparent}
+.restaurant-storefront :is(.rs-quantity button,.rs-progress li,.rs-auth-tabs button,.rs-table-banner strong,.rs-highlight,.rs-location>span,.rs-eyebrow,.rs-delivery-timeline li svg){color:var(--rs-heading,var(--rs-ink))}
+.restaurant-storefront :is(.rs-mode-options label.active,.rs-payment-methods label:has(input:checked),.rs-auth-tabs button.active,.rs-count){background:var(--rs-accent);color:var(--rs-accent-ink);border-color:var(--rs-heading)}
+.restaurant-storefront .rs-progress li>span{background:var(--rs-accent);color:var(--rs-accent-ink)}
+.restaurant-storefront .rs-progress li.active{color:var(--rs-heading)}
+.restaurant-storefront .rs-progress li.active>span,.restaurant-storefront .rs-toast{background:var(--rs-green);color:var(--rs-primary-ink)}
+.restaurant-storefront .rs-account-orders>button:hover{background:var(--rs-card);outline:1px solid var(--rs-line)}
+.restaurant-storefront :is(.rs-cart-line,.rs-quantity){border-color:var(--rs-line)}
+.restaurant-storefront .rs-cash-confirm{color:#1f332e}
+.restaurant-storefront .rs-status-new{color:#7a5c20}
+.restaurant-storefront .rs-status-cancelled{color:#89462f}
+.restaurant-storefront :is(button,a,input,select,textarea):focus-visible{outline:3px solid var(--rs-heading);outline-offset:3px}
+.restaurant-storefront :is(input,select,textarea):focus{border-color:var(--rs-heading);box-shadow:0 0 0 2px var(--rs-card)}
+.restaurant-storefront .rs-mode-options label:focus-within{outline-color:var(--rs-heading)}
+.restaurant-storefront .rs-food-image:focus-visible{outline-offset:-4px;outline-color:var(--rs-primary-ink);box-shadow:inset 0 0 0 7px var(--rs-green)}
+.restaurant-storefront .rs-button{font-size:.9em!important}
+.restaurant-storefront .rs-cart-line :is(strong,p),.restaurant-storefront .rs-menu-language{font-size:.85em}
+@media(max-width:760px){
+  .restaurant-storefront :is(input,select,textarea),.restaurant-storefront .rs-search input{font-size:max(16px,1em)}
+  .restaurant-storefront .rs-header-actions select{max-width:115px;font-size:16px}
+  .restaurant-storefront .rs-header-inner{column-gap:8px}
+  .restaurant-storefront .rs-header-actions{margin-inline-start:auto}
+  .restaurant-storefront .rs-toast{white-space:normal;overflow-wrap:anywhere;text-align:center}
+}
+/* Match the menu's container breakpoint, including tablet widths where the
+   content is narrower than the viewport because of the main page gutters. */
+@media(min-width:761px) and (max-width:852px){
+  .restaurant-storefront .rs-mobile-cart{display:flex;position:fixed;inset-inline:24px;bottom:max(16px,env(safe-area-inset-bottom));z-index:30;box-shadow:0 8px 25px #163b3030;padding:14px 18px;justify-content:space-between}
+  .restaurant-storefront .rs-mobile-cart>span{flex:1;text-align:start}
+  .restaurant-storefront .rs-main{padding-block-end:100px}
+  .restaurant-storefront .rs-toast{bottom:85px}
+}

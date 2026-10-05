@@ -8,11 +8,13 @@ import (
 )
 
 type activeCall struct {
-	cm          *call.CallManager
-	bridge      *Bridge
-	wsBridge    *wsBridge // ponte WebSocket (alternativa ao pion WebRTC para proxies HTTP)
-	browserOpus media.Codec
-	recorder    *callRecorder // nil quando a gravação está desligada na sessão
+	translationMu       sync.Mutex
+	translationAttempts map[string]int
+	cm                  *call.CallManager
+	bridge              *Bridge
+	wsBridge            *wsBridge // ponte WebSocket (alternativa ao pion WebRTC para proxies HTTP)
+	browserOpus         media.Codec
+	recorder            *callRecorder // nil quando a gravação está desligada na sessão
 }
 
 type callRegistry struct {

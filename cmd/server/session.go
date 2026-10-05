@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"hash/fnv"
 	"log/slog"
 	"os"
 	"sync"
@@ -62,6 +63,9 @@ type Session struct {
 	// chegam em goroutines separadas e criariam contatos/conversas duplicados no
 	// Chatwoot se rodassem ensureContact/ensureConversation concorrentemente.
 	importMu sync.Mutex
+	// Fixed-size striped locks bound bookkeeping and serialize a chat's
+	// persistence, webhook enqueue and Chatwoot enqueue without goroutine storms.
+	messageLanes [64]sync.Mutex
 }
 
 // Origem de uma mensagem enviada por nós. O agente do Chatwoot nunca é espelhado
@@ -388,6 +392,11 @@ func (s *Session) handleEvent(rawEvt any) {
 		go s.notifyDisconnected("recusada pelo WhatsApp: cliente desatualizado",
 			"É necessário atualizar o AstraCalls. Avise o suporte técnico.")
 	case *events.Message:
+		h := fnv.New32a()
+		_, _ = h.Write([]byte(evt.Info.Chat.String()))
+		lane := &s.messageLanes[h.Sum32()%uint32(len(s.messageLanes))]
+		lane.Lock()
+		defer lane.Unlock()
 		switch {
 		case evt.Message.GetPollUpdateMessage() != nil:
 			go s.handleIncomingPollVote(evt) // voto em enquete (decodifica + encaminha)
@@ -398,7 +407,7 @@ func (s *Session) handleEvent(rawEvt any) {
 		default:
 			s.storeMessageEvent(evt)
 			s.dispatchWebhook("message", summarizeMessage(evt))
-			go s.chatwootPushIncoming(evt)
+			s.chatwootPushIncoming(evt)
 			s.maybeMarkRead(ctx, evt)
 		}
 	case *events.HistorySync:

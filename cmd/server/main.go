@@ -61,20 +61,29 @@ func main() {
 		log.Error("startup failed", "err", err)
 		os.Exit(1)
 	}
+	defer srv.ownership.Close()
 	defer srv.sessions.disconnectAll()
+	defer srv.metaCalls.Close()
+	go srv.ownership.Monitor(ctx, func() {
+		log.Error("database ownership lost; stopping this instance to protect session ownership")
+		stop()
+	})
 
 	if err := srv.sessions.Restore(ctx); err != nil {
 		log.Error("session restore failed", "err", err)
 		os.Exit(1)
 	}
 
-	startRecordingJanitor(log)
+	// Archive-aware retention replaces the unconditional legacy file janitor.
+	go srv.sessions.runConversationArchive(ctx)
+	go srv.runRestaurantStockExpiry(ctx)
+	go srv.couriers.RunLocationCleanup(ctx)
 
 	// Worker de reentrega ao Chatwoot: reenvia com backoff o que falhou (ex.:
 	// Chatwoot fora do ar) em vez de perder a mensagem.
 	go srv.sessions.runChatwootOutbox(ctx)
 
-	httpSrv := &http.Server{Addr: *addr, Handler: srv.routes()}
+	httpSrv := &http.Server{Addr: *addr, Handler: srv.routes(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {
 		log.Info("HTTP server listening", "addr", *addr)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -84,6 +93,8 @@ func main() {
 
 	<-ctx.Done()
 	log.Info("shutting down")
+	srv.sessions.disconnectAll()
+	srv.metaCalls.Close()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(shutdownCtx)

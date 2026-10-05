@@ -5,14 +5,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { attachMeter } from "@/lib/audio-meter";
+import { supportsSessionCapability } from "@/lib/session-provider";
 import { useCalls } from "@/stores/calls";
 import { useDevices } from "@/stores/devices";
+import { useSessions } from "@/stores/sessions";
 import { useEndCall } from "@/hooks/useEndCall";
 import { useCallHold } from "@/hooks/useCallHold";
 import { useTransferCall } from "@/hooks/useTransferCall";
 import { useCallVideo } from "@/hooks/useCallVideo";
 import { formatCallDuration } from "@/utils/format";
 import type { CallStatus, CallSummary } from "@/types/call";
+import { translationLanguages } from "./TranslationSettings";
 
 const statusVariant: Record<CallStatus, "success" | "secondary" | "muted"> = {
   connected: "success",
@@ -35,6 +38,7 @@ const Meter = ({ label, db }: { label: string; db: number }) => {
 
 export const CallCard = ({ call }: { call: CallSummary }) => {
   const conn = useCalls((s) => s.ownConnections.get(call.callId));
+  const session = useSessions((s) => s.sessions.find((x) => x.id === call.sessionId));
   const outDeviceId = useDevices((s) => s.outId);
   const endCall = useEndCall();
   const hold = useCallHold();
@@ -48,7 +52,10 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const active = call.status === "connected";
-  const showVideo = video.state.peerVideo || video.state.localVideo;
+  const canHold = supportsSessionCapability(session, "hold");
+  const canTransfer = supportsSessionCapability(session, "transfer");
+  const canVideo = supportsSessionCapability(session, "video");
+  const showVideo = canVideo && (video.state.peerVideo || video.state.localVideo);
 
   useEffect(() => {
     const t = setInterval(() => force((n) => n + 1), 1000);
@@ -88,7 +95,7 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
   }, [outDeviceId, conn]);
 
   useEffect(() => {
-    if (!conn) return;
+    if (!conn || !canVideo) return;
     if (remoteVideoRef.current && video.state.peerVideo && conn.remoteVideoStream) {
       remoteVideoRef.current.srcObject = conn.remoteVideoStream;
       remoteVideoRef.current.play().catch(() => {});
@@ -97,7 +104,7 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
       localVideoRef.current.srcObject = conn.localVideoStream;
       localVideoRef.current.play().catch(() => {});
     }
-  }, [conn, video.state.peerVideo, video.state.localVideo]);
+  }, [conn, canVideo, video.state.peerVideo, video.state.localVideo]);
 
   return (
     <Card>
@@ -113,7 +120,7 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {active && (
+            {active && canHold && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -131,7 +138,7 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
                 <TooltipContent>{held ? "Retomar" : "Colocar em espera"}</TooltipContent>
               </Tooltip>
             )}
-            {active && (
+            {active && canTransfer && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -147,7 +154,7 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
                 <TooltipContent>Transferir para outro atendente</TooltipContent>
               </Tooltip>
             )}
-            {active && !held && (
+            {active && canVideo && !held && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -181,7 +188,7 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
           </div>
         </div>
 
-        {video.state.upgradeIncoming && (
+        {canVideo && video.state.upgradeIncoming && (
           <div className="flex items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-3 py-2">
             <p className="text-sm">O cliente quer ativar o vídeo.</p>
             <div className="flex gap-2">
@@ -194,7 +201,7 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
             </div>
           </div>
         )}
-        {video.state.upgradeOutgoing && !video.state.peerVideo && (
+        {canVideo && video.state.upgradeOutgoing && !video.state.peerVideo && (
           <p className="text-xs text-muted-foreground">Aguardando o cliente aceitar o vídeo…</p>
         )}
 
@@ -218,6 +225,9 @@ export const CallCard = ({ call }: { call: CallSummary }) => {
           </div>
         )}
         <Meter label="Mic" db={micDb} />
+        {conn?.translationLanguage && <p dir="rtl" className="text-sm text-primary">
+          الترجمة الصوتية مفعّلة: العربية ↔ {translationLanguages.find(([code]) => code === conn.translationLanguage)?.[1] ?? conn.translationLanguage}
+        </p>}
         <Meter label="Peer" db={peerDb} />
         <audio ref={audioRef} autoPlay />
       </CardContent>

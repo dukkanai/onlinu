@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -16,6 +17,9 @@ import (
 
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /webhooks/whatsapp/{sid}", s.handleMetaWebhookVerify)
+	mux.HandleFunc("POST /webhooks/whatsapp/{sid}", s.handleMetaWebhook)
 
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /api/sessions", s.handleSessionList)
@@ -29,6 +33,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/sessions/{sid}/calls", s.handleStartCall)
 	mux.HandleFunc("POST /api/sessions/{sid}/calls/fake", s.handleFakeCall)
 	mux.HandleFunc("POST /api/sessions/{sid}/calls/{id}/webrtc", s.handleWebRTC)
+	mux.HandleFunc("POST /api/sessions/{sid}/calls/{id}/translation", s.handleTranslation)
 	// Rota WebSocket de mídia — funciona atrás de proxy reverso HTTP (Cloudflare etc.)
 	// O browser envia/recebe PCM Int16 LE 16 kHz via WSS/443 em vez de WebRTC/UDP.
 	mux.HandleFunc("GET /api/sessions/{sid}/calls/{id}/ws", s.handleWSBridge)
@@ -165,18 +170,19 @@ func (s *server) routes() http.Handler {
 	// Disparo em massa de ligações com áudio pré-gravado
 	mux.HandleFunc("POST /api/sessions/{sid}/broadcast", s.handleBroadcast)
 	mux.HandleFunc("GET /api/sessions/{sid}/broadcast/{cid}", s.handleBroadcastStatus)
-	// MP3 finalizado — rota pública (fora de /api/, sem API key): o id é
-	// não-enumerável e atua como capability.
+	// Legacy recording URLs are no longer public bearer capabilities.
+	// The handler requires the administrator header even outside /api/.
 	mux.HandleFunc("GET /recordings/{id}", s.handleRecording)
 
 	mux.HandleFunc("GET /api/events", s.handleEvents)
+	s.registerRestaurantRoutes(mux)
 
 	if s.staticDir != "" {
 		if _, err := os.Stat(s.staticDir); err == nil {
-			mux.Handle("/", http.FileServer(http.Dir(s.staticDir)))
+			mux.Handle("/", restaurantStatic(s.staticDir))
 		}
 	}
-	var handler http.Handler = mux
+	var handler http.Handler = s.routeMeta(mux)
 	if key := os.Getenv("WACALLS_API_KEY"); key != "" {
 		handler = withAuth(handler, key, os.Getenv("WACALLS_WIDGET_KEY"))
 	}
@@ -185,6 +191,11 @@ func (s *server) routes() http.Handler {
 
 func withCORS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Customer cookies and restaurant administration are same-origin only.
+		if strings.HasPrefix(r.URL.Path, "/storefront-api/") || strings.HasPrefix(r.URL.Path, "/api/restaurant/") || strings.HasPrefix(r.URL.Path, "/courier-api/") || strings.HasPrefix(r.URL.Path, "/payment-hooks/") || strings.HasPrefix(r.URL.Path, "/recordings/") {
+			h.ServeHTTP(w, r)
+			return
+		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Client-Id, X-API-Key")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -206,6 +217,8 @@ func withCORS(h http.Handler) http.Handler {
 // data-api-key/URL do EventSource, usar a de widget limita o estrago se ela
 // vazar: quem a pega NÃO consegue listar/apagar sessões, mandar mensagens nem
 // mexer na config do Chatwoot.
+type widgetAuthContextKey struct{}
+
 func withAuth(h http.Handler, key, widgetKey string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
@@ -220,6 +233,10 @@ func withAuth(h http.Handler, key, widgetKey string) http.Handler {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 				return
 			}
+			// Authorization comes from the validated credential, never accountId
+			// or another caller-controlled SSE parameter. Master access wins when
+			// an installation happens to configure identical keys.
+			r = r.WithContext(context.WithValue(r.Context(), widgetAuthContextKey{}, got != key))
 		}
 		h.ServeHTTP(w, r)
 	})
@@ -229,6 +246,10 @@ func withAuth(h http.Handler, key, widgetKey string) http.Handler {
 // Chatwoot — a única coisa que a chave de widget (WACALLS_WIDGET_KEY) autoriza.
 func widgetAllowed(r *http.Request) bool {
 	p := r.URL.Path
+	// Official accounts are administered by the dashboard, not Chatwoot widgets.
+	if strings.HasPrefix(p, "/api/sessions/meta_") {
+		return false
+	}
 	switch {
 	case p == "/api/events": // SSE de chamadas
 		return true
@@ -267,12 +288,14 @@ func (s *server) sessionByID(w http.ResponseWriter, sid string) *Session {
 func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	// accountId (opcional) escopa os eventos de chamada por conta do Chatwoot: o
 	// widget do Chatwoot passa a conta dele; o painel admin não passa e recebe tudo.
-	s.broker.serveSSE(w, r, clientID(r), asInt(r.URL.Query().Get("accountId")))
+	widgetAuth, _ := r.Context().Value(widgetAuthContextKey{}).(bool)
+	s.broker.serveSSE(w, r, clientID(r), asInt(r.URL.Query().Get("accountId")), widgetAuth)
 }
 
 func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"maxCallsPerSession": s.sessions.maxCalls,
+		"translationEnabled": translationEnabled(),
 	})
 }
 
@@ -293,12 +316,35 @@ func (s *server) handleSessionCalls(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name"`
+		Name     string     `json:"name"`
+		Provider string     `json:"provider"`
+		Meta     metaConfig `json:"meta"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session configuration"})
+		return
+	}
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
 		name = "Session"
+	}
+	if body.Provider == "meta" {
+		if !s.metaAvailable(w) {
+			return
+		}
+		id, err := s.meta.Create(r.Context(), name, body.Meta)
+		if err != nil {
+			writeMetaError(w, err)
+			return
+		}
+		s.broker.emitSessionList(s.sessions.infos())
+		writeJSON(w, http.StatusOK, map[string]string{"id": id})
+		return
+	}
+	if body.Provider != "" && body.Provider != "qr" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider must be qr or meta"})
+		return
 	}
 	id, err := s.sessions.Create(name)
 	if err != nil {

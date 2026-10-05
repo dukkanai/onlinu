@@ -3,6 +3,8 @@ import { toast } from "sonner";
 import { callVideo } from "@/services/calls";
 import { setLocalVideoState, useCalls, type CallVideoState } from "@/stores/calls";
 import type { CallSummary } from "@/types/call";
+import { useSessions } from "@/stores/sessions";
+import { supportsSessionCapability } from "@/lib/session-provider";
 
 const empty: CallVideoState = {
   peerVideo: false,
@@ -22,6 +24,11 @@ export const useCallVideo = (call: CallSummary) => {
 
   const run = async (fn: () => Promise<void>) => {
     if (busy) return;
+    const session = useSessions.getState().sessions.find((item) => item.id === call.sessionId);
+    if (!session || !supportsSessionCapability(session, "video")) {
+      toast.error("Esta sessão não oferece chamadas de vídeo.");
+      return;
+    }
     setBusy(true);
     try {
       await fn();

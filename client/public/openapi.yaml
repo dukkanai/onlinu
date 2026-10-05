@@ -9,6 +9,9 @@ info:
     Não há login/senha. As rotas `/api/*` são protegidas por API key: envie o header
     **`X-API-Key`** com o valor definido em `WACALLS_API_KEY` (ou `?apiKey=...` na query).
     Se `WACALLS_API_KEY` estiver vazia, a autenticação fica desligada.
+    Exceção de segurança: downloads de gravações e o arquivo administrativo exigem
+    uma chave mestra não vazia no header `X-API-Key`; não aceitam chave na URL ou
+    chave de widget, mesmo quando outras rotas permitem esses mecanismos.
 
     O header **`X-Client-Id`** é opcional e **não autentica nada** — é só um identificador
     estável usado para marcar o "dono" das chamadas e filtrar eventos.
@@ -272,10 +275,21 @@ paths:
       tags: [Sessões]
       summary: Liga/desliga a gravação de chamadas da conta
       description: |
-        Quando ligado, TODAS as chamadas desta conta são gravadas. No fim de cada
-        chamada o MP3 vira uma **nota privada** na conversa do número no Chatwoot
-        (se configurado) e um evento `recording` é enviado no webhook da sessão.
-        O áudio também fica em `GET /recordings/{callId}.mp3`.
+        Ativa a captura nas chamadas QR suportadas desta conta. Chamadas abaixo
+        de 3 segundos não geram arquivo; a captura tem limite de 60 minutos.
+        O MP3 mistura a voz original recebida do interlocutor com o áudio enviado
+        a ele (que pode estar traduzido); não contém necessariamente todas as
+        vozes originais e traduções. Gravação de chamadas Meta oficiais não é suportada.
+        No fim, o MP3 pode ser enviado como nota privada ao Chatwoot configurado,
+        e o evento `recording` inclui `requiresMasterHeader: true`.
+        `GET /recordings/{callId}.mp3` exige a chave mestra no header `X-API-Key`.
+        O arquivo de conversas e sua exclusão automática são opções separadas,
+        desativadas por padrão. Sua política configurável propõe originais por
+        24 horas e resumos por 90 dias após o fechamento manual, suspendendo a
+        exclusão durante reclamações ou retenções legais. Gravações antigas não
+        indexadas são preservadas; não há mais limpeza indiscriminada de 48 horas.
+        O arquivo aceita chamadas até 64 MiB e mensagens de voz até 25 MiB.
+        Cópias externas e backups exigem políticas de retenção independentes.
       parameters:
         - { $ref: "#/components/parameters/Sid" }
       requestBody:
@@ -415,8 +429,15 @@ paths:
   /recordings/{id}:
     get:
       tags: [Sessões]
-      summary: Baixa o MP3 de uma gravação (rota pública / capability)
-      description: "Fora de /api/ (sem API key). O id (callId) é não-enumerável e atua como capability."
+      summary: Baixa um MP3 privado com autenticação mestra no header
+      description: |
+        Exige `X-API-Key` com uma chave mestra não vazia de `WACALLS_API_KEY`.
+        Não aceita `?apiKey=`, chave de widget ou URL assinada como substituto.
+        O nome do arquivo não é uma capability. O acesso é auditado e a resposta
+        usa `Cache-Control: no-store`. Não há fallback público. Arquivos removidos
+        pela política do arquivo de conversas retornam 404.
+      security:
+        - apiKeyAuth: []
       parameters:
         - { name: id, in: path, required: true, schema: { type: string }, example: "abc123.mp3" }
       responses:
@@ -424,7 +445,9 @@ paths:
           description: Áudio MP3
           content:
             audio/mpeg: { schema: { type: string, format: binary } }
+        "401": { description: Chave mestra ausente ou inválida no header }
         "404": { description: Não encontrado }
+        "503": { description: Não foi possível registrar a auditoria do acesso }
 
   /api/sessions/{sid}:
     delete:

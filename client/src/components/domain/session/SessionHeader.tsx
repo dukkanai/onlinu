@@ -8,12 +8,15 @@ import { ChatwootDialog } from "./ChatwootDialog";
 import { ProxyDialog } from "./ProxyDialog";
 import { logoutSession, pairSession, setRecording } from "@/services/sessions";
 import type { SessionInfo, SessionState } from "@/types/session";
+import { getSessionProvider, supportsSessionCapability } from "@/lib/session-provider";
 
 const statusLabel: Record<SessionState, string> = {
   open: "Conectado",
   qr: "Ler QR",
   connecting: "Conectando…",
   logged_out: "Desconectado",
+  configured: "Configuração pendente",
+  error: "Verificação necessária",
   pairing_code: "Código de pareamento",
   passkey_request: "Confirmar passkey",
 };
@@ -23,6 +26,8 @@ const statusVariant: Record<SessionState, "success" | "secondary" | "muted" | "d
   qr: "secondary",
   connecting: "muted",
   logged_out: "destructive",
+  configured: "secondary",
+  error: "destructive",
   pairing_code: "secondary",
   passkey_request: "secondary",
 };
@@ -31,6 +36,7 @@ export const SessionHeader = ({ session }: { session: SessionInfo }) => {
   const [busy, setBusy] = useState(false);
   const [recBusy, setRecBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const isMeta = getSessionProvider(session) === "meta";
 
   const copyId = async () => {
     try {
@@ -83,7 +89,7 @@ export const SessionHeader = ({ session }: { session: SessionInfo }) => {
         </button>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {session.paired && (
+        {session.paired && supportsSessionCapability(session, "recording") && (
           <label className="mr-1 flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
             <Mic className="h-4 w-4" />
             <span className="hidden sm:inline">Gravar</span>
@@ -95,9 +101,9 @@ export const SessionHeader = ({ session }: { session: SessionInfo }) => {
             />
           </label>
         )}
-        {session.paired && <ProxyDialog sid={session.id} />}
-        {session.paired && <ChatwootDialog sid={session.id} />}
-        {session.paired ? (
+        {session.paired && !isMeta && <ProxyDialog sid={session.id} />}
+        {session.paired && supportsSessionCapability(session, "messaging") && <ChatwootDialog sid={session.id} />}
+        {!isMeta && (session.paired ? (
           <Button
             variant="outline"
             size="sm"
@@ -113,7 +119,7 @@ export const SessionHeader = ({ session }: { session: SessionInfo }) => {
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
             <span className="hidden sm:inline">Reativar</span>
           </Button>
-        )}
+        ))}
       </div>
     </div>
   );

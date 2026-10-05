@@ -5,7 +5,6 @@ import { apiUrl, getApiKey } from "@/lib/auth";
 export const startCall = (sid: string, phone: string, record: boolean, video: boolean) =>
   apiPost<{ call: { callId: string } }>(`/api/sessions/${sid}/calls`, {
     phone,
-    duration_ms: 300_000,
     record,
     video,
   });

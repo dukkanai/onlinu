@@ -1,0 +1,21 @@
+{
+  "version": "0.3.0",
+  "platform": "linux/amd64",
+  "archive_sha256": "5760c7e0449e0390ce8d725df952169462e870a1762ad980ae134e0524af1fe7",
+  "images": {
+    "app": {
+      "tag": "astracalls-bundle/app:0.3.0-330c41002adb",
+      "allowed_ids": [
+        "sha256:22d89e8f0e76ae78b0692bec07eec3f34d66f3d3fddb64b32c3c1d0c3bbe8da6",
+        "sha256:330c41002adb9998a6972c455b31807f68df6aa3b53314e169bbaa268afb09b0"
+      ]
+    },
+    "postgres": {
+      "tag": "astracalls-bundle/postgres:16-efedf3595f1d",
+      "allowed_ids": [
+        "sha256:345c8087a592c68bc6b1c347bb865b43e14cdefec77d741f85195588028f57a4",
+        "sha256:efedf3595f1d6f415c08568ba171029bf54052e754cc9f030e3f2412b21f3d67"
+      ]
+    }
+  }
+}

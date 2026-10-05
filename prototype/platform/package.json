@@ -1,0 +1,28 @@
+{
+  "name": "restaurant-saas-synthetic-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src.mjs",
+    "test": "node --test *.test.mjs",
+    "test:integration": "node --test integration/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/core": "2.2.0",
+    "@modelcontextprotocol/node": "2.1.0",
+    "@modelcontextprotocol/server": "2.2.0",
+    "ipaddr.js": "2.5.0",
+    "openid-client": "6.8.8",
+    "pg": "8.23.1",
+    "standardwebhooks": "1.1.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "bcryptjs": "3.0.3",
+    "playwright-core": "1.63.0"
+  }
+}

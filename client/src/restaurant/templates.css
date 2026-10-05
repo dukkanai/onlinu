@@ -1,0 +1,116 @@
+/* The containing menu, not the browser window, determines the layout. This
+   makes the admin's 375px/1280px preview match the live storefront as well. */
+.restaurant-storefront .rs-template { container: restaurant-menu / inline-size; min-width: 0; }
+.restaurant-storefront .rs-template :is(.rs-template-products, .rs-menu-layout > div, .rs-menu-layout > aside, .rs-template-toolbar, .rs-template-category-rail, .rs-food-content) { min-width: 0; }
+.restaurant-storefront .rs-template :is(.rs-menu-layout, .rs-showcase-layout) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.restaurant-storefront .rs-template :is(.rs-menu-layout, .rs-showcase-layout) > aside { display: none; position: static; }
+.restaurant-storefront .rs-template-toolbar { margin-block-end: 20px; scroll-margin-top: 24px; }
+.restaurant-storefront .rs-template .rs-menu-heading { flex-wrap: wrap; align-items: center; gap: 12px; margin-block-end: 20px; }
+.restaurant-storefront .rs-template .rs-menu-heading h2 { font-size: 1.65em; }
+.restaurant-storefront .rs-template .rs-search { width: 100%; max-width: none; background: var(--rs-card); }
+.restaurant-storefront .rs-template .rs-search input { font-size: max(16px, 1em); min-height: 44px; }
+.restaurant-storefront .rs-template .rs-categories { gap: 8px; padding: 4px 4px 14px; margin-inline: -4px; scroll-padding-inline: 4px; }
+.restaurant-storefront .rs-template .rs-categories button { font-size: .9em !important; min-height: 44px; padding: 8px 16px; }
+.restaurant-storefront .rs-template .rs-food-grid { display: grid; grid-template-columns: var(--rs-food-columns, repeat(2, minmax(0, 1fr))); gap: 16px; }
+.restaurant-storefront .rs-template .rs-food-card { display: flex; flex-direction: column; padding: 0; min-width: 0; }
+.restaurant-storefront .rs-template .rs-food-image { height: 160px; flex-shrink: 0; }
+.restaurant-storefront .rs-template .rs-food-content { display: flex; flex-direction: column; flex: 1; padding: 16px; }
+.restaurant-storefront .rs-template .rs-food-content :is(h3, h4) { font-size: 1.1em; font-weight: 700; margin: 0 0 8px; line-height: 1.6; }
+.restaurant-storefront .rs-template .rs-food-content > p { font-size: .9em; min-height: 0; margin: 0 0 14px; line-height: 1.85; }
+.restaurant-storefront .rs-template .rs-food-content > div { margin-block-start: auto; padding-block-start: 8px; flex-wrap: wrap; gap: 8px; }
+.restaurant-storefront .rs-template .rs-food-content strong { font-size: 1em; overflow-wrap: anywhere; }
+.restaurant-storefront .rs-template .rs-add-item { min-width: 44px; min-height: 44px; padding: 8px; flex-shrink: 0; margin-inline-start: auto; }
+.restaurant-storefront .rs-template .rs-add-item span { font-size: .85em; }
+.restaurant-storefront .rs-template .rs-brand-hero { grid-template-columns: minmax(0, 1fr); gap: 24px; min-height: 0; padding: 24px; margin-block-end: 32px; text-align: start; }
+.restaurant-storefront .rs-template .rs-hero-copy { width: 100%; min-width: 0; max-width: none; margin: 0; }
+.restaurant-storefront .rs-template .rs-hero h1 { font-size: 2em; line-height: 1.55; max-width: 24ch; margin: 0 0 12px; }
+.restaurant-storefront .rs-template .rs-hero p { font-size: 1em; max-width: 65ch; line-height: 1.9; }
+.restaurant-storefront .rs-template .rs-hero-actions { margin-block-start: 20px; justify-content: flex-start; }
+.restaurant-storefront .rs-template .rs-hero-art { min-height: 0; width: 100%; margin: 0; }
+.restaurant-storefront .rs-template .rs-cover-image { display: block; width: 100%; height: 220px; border-radius: var(--rs-radius); object-fit: cover; }
+.restaurant-storefront .rs-template .rs-hero-art .rs-dish-art { width: min(100%, 360px); }
+.restaurant-storefront .rs-template .rs-hero-orbit { width: 180px; height: 180px; }
+.restaurant-storefront .rs-template .rs-hero-no-art { grid-template-columns: minmax(0, 1fr); }
+.restaurant-storefront .rs-template .rs-hero-no-art .rs-hero-copy { max-width: 850px; }
+
+/* Bistro: a dedicated category rail on wide screens, a scrollable row below. */
+.restaurant-storefront .rs-template-bistro .rs-template-category-rail { min-width: 0; }
+.restaurant-storefront .rs-template-bistro .rs-food-grid { gap: 20px; }
+.restaurant-storefront .rs-template-bistro .rs-brand-hero { padding: 24px; }
+
+/* Editorial: introduction and then separate named menu sections. */
+.restaurant-storefront .rs-template-editorial .rs-editorial-sections { display: grid; gap: 36px; }
+.restaurant-storefront .rs-template-editorial .rs-editorial-category { border-block-end: 1px solid var(--rs-line); margin-block-end: 18px; padding-block-end: 12px; }
+.restaurant-storefront .rs-template-editorial .rs-editorial-category h3 { font-size: 1.5em; }
+.restaurant-storefront .rs-template-editorial .rs-food-grid { grid-template-columns: minmax(0, 1fr); }
+.restaurant-storefront .rs-template-editorial .rs-food-card { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: stretch; }
+.restaurant-storefront .rs-template-editorial .rs-food-image { height: 100%; min-height: 155px; }
+.restaurant-storefront .rs-template-editorial .rs-food-content { padding: 16px; }
+.restaurant-storefront .rs-template-editorial .rs-brand-hero { padding: 0; gap: 0; }
+.restaurant-storefront .rs-template-editorial .rs-hero-copy { padding: 28px; }
+.restaurant-storefront .rs-template-editorial .rs-cover-image { height: 260px; border-radius: 0; }
+
+/* Compact: horizontal rows and a short, text-only introduction. */
+.restaurant-storefront .rs-template-compact .rs-brand-hero { padding: 20px 24px; margin-block-end: 24px; }
+.restaurant-storefront .rs-template-compact .rs-hero h1 { font-size: 1.6em; max-width: none; margin-block-end: 4px; }
+.restaurant-storefront .rs-template-compact .rs-hero p { font-size: .95em; }
+.restaurant-storefront .rs-template-compact .rs-food-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.restaurant-storefront .rs-template-compact .rs-food-card { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: stretch; }
+.restaurant-storefront .rs-template-compact .rs-food-image { height: 100%; min-height: 132px; }
+.restaurant-storefront .rs-template-compact .rs-food-content { padding: 12px; }
+.restaurant-storefront .rs-template-compact .rs-food-content :is(h3, h4) { font-size: 1em; margin-block-end: 4px; }
+.restaurant-storefront .rs-template-compact .rs-food-content > p { margin-block-end: 6px; }
+.restaurant-storefront .rs-template-compact .rs-food-content > div { padding-block-start: 4px; }
+
+/* Showcase: full-width photographic cover and large two-column dishes. */
+.restaurant-storefront .rs-template-showcase .rs-brand-hero { padding: 0; gap: 0; }
+.restaurant-storefront .rs-template-showcase .rs-hero-copy { padding: 28px; }
+.restaurant-storefront .rs-template-showcase .rs-cover-image { height: 260px; border-radius: 0; }
+.restaurant-storefront .rs-template-showcase .rs-food-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.restaurant-storefront .rs-template-showcase .rs-food-image { height: auto; aspect-ratio: 4 / 3; }
+.restaurant-storefront .rs-template-showcase .rs-food-content { padding: 22px; }
+.restaurant-storefront .rs-template-showcase .rs-food-content :is(h3, h4) { font-size: 1.25em; }
+
+@container restaurant-menu (max-width: 420px) {
+  .restaurant-storefront .rs-template-classic .rs-food-grid,
+  .restaurant-storefront .rs-template-bistro .rs-food-grid { grid-template-columns: minmax(0, 1fr); }
+  .restaurant-storefront .rs-template-classic .rs-food-image,
+  .restaurant-storefront .rs-template-bistro .rs-food-image { height: 195px; }
+}
+@container restaurant-menu (min-width: 600px) {
+  .restaurant-storefront .rs-template .rs-search { width: 260px; }
+  .restaurant-storefront .rs-template .rs-brand-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 36px; gap: 32px; }
+  .restaurant-storefront .rs-template .rs-hero h1 { font-size: 2.5em; }
+  .restaurant-storefront .rs-template .rs-hero-orbit { width: 235px; height: 235px; }
+  .restaurant-storefront .rs-template-editorial .rs-brand-hero { padding: 0; gap: 0; }
+  .restaurant-storefront .rs-template-editorial .rs-hero-art { align-self: stretch; height: 100%; }
+  .restaurant-storefront .rs-template-editorial .rs-cover-image { height: 100%; min-height: 320px; }
+  .restaurant-storefront .rs-template-editorial .rs-hero-copy { padding: 36px; }
+  .restaurant-storefront .rs-template-editorial .rs-food-card { grid-template-columns: 170px minmax(0, 1fr); }
+  .restaurant-storefront .rs-template-compact .rs-brand-hero { grid-template-columns: minmax(0, 1fr); padding: 22px 28px; }
+  .restaurant-storefront .rs-template-compact .rs-hero h1 { font-size: 1.7em; }
+  .restaurant-storefront .rs-template-compact .rs-food-card { grid-template-columns: 116px minmax(0, 1fr); }
+  .restaurant-storefront .rs-template-showcase .rs-brand-hero { grid-template-columns: minmax(0, 1fr); padding: 0; gap: 0; }
+  .restaurant-storefront .rs-template-showcase .rs-cover-image { height: 340px; }
+  .restaurant-storefront .rs-template-showcase .rs-hero-copy { padding: 32px 40px; }
+  .restaurant-storefront .rs-template-showcase .rs-food-grid { grid-template-columns: var(--rs-food-columns, repeat(2, minmax(0, 1fr))); }
+  .restaurant-storefront .rs-template .rs-hero-no-art { grid-template-columns: minmax(0, 1fr); }
+}
+@container restaurant-menu (min-width: 780px) {
+  .restaurant-storefront .rs-template :is(.rs-menu-layout, .rs-showcase-layout) { grid-template-columns: minmax(0, 1fr) 280px; gap: 26px; }
+  .restaurant-storefront .rs-template :is(.rs-menu-layout, .rs-showcase-layout) > aside { display: block; position: sticky; top: 24px; }
+  .restaurant-storefront .rs-template-bistro .rs-template-category-rail { grid-column: 1 / -1; }
+  .restaurant-storefront .rs-template-bistro .rs-bistro-layout { row-gap: 12px; }
+  .restaurant-storefront .rs-template .rs-food-image { height: 185px; }
+  .restaurant-storefront .rs-template-editorial .rs-food-image,
+  .restaurant-storefront .rs-template-compact .rs-food-image { height: 100%; }
+  .restaurant-storefront .rs-template-showcase .rs-food-image { height: auto; }
+}
+@container restaurant-menu (min-width: 1100px) {
+  .restaurant-storefront .rs-template-bistro .rs-bistro-layout { grid-template-columns: 170px minmax(0, 1fr) 280px; gap: 24px; }
+  .restaurant-storefront .rs-template-bistro .rs-template-category-rail { grid-column: auto; position: sticky; top: 24px; }
+  .restaurant-storefront .rs-template-bistro .rs-categories { display: flex; flex-direction: column; overflow: visible; padding: 0; margin: 0; }
+  .restaurant-storefront .rs-template-bistro .rs-categories button { white-space: normal; overflow-wrap: anywhere; text-align: start; }
+  .restaurant-storefront .rs-template-classic .rs-food-grid { grid-template-columns: var(--rs-food-columns-wide, repeat(3, minmax(0, 1fr))); }
+  .restaurant-storefront .rs-template-showcase .rs-showcase-layout { grid-template-columns: minmax(0, 1fr) 300px; }
+}

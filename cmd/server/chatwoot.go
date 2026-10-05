@@ -381,15 +381,15 @@ func (s *Session) chatwootPushChannel(cfg ChatwootConfig, evt *events.Message) {
 // cliente do WhatsApp (usado apenas para re-baixar a mídia). É o que persiste na
 // fila de reentrega quando o Chatwoot está fora do ar.
 type cwJob struct {
-	ChatID    string          `json:"chatId"`    // identifier do contato no Chatwoot (telefone@..., JID de grupo/canal)
-	Phone     string          `json:"phone"`     // telefone p/ busca do contato (vazio em grupo/canal)
-	Name      string          `json:"name"`      // nome do contato
-	Avatar    string          `json:"avatar"`    // URL do avatar (best-effort)
-	Prefix    string          `json:"prefix"`    // prefixo colado antes do texto (autor em grupo, título de espelho)
-	Private   bool            `json:"private"`   // nota privada (espelho do que saiu por fora)
-	Text      string          `json:"text"`      // texto final já formatado
-	SourceID  string          `json:"sourceId"`  // = ID da msg do WhatsApp; idempotência no Chatwoot (dedup na reentrega)
-	InReplyTo string          `json:"inReplyTo"` // ID da msg citada (resposta)
+	ChatID    string          `json:"chatId"`        // identifier do contato no Chatwoot (telefone@..., JID de grupo/canal)
+	Phone     string          `json:"phone"`         // telefone p/ busca do contato (vazio em grupo/canal)
+	Name      string          `json:"name"`          // nome do contato
+	Avatar    string          `json:"avatar"`        // URL do avatar (best-effort)
+	Prefix    string          `json:"prefix"`        // prefixo colado antes do texto (autor em grupo, título de espelho)
+	Private   bool            `json:"private"`       // nota privada (espelho do que saiu por fora)
+	Text      string          `json:"text"`          // texto final já formatado
+	SourceID  string          `json:"sourceId"`      // = ID da msg do WhatsApp; idempotência no Chatwoot (dedup na reentrega)
+	InReplyTo string          `json:"inReplyTo"`     // ID da msg citada (resposta)
 	MsgRaw    json.RawMessage `json:"msg,omitempty"` // protojson da mensagem; presente só quando há mídia p/ re-baixar
 }
 
@@ -428,15 +428,13 @@ func deliverContent(evt *events.Message, prefix string, private bool) cwJob {
 	return j
 }
 
-// chatwootSend tenta entregar o job imediatamente; se falhar (ex.: Chatwoot fora
-// do ar, timeout, 5xx), enfileira para reentrega com backoff em vez de descartar
-// a mensagem. É o antídoto para "mensagem recebida enquanto o Chatwoot reiniciava
-// se perde".
+// chatwootSend enqueues before sending. A single bounded leased worker performs
+// retries and relies on the receiver's source_id deduplication after ambiguity.
 func (s *Session) chatwootSend(cfg ChatwootConfig, j cwJob) {
-	if err := s.execChatwootJob(cfg, j); err != nil {
-		s.log.Warn("chatwoot: entrega falhou; enfileirando p/ reentrega", "err", err, "source", j.SourceID)
-		s.enqueueChatwoot(j)
-	}
+	// Persist before network delivery; the leased worker owns sending. A crash
+	// after remote acceptance may still replay: source_id is receiver dedupe,
+	// not an exactly-once guarantee made by this process.
+	s.enqueueChatwoot(j)
 }
 
 // execChatwootJob roda a entrega inteira (contato -> conversa -> post). É a
@@ -451,22 +449,28 @@ func (s *Session) execChatwootJob(cfg ChatwootConfig, j cwJob) error {
 	if err != nil {
 		return fmt.Errorf("ensure conversation: %w", err)
 	}
-	// mídia: re-baixa do WhatsApp e sobe como anexo. Se o download falhar (mídia
-	// expirada, etc.), cai para o texto — mantém o comportamento antigo.
+	// Missing media is a retryable failure, never a successful empty delivery.
+	// After the retry budget is exhausted it remains visible as a dead letter.
 	if j.hasMedia() {
 		var msg waE2E.Message
-		if uerr := protojson.Unmarshal(j.MsgRaw, &msg); uerr == nil {
-			if dl := downloadableOf(&msg); dl != nil {
-				data, derr := s.client.Download(context.Background(), dl)
-				if derr == nil && len(data) > 0 {
-					fname, mime := mediaMeta(&msg)
-					if perr := cfg.postAttachment(convID, j.Prefix+j.Text, fname, mime, data, dirFromPrivate(j.Private), j.SourceID, j.InReplyTo, 0); perr != nil {
-						return fmt.Errorf("post attachment: %w", perr)
-					}
-					return nil
-				}
-			}
+		if protojson.Unmarshal(j.MsgRaw, &msg) != nil {
+			return fmt.Errorf("invalid media metadata")
 		}
+		dl := downloadableOf(&msg)
+		if dl == nil || s.client == nil {
+			return fmt.Errorf("media unavailable")
+		}
+		downloadCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		data, derr := s.client.Download(downloadCtx, dl)
+		cancel()
+		if derr != nil || len(data) == 0 {
+			return fmt.Errorf("media download unavailable")
+		}
+		fname, mime := mediaMeta(&msg)
+		if perr := cfg.postAttachment(convID, j.Prefix+j.Text, fname, mime, data, dirFromPrivate(j.Private), j.SourceID, j.InReplyTo, 0); perr != nil {
+			return fmt.Errorf("post attachment: %w", perr)
+		}
+		return nil
 	}
 	if strings.TrimSpace(j.Text) == "" {
 		return nil

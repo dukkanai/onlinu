@@ -77,6 +77,9 @@ func newSessionStore(ctx context.Context, db *sql.DB) (*sessionStore, error) {
 		return nil, err
 	}
 	_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS chatwoot_outbox_due ON chatwoot_outbox (dead, next_at)`)
+	if err := initConversationArchive(ctx, db); err != nil {
+		return nil, err
+	}
 
 	return &sessionStore{db: db}, nil
 }

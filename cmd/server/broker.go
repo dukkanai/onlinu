@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -38,12 +40,25 @@ type AuthSnapshot struct {
 }
 
 type SessionInfo struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	JID       string `json:"jid"`
-	State     string `json:"state"`
-	Paired    bool   `json:"paired"`
-	Recording bool   `json:"recording"`
+	ID           string               `json:"id"`
+	Name         string               `json:"name"`
+	JID          string               `json:"jid"`
+	State        string               `json:"state"`
+	Paired       bool                 `json:"paired"`
+	Recording    bool                 `json:"recording"`
+	Provider     string               `json:"provider,omitempty"`
+	Capabilities *SessionCapabilities `json:"capabilities,omitempty"`
+}
+
+// Provider capabilities are explicit: the official voice adapter must not
+// silently fall back to unsupported WhatsMeow operations.
+type SessionCapabilities struct {
+	Audio     bool `json:"audio"`
+	Video     bool `json:"video"`
+	Recording bool `json:"recording"`
+	Hold      bool `json:"hold"`
+	Transfer  bool `json:"transfer"`
+	Messaging bool `json:"messaging"`
 }
 
 type subscriber struct {
@@ -51,8 +66,9 @@ type subscriber struct {
 	// accountID é a conta do Chatwoot que este assinante representa. 0 = sem
 	// escopo (painel admin) e recebe TODOS os eventos; > 0 (widget de uma conta)
 	// recebe só os eventos de chamada das sessões daquela conta.
-	accountID int
-	ch        chan []byte
+	accountID  int
+	widgetAuth bool
+	ch         chan []byte
 }
 
 type Broker struct {
@@ -75,7 +91,11 @@ func NewBroker() *Broker {
 }
 
 func (b *Broker) subscribe(clientID string, accountID int) *subscriber {
-	s := &subscriber{clientID: clientID, accountID: accountID, ch: make(chan []byte, 32)}
+	return b.subscribeForAuth(clientID, accountID, false)
+}
+
+func (b *Broker) subscribeForAuth(clientID string, accountID int, widgetAuth bool) *subscriber {
+	s := &subscriber{clientID: clientID, accountID: accountID, widgetAuth: widgetAuth, ch: make(chan []byte, 32)}
 	b.mu.Lock()
 	b.subs[s] = struct{}{}
 	b.mu.Unlock()
@@ -94,11 +114,19 @@ func (b *Broker) broadcast(ev any) {
 	if err != nil {
 		return
 	}
+	widgetData := widgetSSEPayload(data)
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for s := range b.subs {
+		payload := data
+		if s.widgetAuth {
+			payload = widgetData
+		}
+		if payload == nil {
+			continue
+		}
 		select {
-		case s.ch <- data:
+		case s.ch <- payload:
 		default:
 		}
 	}
@@ -114,6 +142,7 @@ func (b *Broker) broadcastForSession(sessionID string, ev any) {
 	if err != nil {
 		return
 	}
+	widgetData := widgetSSEPayload(data)
 	acct := 0
 	if b.AccountForSession != nil {
 		acct = b.AccountForSession(sessionID)
@@ -121,11 +150,21 @@ func (b *Broker) broadcastForSession(sessionID string, ev any) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for s := range b.subs {
+		payload := data
+		if s.widgetAuth {
+			if strings.HasPrefix(sessionID, "meta_") {
+				continue
+			}
+			payload = widgetData
+		}
+		if payload == nil {
+			continue
+		}
 		if s.accountID != 0 && s.accountID != acct {
 			continue // widget de outra conta: não deve tocar/abrir
 		}
 		select {
-		case s.ch <- data:
+		case s.ch <- payload:
 		default:
 		}
 	}
@@ -143,6 +182,7 @@ func (b *Broker) broadcastForSessionTargeted(sessionID, targetClientID string, e
 	if err != nil {
 		return
 	}
+	widgetData := widgetSSEPayload(data)
 	acct := 0
 	if b.AccountForSession != nil {
 		acct = b.AccountForSession(sessionID)
@@ -150,6 +190,16 @@ func (b *Broker) broadcastForSessionTargeted(sessionID, targetClientID string, e
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for s := range b.subs {
+		payload := data
+		if s.widgetAuth {
+			if strings.HasPrefix(sessionID, "meta_") {
+				continue
+			}
+			payload = widgetData
+		}
+		if payload == nil {
+			continue
+		}
 		if s.accountID != 0 && s.accountID != acct {
 			continue
 		}
@@ -157,7 +207,7 @@ func (b *Broker) broadcastForSessionTargeted(sessionID, targetClientID string, e
 			continue
 		}
 		select {
-		case s.ch <- data:
+		case s.ch <- payload:
 		default:
 		}
 	}
@@ -343,7 +393,7 @@ func (b *Broker) historyRows(sessionID string, limit int) []CallRecord {
 	return rows
 }
 
-func (b *Broker) serveSSE(w http.ResponseWriter, r *http.Request, clientID string, accountID int) {
+func (b *Broker) serveSSE(w http.ResponseWriter, r *http.Request, clientID string, accountID int, widgetAuth bool) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -354,12 +404,21 @@ func (b *Broker) serveSSE(w http.ResponseWriter, r *http.Request, clientID strin
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	sub := b.subscribe(clientID, accountID)
+	sub := b.subscribeForAuth(clientID, accountID, widgetAuth)
 	defer b.unsubscribe(sub)
 
 	if b.SnapshotFn != nil {
 		for _, ev := range b.SnapshotFn() {
-			writeSSE(w, flusher, ev)
+			data, err := json.Marshal(ev)
+			if err != nil {
+				continue
+			}
+			if widgetAuth {
+				data = widgetSSEPayload(data)
+			}
+			if data != nil {
+				writeSSE(w, flusher, json.RawMessage(data))
+			}
 		}
 	}
 	b.broadcastCallList()
@@ -381,6 +440,77 @@ func (b *Broker) serveSSE(w http.ResponseWriter, r *http.Request, clientID strin
 			flusher.Flush()
 		}
 	}
+}
+
+// Widget credentials authorize only the QR integration. Known aggregate events
+// keep their QR entries; other events containing a Meta identity are suppressed
+// in full, including new or nested event shapes. Apply this to both snapshots
+// and live broadcasts so omitting accountId cannot widen widget access.
+func widgetSSEPayload(data []byte) []byte {
+	var event map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if decoder.Decode(&event) != nil || event == nil {
+		return nil
+	}
+	field := ""
+	switch event["type"] {
+	case "session-list":
+		field = "sessions"
+	case "call-list":
+		field = "calls"
+	}
+	if field != "" {
+		items, ok := event[field].([]any)
+		if !ok {
+			return nil
+		}
+		visible := make([]any, 0, len(items))
+		for _, item := range items {
+			if !containsMetaIdentity(item) {
+				visible = append(visible, item)
+			}
+		}
+		event[field] = visible
+	}
+	if containsMetaIdentity(event) {
+		return nil
+	}
+	if field == "" {
+		return data
+	}
+	filtered, err := json.Marshal(event)
+	if err != nil {
+		return nil
+	}
+	return filtered
+}
+
+func containsMetaIdentity(value any) bool {
+	switch value := value.(type) {
+	case map[string]any:
+		for key, child := range value {
+			if strings.HasPrefix(key, "meta_") {
+				return true
+			}
+			if text, ok := child.(string); ok {
+				name := strings.ToLower(strings.ReplaceAll(key, "_", ""))
+				if (name == "provider" && strings.EqualFold(text, "meta")) || (strings.HasSuffix(name, "id") && (strings.HasPrefix(text, "meta_") || strings.HasPrefix(text, "wacid."))) {
+					return true
+				}
+			}
+			if containsMetaIdentity(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range value {
+			if containsMetaIdentity(child) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func writeSSE(w http.ResponseWriter, f http.Flusher, ev any) {

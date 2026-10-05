@@ -2,6 +2,18 @@
 
 # 📞 AstraCalls
 
+> **OpenAI live translation (custom integration):** two-way voice interpretation in the React calling panel, with Arabic playback and a selectable remote language. See [دليل التشغيل بالعربية](TRANSLATION.ar.md) for setup, Docker deployment, tests and limitations.
+
+> **Docker distribution:** versioned application image, isolated Compose instances, persistent database/recordings and update instructions: [دليل Docker بالعربية](DOCKER.ar.md).
+
+> **Portable installer:** a single installer file for independent Docker instances: [دليل التثبيت بالعربية](deploy/INSTALL.ar.md).
+
+> **Optional official WhatsApp Calling (0.2.0):** select Meta instead of QR for an eligible business number. Audio/WebRTC and the existing translation path are integrated; production activation and a real-call acceptance test require customer Meta credentials. See [دليل الربط الرسمي بالعربية](META.ar.md).
+
+> **Restaurant ordering (0.3.0):** public menu and guest checkout at `/`, private order tracking, optional customer accounts, table QR codes and restaurant administration at `/admin`. The original WhatsApp calling panel is at `/admin/calls`. Fresh installations start with a labelled demo menu; no payment gateway or delivery provider is connected. See [دليل المطعم بالعربية](RESTAURANT.ar.md).
+
+> **Restaurant audit, September 30:** the development UI is now Arabic/English only, retaining five visual layouts and merchant menu text. Template/font, district delivery, reopening and print corrections were verified on an isolated test installation. Current status and remaining external prerequisites are in [نقطة استئناف العمل](RESTAURANT-RESUMPTION.ar.md), with evidence in [تقرير التدقيق](RESTAURANT-ITERATION-AUDIT.ar.md). These changes have not been deployed; the clean distributable release remains deferred.
+
 **Chamadas de voz do WhatsApp em Go puro, direto do navegador — agora prontas para produção SaaS.**
 
 Mídia VoIP nativa, multi-conta (multi-sessão), API de mensagens, webhooks, integração com **Chatwoot** e deploy em **Docker Swarm + Traefik**.
@@ -191,7 +203,7 @@ go run -tags mlow ./cmd/server -addr :8080 -debug
 > [opus_mlow](https://github.com/edgardmessias/opus_mlow), com a SONAME corrigida para
 > `libopus_mlow.so`).
 
-Abra `http://localhost:8080`, clique em **Nova sessão** e escaneie o QR (também impresso no
+Abra `http://localhost:8080/admin/calls`, clique em **Nova sessão** e escaneie o QR (também impresso no
 terminal) em **WhatsApp → Aparelhos conectados**.
 
 ### Cliente React em modo dev
@@ -215,17 +227,33 @@ npm run dev      # Vite na :5173, faz proxy de /api → http://localhost:8080
 | `WACALLS_PUBLIC_IP` | — | IP público p/ NAT 1:1 / ICE-TCP (`auto` detecta) |
 | `WACALLS_UDP_PORT` | — | Porta de mídia (UDP + ICE-TCP) |
 | `WACALLS_MAX_CALLS` | `8` | Equivalente a `-max-calls-per-session` por env |
-| `WACALLS_RECORDING_DIR` | `$TMPDIR/wacalls-recordings` | Onde os MP3s de gravação ficam (retenção ~48h, limpeza automática) |
-| `WACALLS_PUBLIC_BASE_URL` | — | Base pública p/ montar a URL de download da gravação e do evento `recording` no webhook (ex.: `https://call.seudominio.com`) |
+| `WACALLS_RECORDING_DIR` | `$TMPDIR/wacalls-recordings` | Armazenamento privado de gravações; a retenção depende da política opt-in do arquivo de conversas. Arquivos antigos não indexados são preservados. |
+| `WACALLS_PUBLIC_BASE_URL` | — | Base externa da URL autenticada de gravação no evento `recording` (ex.: `https://call.seudominio.com`); não torna o áudio público. |
 
 > **Gravação de chamada (opt-in por sessão).** Ligue em `PUT /api/sessions/{sid}/recording {"enabled":true}`
-> (ou pelo toggle "Gravar" no painel). Com a gravação ligada, TODAS as chamadas da
-> conta são gravadas: o áudio dos dois lados é mixado num MP3 mono 16 kHz e, ao
+> (ou pelo toggle "Gravar" no painel). Nas chamadas QR suportadas, o áudio original
+> recebido do interlocutor e o áudio enviado a ele são mixados num MP3 mono 16 kHz.
+> Com tradução, o áudio enviado pode ser traduzido: não é uma captura separada de
+> todas as vozes originais e traduções. Chamadas abaixo de 3 segundos não geram
+> arquivo; a captura tem limite de 60 minutos. Ao
 > fim da chamada, vira **nota privada** na conversa do número no Chatwoot (se
 > configurado — nunca é reenviado ao cliente) e dispara um evento `recording` no
-> webhook da sessão com `{ callId, to, url, seconds }`. O MP3 também fica em
-> `GET /recordings/{callId}.mp3` (capability). Requer `ffmpeg` (já na imagem). Base
+> webhook da sessão com `{ callId, to, url, seconds, requiresMasterHeader: true, contentDescription }`.
+> O MP3 fica em `GET /recordings/{callId}.mp3`, exigindo a chave **mestra** no header
+> `X-API-Key`; chave na URL, chave de widget e nome de arquivo não autorizam o download.
+> O áudio não é público. Requer `ffmpeg` (já na imagem). Base
 > feita a partir da contribuição de @Mercantes (PR #12).
+
+O arquivo de conversas e a exclusão automática são opções separadas, desativadas
+por padrão. Quando explicitamente ativada, a política propõe 24 horas para os
+originais e 90 dias para resumos após o fechamento manual da conversa, com prazos
+configuráveis e bloqueio de exclusão durante reclamações ou retenções legais.
+O antigo limpador indiscriminado de 48 horas foi desativado; arquivos legados não
+indexados permanecem privados e exigem uma política deliberada de migração/limpeza.
+O arquivo aceita gravações de chamada até 64 MiB e mensagens de voz até 25 MiB.
+A gravação de chamadas Meta oficiais ainda não é suportada. Cópias no Chatwoot,
+webhooks, backups e downloads dos administradores têm retenção independente.
+Consulte [o guia do arquivo e seus limites](CONVERSATION-ARCHIVE.ar.md).
 
 ---
 

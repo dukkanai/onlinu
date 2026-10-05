@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { Loader2, Plus, Trash2, KeyRound } from "lucide-react";
+import { Plus, Trash2, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { setActiveSession, useSessions } from "@/stores/sessions";
-import { createSession, deleteSession } from "@/services/sessions";
+import { deleteSession } from "@/services/sessions";
 import { EXTENSION_DOWNLOAD_URL } from "@/lib/passkey";
+import { getSessionProvider } from "@/lib/session-provider";
+import { NewSessionDialog } from "@/components/domain/session/NewSessionDialog";
 import type { SessionInfo, SessionState } from "@/types/session";
 
 const dotClass: Record<SessionState, string> = {
@@ -14,6 +16,8 @@ const dotClass: Record<SessionState, string> = {
   qr: "bg-amber-500",
   connecting: "bg-muted-foreground/50",
   logged_out: "bg-destructive",
+  configured: "bg-amber-500",
+  error: "bg-destructive",
   pairing_code: "bg-amber-500",
   passkey_request: "bg-sky-400",
 };
@@ -21,21 +25,8 @@ const dotClass: Record<SessionState, string> = {
 export const Sidebar = ({ onNavigate }: { onNavigate?: () => void }) => {
   const sessions = useSessions((s) => s.sessions);
   const activeId = useSessions((s) => s.activeId);
-  const [creating, setCreating] = useState(false);
+  const [newAccountOpen, setNewAccountOpen] = useState(false);
   const [toDelete, setToDelete] = useState<SessionInfo | null>(null);
-
-  const onNew = async () => {
-    setCreating(true);
-    try {
-      const { id } = await createSession("WhatsApp");
-      setActiveSession(id);
-      onNavigate?.();
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const remove = async (id: string) => {
     try {
@@ -52,8 +43,8 @@ export const Sidebar = ({ onNavigate }: { onNavigate?: () => void }) => {
           <img src="/logoCalls.png" alt="AstraCalls" className="h-7 w-auto select-none" draggable={false} />
         </span>
       </div>
-      <Button className="w-full" onClick={onNew} disabled={creating}>
-        {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+      <Button className="w-full" onClick={() => setNewAccountOpen(true)}>
+        <Plus className="h-4 w-4" />
         Nova conta
       </Button>
       <p className="px-3 pb-1 pt-4 text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -79,6 +70,9 @@ export const Sidebar = ({ onNavigate }: { onNavigate?: () => void }) => {
             <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-card", dotClass[s.state])} />
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{s.name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {getSessionProvider(s) === "meta" ? (s.paired ? "API oficial Meta" : "Meta · configurar") : "QR / aparelho conectado"}
+              </p>
               {s.jid && <p className="truncate text-xs text-muted-foreground">{s.jid.split("@")[0]}</p>}
             </div>
             <button
@@ -119,6 +113,7 @@ export const Sidebar = ({ onNavigate }: { onNavigate?: () => void }) => {
           if (toDelete) void remove(toDelete.id);
         }}
       />
+      {newAccountOpen && <NewSessionDialog onClose={() => setNewAccountOpen(false)} onCreated={() => onNavigate?.()} />}
     </div>
   );
 };

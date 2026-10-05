@@ -1,16 +1,23 @@
 import { Phone, PhoneForwarded, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { isSessionReady, supportsSessionCapability } from "@/lib/session-provider";
 import { useCalls, clearTransferOffer } from "@/stores/calls";
 import { useDevices } from "@/stores/devices";
+import { useSessions } from "@/stores/sessions";
 import { usePickupCall } from "@/hooks/usePickupCall";
+import { TranslationSettings } from "./TranslationSettings";
 
 // Modal exibido ao atendente alvo quando uma chamada é transferida para ele. Enquanto
 // isso o interlocutor ouve música de espera. "Atender" assume a chamada (pickup).
 export const TransferOfferModal = () => {
   const offer = useCalls((s) => s.transferOffer);
+  const session = useSessions((s) => s.sessions.find((x) => x.id === offer?.sessionId));
   const micId = useDevices((s) => s.micId);
   const pickup = usePickupCall(micId);
+  const canPickup = isSessionReady(session)
+    && supportsSessionCapability(session, "audio")
+    && supportsSessionCapability(session, "transfer");
 
   return (
     <Dialog open={!!offer}>
@@ -28,6 +35,7 @@ export const TransferOfferModal = () => {
           <DialogTitle>Chamada transferida</DialogTitle>
           <DialogDescription className="truncate">{offer?.peer}</DialogDescription>
         </DialogHeader>
+        {offer && <TranslationSettings sid={offer.sessionId} disabled={pickup.isPending} />}
         <div className="mt-2 flex items-center justify-center gap-6">
           <Button
             variant="outline"
@@ -42,8 +50,8 @@ export const TransferOfferModal = () => {
           <Button
             size="icon"
             className="h-14 w-14 rounded-full"
-            disabled={pickup.isPending}
-            onClick={() => offer && pickup.mutate({ sid: offer.sessionId, callId: offer.callId })}
+            disabled={pickup.isPending || !canPickup}
+            onClick={() => offer && canPickup && pickup.mutate({ sid: offer.sessionId, callId: offer.callId })}
             aria-label="Atender"
           >
             <Phone className="h-6 w-6" />

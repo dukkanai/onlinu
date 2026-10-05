@@ -2,10 +2,13 @@ import { useEffect } from "react";
 import { Phone, PhoneIncoming, PhoneOff } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { isSessionReady, supportsSessionCapability } from "@/lib/session-provider";
 import { useCalls } from "@/stores/calls";
 import { useDevices } from "@/stores/devices";
+import { useSessions } from "@/stores/sessions";
 import { useAcceptCall } from "@/hooks/useAcceptCall";
 import { useRejectCall } from "@/hooks/useRejectCall";
+import { TranslationSettings } from "./TranslationSettings";
 
 type RingHandle = { stop: () => void };
 
@@ -50,10 +53,13 @@ const startRingLoop = (): RingHandle | null => {
 
 export const IncomingCallModal = () => {
   const incoming = useCalls((s) => s.incoming);
+  const session = useSessions((s) => s.sessions.find((x) => x.id === incoming?.sessionId));
   const micId = useDevices((s) => s.micId);
   const accept = useAcceptCall(micId);
   const reject = useRejectCall();
   const busy = accept.isPending || reject.isPending;
+  const canAccept = isSessionReady(session) && supportsSessionCapability(session, "audio");
+  const acceptVideo = !!incoming?.video && supportsSessionCapability(session, "video");
 
   useEffect(() => {
     if (!incoming) return;
@@ -74,9 +80,10 @@ export const IncomingCallModal = () => {
           <div className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
             <PhoneIncoming className="h-7 w-7" />
           </div>
-          <DialogTitle>{incoming?.video ? "Incoming video call" : "Incoming call"}</DialogTitle>
+          <DialogTitle>{acceptVideo ? "Incoming video call" : "Incoming call"}</DialogTitle>
           <DialogDescription className="truncate">{incoming?.peer}</DialogDescription>
         </DialogHeader>
+        {incoming && <TranslationSettings sid={incoming.sessionId} disabled={busy} />}
         <div className="mt-2 flex items-center justify-center gap-6">
           <Button
             variant="destructive"
@@ -91,8 +98,8 @@ export const IncomingCallModal = () => {
           <Button
             size="icon"
             className="h-14 w-14 rounded-full"
-            disabled={busy}
-            onClick={() => incoming && accept.mutate({ sid: incoming.sessionId, callId: incoming.callId, video: !!incoming.video })}
+            disabled={busy || !canAccept}
+            onClick={() => incoming && canAccept && accept.mutate({ sid: incoming.sessionId, callId: incoming.callId, video: acceptVideo })}
             aria-label="Accept"
           >
             <Phone className="h-6 w-6" />

@@ -1,0 +1,118 @@
+# Synthetic local demonstration ONLY. These credentials are intentionally public
+# fixture values. Never reuse this Compose file for real restaurants or money.
+name: restaurant-saas-prototype
+
+x-service: &service
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"]
+  restart: "no"
+  stop_grace_period: 20s
+  pids_limit: 128
+  mem_limit: 256m
+  cpus: 0.50
+  logging:
+    driver: json-file
+    options: {max-size: 5m, max-file: "2"}
+
+x-postgres: &postgres
+  image: postgres:16-bookworm
+  environment:
+    POSTGRES_USER: prototype_bootstrap
+    POSTGRES_PASSWORD: synthetic-bootstrap-only
+    POSTGRES_DB: postgres
+  healthcheck:
+    test: [CMD-SHELL, "pg_isready -U prototype_bootstrap -d postgres"]
+    interval: 2s
+    timeout: 3s
+    retries: 30
+  restart: "no"
+  mem_limit: 192m
+  cpus: 0.50
+  pids_limit: 128
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options: {max-size: 5m, max-file: "2"}
+
+services:
+  platform-db:
+    <<: *postgres
+    volumes:
+      - platform-db:/var/lib/postgresql/data
+      - ./postgres/init-platform.sql:/docker-entrypoint-initdb.d/01-app.sql:ro
+    networks: [platform-data]
+  tenant-a-db:
+    <<: *postgres
+    volumes:
+      - tenant-a-db:/var/lib/postgresql/data
+      - ./postgres/init-a.sql:/docker-entrypoint-initdb.d/01-app.sql:ro
+    networks: [tenant-a-data]
+  tenant-b-db:
+    <<: *postgres
+    volumes:
+      - tenant-b-db:/var/lib/postgresql/data
+      - ./postgres/init-b.sql:/docker-entrypoint-initdb.d/01-app.sql:ro
+    networks: [tenant-b-data]
+  tenant-a:
+    <<: *service
+    image: restaurant-saas-prototype-tenant:local
+    build: ./tenant
+    depends_on: {tenant-a-db: {condition: service_healthy}}
+    environment:
+      TENANT_ID: demo-a
+      SYNTHETIC_MODE: "true"
+      TENANT_SERVICE_TOKEN: demo-a-service-token-only-at-least-32-chars
+      DATABASE_URL: postgres://restaurant_a:demo-a-db-only-not-for-production@tenant-a-db:5432/restaurant_a?sslmode=disable
+    networks: [tenant-a-api, tenant-a-data]
+  tenant-b:
+    <<: *service
+    image: restaurant-saas-prototype-tenant:local
+    build: ./tenant
+    depends_on: {tenant-b-db: {condition: service_healthy}}
+    environment:
+      TENANT_ID: demo-b
+      SYNTHETIC_MODE: "true"
+      TENANT_SERVICE_TOKEN: demo-b-service-token-only-at-least-32-chars
+      DATABASE_URL: postgres://restaurant_b:demo-b-db-only-not-for-production@tenant-b-db:5432/restaurant_b?sslmode=disable
+    networks: [tenant-b-api, tenant-b-data]
+  platform:
+    <<: *service
+    build: ./platform
+    image: restaurant-saas-prototype-platform:local
+    depends_on:
+      platform-db: {condition: service_healthy}
+      tenant-a: {condition: service_started}
+      tenant-b: {condition: service_started}
+    environment:
+      PROTOTYPE_SYNTHETIC_ONLY: "1"
+      PUBLIC_BASE_URL: http://127.0.0.1:18787
+      PORT: "3000"
+      DATABASE_URL: postgres://prototype_app:demo-platform-db-only-not-for-production@platform-db:5432/prototype_platform
+      EVENTS_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      TENANT_A_URL: http://tenant-a:8080
+      TENANT_B_URL: http://tenant-b:8080
+      TENANT_A_TOKEN: demo-a-service-token-only-at-least-32-chars
+      TENANT_B_TOKEN: demo-b-service-token-only-at-least-32-chars
+      PAYMENT_MODE: local-simulator
+    ports: ["127.0.0.1:18787:3000"]
+    networks: [platform-data, tenant-a-api, tenant-b-api, egress]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+networks:
+  platform-data: {internal: true}
+  tenant-a-api: {internal: true}
+  tenant-b-api: {internal: true}
+  tenant-a-data: {internal: true}
+  tenant-b-data: {internal: true}
+  egress: {}
+volumes:
+  platform-db: {}
+  tenant-a-db: {}
+  tenant-b-db: {}

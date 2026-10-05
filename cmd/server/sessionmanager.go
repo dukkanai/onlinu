@@ -20,6 +20,7 @@ type SessionManager struct {
 	waLogger waLog.Logger
 	log      *slog.Logger
 	maxCalls int
+	meta     *metaManager
 
 	mu       sync.RWMutex
 	sessions map[string]*Session
@@ -114,7 +115,12 @@ func (m *SessionManager) infos() []SessionInfo {
 	m.mu.RUnlock()
 	out := make([]SessionInfo, 0, len(ordered))
 	for _, s := range ordered {
-		out = append(out, s.info())
+		info := s.info()
+		info.Provider = "qr"
+		out = append(out, info)
+	}
+	if m.meta != nil {
+		out = append(out, m.meta.Infos()...)
 	}
 	return out
 }
@@ -129,12 +135,7 @@ func (m *SessionManager) Restore(ctx context.Context) error {
 		return err
 	}
 	for _, row := range rows {
-		if row.JID == "" {
-			_ = m.db.dropSessionDB(ctx, row.ID)
-			_ = m.store.delete(ctx, row.ID)
-			continue
-		}
-		if _, err := types.ParseJID(row.JID); err != nil {
+		if _, err := types.ParseJID(row.JID); row.JID != "" && err != nil {
 			m.log.Warn("dropping session with unparseable jid", "session", row.ID, "jid", row.JID)
 			_ = m.db.dropSessionDB(ctx, row.ID)
 			_ = m.store.delete(ctx, row.ID)
@@ -146,7 +147,11 @@ func (m *SessionManager) Restore(ctx context.Context) error {
 			continue
 		}
 		device, err := container.GetFirstDevice(ctx)
-		if err != nil || device == nil || device.ID == nil {
+		if row.JID == "" && err == nil {
+			// Keep an unpaired session's configuration across application updates.
+			// Expired QR codes are not revived; pairing remains an explicit action.
+			device = container.NewDevice()
+		} else if err != nil || device == nil || device.ID == nil {
 			m.log.Warn("dropping session with no stored device", "session", row.ID, "jid", row.JID, "err", err)
 			_ = db.Close()
 			_ = m.db.dropSessionDB(ctx, row.ID)
@@ -167,7 +172,9 @@ func (m *SessionManager) Restore(ctx context.Context) error {
 			}
 		}
 		m.register(s)
-		if err := s.connect(ctx); err != nil {
+		if row.JID == "" {
+			s.setAuth(AuthSnapshot{State: "logged_out", Paired: false})
+		} else if err := s.connect(ctx); err != nil {
 			m.log.Error("session connect failed", "session", row.ID, "err", err)
 		}
 	}

@@ -6,9 +6,12 @@ import { OtherCallsList } from "@/components/domain/call/OtherCallsList";
 import { HistoryDrawer } from "@/components/domain/history/HistoryDrawer";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { isMine, useCalls } from "@/stores/calls";
+import { useSessions } from "@/stores/sessions";
+import { isSessionReady } from "@/lib/session-provider";
 
 export const CallsPage = ({ sid }: { sid: string }) => {
   const calls = useCalls((s) => s.calls);
+  const session = useSessions((s) => s.sessions.find((item) => item.id === sid));
   const [, force] = useState(0);
 
   useEffect(() => {
@@ -39,7 +42,7 @@ export const CallsPage = ({ sid }: { sid: string }) => {
         <EmptyState
           icon={<PhoneCall className="h-6 w-6" />}
           title="Nenhuma chamada ativa"
-          description="Disque um número acima para iniciar uma chamada."
+          description={isSessionReady(session) ? "Disque um número acima para iniciar uma chamada." : "Conecte a sessão para iniciar uma chamada."}
         />
       )}
       <OtherCallsList calls={others} />

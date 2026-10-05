@@ -106,13 +106,14 @@ func (b *wsBridge) readLoop(browserOpus media.Codec) {
 	if err != nil {
 		b.log.Warn("ws_bridge: opus encoder unavailable — uplink disabled", "err", err)
 	}
+	var pending []float32
 
 	for {
 		mt, data, err := b.conn.Read(b.ctx)
 		if err != nil {
 			break
 		}
-		if mt != websocket.MessageBinary || len(data) == 0 {
+		if mt != websocket.MessageBinary || len(data) == 0 || len(data)%2 != 0 {
 			continue
 		}
 		if b.OnBrowserRTP == nil || opusEnc == nil {
@@ -124,13 +125,17 @@ func (b *wsBridge) readLoop(browserOpus media.Codec) {
 			iv := int16(binary.LittleEndian.Uint16(data[i*2:]))
 			samples[i] = float32(iv) / 32768.0
 		}
-		// upsample 16 kHz → 48 kHz para o encoder Opus
-		pcm48 := media.Upsample16to48(samples)
-		opus, err := opusEnc.Encode(pcm48)
-		if err != nil || len(opus) == 0 {
-			continue
+		// Browser capture uses 512-sample (32ms) chunks. Opus requires valid
+		// frame durations: accumulate and encode 320 samples (20ms) at a time.
+		pending = append(pending, samples...)
+		for len(pending) >= 320 {
+			pcm48 := media.Upsample16to48(pending[:320])
+			pending = pending[320:]
+			opus, err := opusEnc.Encode(pcm48)
+			if err == nil && len(opus) > 0 {
+				b.OnBrowserRTP(opus)
+			}
 		}
-		b.OnBrowserRTP(opus)
 	}
 
 	if opusEnc != nil {

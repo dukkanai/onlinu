@@ -8,20 +8,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"go.mau.fi/whatsmeow/types"
 )
 
-// Entrega da gravação: ao fim da chamada o MP3 mixado é (1) servido em
-// GET /recordings/{id} (rota pública — o id/callID é não-enumerável e funciona
-// como capability), (2) anexado no Chatwoot como NOTA PRIVADA na conversa do
-// número ligado (fica interno pros agentes, nunca vai pro cliente) e (3)
-// anunciado no webhook da sessão como evento "recording". Ligar/desligar é
-// por sessão (Session.recording).
+// Completed MP3 recordings require the master key in a request header. A
+// non-enumerable filename is NOT authorization. If explicitly configured,
+// Chatwoot still receives a private-note attachment and session webhooks receive
+// metadata. Those external copies have independent retention responsibilities.
 
-// recordingPublicURL monta a URL pública de download a partir do path do arquivo.
-// Retorna "" se WACALLS_PUBLIC_BASE_URL não estiver configurada.
+// Historical function name: this is now an authenticated download URL, never a
+// bearer capability. Integrations need a separate authorized header transport.
 func recordingPublicURL(path string) string {
 	base := strings.TrimRight(os.Getenv("WACALLS_PUBLIC_BASE_URL"), "/")
 	if base == "" {
@@ -33,12 +30,19 @@ func recordingPublicURL(path string) string {
 // onRecordingReady é chamado quando o MP3 de uma chamada fica pronto. Dispara o
 // webhook da sessão e sobe o áudio no Chatwoot (se configurado).
 func (s *Session) onRecordingReady(callID, peerJID, path string, seconds int) {
+	if s.mgr != nil && s.mgr.store != nil {
+		if err := s.mgr.store.archiveCallRecording(s.mgr.appCtx, s.id, peerJID, callID, path, seconds); err != nil {
+			s.log.Error("call archive failed; original private recording preserved", "call_id", callID, "err", err)
+		}
+	}
 	url := recordingPublicURL(path)
 	s.dispatchWebhook("recording", map[string]any{
-		"callId":  callID,
-		"to":      peerJID,
-		"url":     url,
-		"seconds": seconds,
+		"callId":               callID,
+		"to":                   peerJID,
+		"url":                  url,
+		"seconds":              seconds,
+		"requiresMasterHeader": true,
+		"contentDescription":   "peer_original_plus_sent_audio_mix",
 	})
 	if cfg := s.getChatwoot(); cfg.valid() && peerJID != "" {
 		s.chatwootUploadRecording(cfg, peerJID, path, seconds)
@@ -85,17 +89,28 @@ func fmtDuration(seconds int) string {
 	return fmt.Sprintf("%d:%02d", seconds/60, seconds%60)
 }
 
-// handleRecording serve um MP3 finalizado. Rota pública (fora de /api/, sem API
-// key) — o id é não-enumerável e funciona como capability.
+// The legacy URL remains compatible only for header-authenticated operators.
 func (s *server) handleRecording(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if !archiveMasterAuthorized(r) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
 	id := r.PathValue("id")
 	if !safeRecordingID(id) {
 		http.NotFound(w, r)
 		return
 	}
 	full := filepath.Join(recordingDir(), filepath.Base(id))
-	if _, err := os.Stat(full); err != nil {
+	info, err := os.Lstat(full)
+	if err != nil || !info.Mode().IsRegular() {
 		http.NotFound(w, r)
+		return
+	}
+	if s.sessions == nil || s.sessions.store == nil || s.sessions.store.archiveAudit(r.Context(), "", "legacy_audio_download", archiveActor(r)) != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "server_error"})
 		return
 	}
 	w.Header().Set("Content-Type", "audio/mpeg")
@@ -146,33 +161,13 @@ func (s *server) handleSetRecording(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"enabled": b.Enabled})
 }
 
-// startRecordingJanitor apaga MP3s antigos periodicamente (retenção ~48h) — o
-// Chatwoot/webhook já consumiram o áudio; o arquivo local é só uma ponte.
+// Legacy blind 48h deletion is intentionally disabled. The opt-in archive
+// worker enforces closure/complaint/legal-hold-aware retention. Existing legacy
+// recordings are preserved and require a deliberate migration/cleanup policy.
 func startRecordingJanitor(log *slog.Logger) {
-	go func() {
-		for {
-			cleanupOldRecordings(log)
-			time.Sleep(6 * time.Hour)
-		}
-	}()
+	log.Info("recording retention managed by opt-in archive policy; legacy files preserved")
 }
 
 func cleanupOldRecordings(log *slog.Logger) {
-	dir := recordingDir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	cutoff := time.Now().Add(-48 * time.Hour)
-	for _, e := range entries {
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		if info.ModTime().Before(cutoff) {
-			if err := os.Remove(filepath.Join(dir, e.Name())); err == nil {
-				log.Debug("recording antiga removida", "file", e.Name())
-			}
-		}
-	}
+	log.Debug("legacy recording cleanup disabled; use archive retention")
 }

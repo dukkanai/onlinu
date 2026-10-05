@@ -1,0 +1,4 @@
+*.md
+.env*
+coverage*
+tenant

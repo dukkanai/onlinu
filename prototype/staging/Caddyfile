@@ -1,0 +1,29 @@
+# This file is a prepared configuration, not an instruction to reload Caddy.
+# No access log is enabled; credentials and OAuth callback query strings must
+# not be added to access logs during troubleshooting.
+almujeeb.info {
+	encode zstd gzip
+	request_body {
+		max_size 64KiB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		X-Robots-Tag "noindex, nofollow, noarchive"
+		-Server
+	}
+	@development path /dev /dev/*
+	handle @development {
+		respond "Not found" 404
+	}
+	@identity path /identity /identity/*
+	handle @identity {
+		# Dex issuer includes /identity, so preserve the prefix. Do not use
+		# handle_path or uri strip_prefix here.
+		reverse_proxy 127.0.0.1:15556
+	}
+	handle {
+		reverse_proxy 127.0.0.1:18788
+	}
+}

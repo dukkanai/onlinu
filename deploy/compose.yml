@@ -1,0 +1,58 @@
+# Runtime-only deployment: images are supplied by the offline installer.
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE in .env}
+    environment:
+      POSTGRES_USER: astracalls
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
+    volumes:
+      - translation-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U astracalls -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  astracalls:
+    image: ${ASTRACALLS_IMAGE:?Set ASTRACALLS_IMAGE in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      WACALLS_API_KEY: ${WACALLS_API_KEY:?Set WACALLS_API_KEY in .env}
+      WACALLS_META_ENCRYPTION_KEY: ${WACALLS_META_ENCRYPTION_KEY:-}
+      WACALLS_PG_URL: postgres://astracalls:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
+      WACALLS_PUBLIC_IP: ${WACALLS_PUBLIC_IP:-127.0.0.1}
+      WACALLS_UDP_PORT: ${WACALLS_UDP_PORT:-50000}
+      WACALLS_RECORDING_DIR: /data/recordings
+      WACALLS_PUBLIC_BASE_URL: ${WACALLS_PUBLIC_BASE_URL:-}
+    volumes:
+      - translation-recordings:/data/recordings
+    ports:
+      - "${WACALLS_HTTP_BIND:-127.0.0.1}:${WACALLS_HTTP_PORT:-8080}:8080"
+      - "${WACALLS_MEDIA_BIND:-127.0.0.1}:${WACALLS_UDP_PORT:-50000}:${WACALLS_UDP_PORT:-50000}/udp"
+      - "${WACALLS_MEDIA_BIND:-127.0.0.1}:${WACALLS_UDP_PORT:-50000}:${WACALLS_UDP_PORT:-50000}/tcp"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  translation-postgres:
+  translation-recordings:

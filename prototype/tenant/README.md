@@ -1,0 +1,19 @@
+# Isolated synthetic tenant prototype
+
+This service implements the internal HTTP contract in `../CONTRACT.md`. It is not a production restaurant backend and does not claim parity with the existing domain. Never point it at an existing restaurant database. It seeds only two fictional restaurants, identified by `TENANT_ID=demo-a` or `demo-b`, into separate databases. The database records its tenant ID and refuses startup under the other ID.
+
+Configuration: `DATABASE_URL`, a distinct random `TENANT_SERVICE_TOKEN` of at least 32 characters, `TENANT_ID`, and explicitly `SYNTHETIC_MODE=true`. `LISTEN_ADDR` defaults to `:8080`. Database bootstrap requires DDL rights inside this service's dedicated prototype database; cluster creation privileges are unnecessary. Production migration/runtime role separation remains future work.
+
+All routes except `GET /health` require the tenant service token. `/menu` and `/quote` need no actor headers. Protected order routes require the trusted platform actor headers from the contract. The service independently checks fixture roles, ownership, and merchant-to-tenant assignment. Service credentials never belong in browsers or Flutter.
+
+Both menus deliberately reuse item IDs `meal` and `drink`. Restaurant A prices are 3000/500 halalas; restaurant B prices are 4500/700. Each starts with 30 units. Startup never overwrites remaining stock or existing orders. Quotes do not reserve stock. Order creation uses server prices, locked stock, immutable line snapshots, owner-bound payload hashes, and transaction-scoped idempotency locking. Amounts are integer minor units.
+
+An ambiguous checkout submission can be recovered with internal `GET /orders/by-idempotency?key=<URL-encoded idempotency key>`, using the service token and authenticated customer actor. It returns the existing current order object, or `404 {"error":"order_not_found"}` for an absent key or another customer's order. The endpoint never creates an order or reserves stock, so the platform may use it after a checkout session expires. A key does not grant access; merchant/service actors are rejected. Missing, malformed, repeated or additional query fields return 400. The platform's stable key is `checkout:<uuid>`.
+
+The ordinary payment button is explicitly **LOCAL SIMULATION**, makes no external calls and records `paymentProvider=local-simulation`. The additional internal `POST /orders/:id/confirm-test-payment` accepts only service role and `{provider:"moyasar-test",reference,amountMinor,currency:"SAR"}`. The platform must verify the test invoice independently before calling; this tenant endpoint checks amount, currency, order state, immutable payment identity and reference uniqueness. It does not itself query Moyasar. Repeated identical confirmations do not advance the order twice.
+
+Committed order transitions append outbox events in the same PostgreSQL transaction. A transactional counter, not an independently advancing sequence, preserves commit order for `after` cursors. Reading events never removes them. The prototype deliberately has no outbox retention job, stock reservation expiry, cancellation/refunds, production OAuth, full merchant admin, SaaS billing, or migration from real restaurant data.
+
+Run `go test ./...` for lightweight validation. Integration tests require `TENANT_TEST_DATABASE_URL` pointing at a disposable database named exactly `astracalls_tenant_prototype_test`; they create and drop only isolated random schemas inside that database. Run `go test -race ./...` once with that variable set to test transactional concurrency. No payment provider network is used by these tests.
+
+The image contains a static Go binary running as UID/GID 10001, needs no writable filesystem, and exposes HTTP `/health`; configure health probing from the platform/private network because the scratch image has no shell/curl. TLS terminates outside this private tenant service.

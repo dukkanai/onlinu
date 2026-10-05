@@ -3,15 +3,28 @@ package main
 import (
 	"context"
 	"log/slog"
+	"os"
+	"sync"
 
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
 type server struct {
-	broker    *Broker
-	sessions  *SessionManager
-	log       *slog.Logger
-	staticDir string
+	ownership  *instanceOwnership
+	broker     *Broker
+	sessions   *SessionManager
+	meta       *metaManager
+	metaCalls  *metaCallService
+	restaurant *restaurantStore
+	orders     *restaurantOrders
+	customers  *restaurantAccounts
+	payments   *restaurantPayments
+	couriers   *restaurantCouriers
+	// Serialize official account replacement/removal against call setup and
+	// signed webhook processing. QR and established audio are unaffected.
+	metaConfigMu sync.RWMutex
+	log          *slog.Logger
+	staticDir    string
 }
 
 // newServer monta o provedor de banco (Postgres, 1 banco por sessão no estilo
@@ -31,6 +44,18 @@ func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, maxCal
 	if err != nil {
 		return nil, err
 	}
+	ownership, err := acquireInstanceOwnership(ctx, mainDB, provider.mainDBName())
+	if err != nil {
+		_ = mainDB.Close()
+		return nil, err
+	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			ownership.Close()
+			_ = mainDB.Close()
+		}
+	}()
 	store, err := newSessionStore(ctx, mainDB)
 	if err != nil {
 		return nil, err
@@ -38,8 +63,40 @@ func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, maxCal
 
 	broker := NewBroker()
 	mgr := newSessionManager(ctx, provider, broker, store, waLogger, log, maxCalls)
+	meta, err := newMetaManager(ctx, mainDB)
+	if err != nil {
+		return nil, err
+	}
+	metaCalls, err := newMetaCallService(ctx, meta, broker, maxCalls, log)
+	if err != nil {
+		return nil, err
+	}
+	restaurant, err := newRestaurantStore(ctx, mainDB)
+	if err != nil {
+		return nil, err
+	}
+	customers, err := newRestaurantAccounts(ctx, mainDB)
+	if err != nil {
+		return nil, err
+	}
+	orders, err := newRestaurantOrders(ctx, restaurant)
+	if err != nil {
+		return nil, err
+	}
+	payments, err := newRestaurantPayments(ctx, mainDB, orders, os.Getenv("WACALLS_PUBLIC_BASE_URL"))
+	if err != nil {
+		return nil, err
+	}
+	orders.PaymentAvailable = payments.Available
+	couriers, err := newRestaurantCouriers(ctx, mainDB, orders)
+	if err != nil {
+		return nil, err
+	}
+	mgr.meta = meta
 	broker.SnapshotFn = mgr.snapshotEvents
 	broker.AccountForSession = mgr.accountIDForSession
+	go payments.Run(ctx)
 
-	return &server{broker: broker, sessions: mgr, log: log, staticDir: staticDir}, nil
+	initialized = true
+	return &server{ownership: ownership, broker: broker, sessions: mgr, meta: meta, metaCalls: metaCalls, restaurant: restaurant, orders: orders, customers: customers, payments: payments, couriers: couriers, log: log, staticDir: staticDir}, nil
 }

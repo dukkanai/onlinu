@@ -6,12 +6,14 @@ import { AppShell } from "@/components/layout/AppShell";
 import { CallsPage } from "@/pages/CallsPage";
 import { SessionPairing } from "@/components/domain/session/SessionPairing";
 import { SessionHeader } from "@/components/domain/session/SessionHeader";
+import { MetaConfiguration } from "@/components/domain/session/MetaConfiguration";
 import { IncomingCallModal } from "@/components/domain/call/IncomingCallModal";
 import { TransferOfferModal } from "@/components/domain/call/TransferOfferModal";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ensureSessionsWired, useSessions } from "@/stores/sessions";
 import { ensureCallsWired } from "@/stores/calls";
 import { useTheme } from "@/stores/theme";
+import { getSessionProvider, isSessionReady } from "@/lib/session-provider";
 
 export const App = () => {
   const sessions = useSessions((s) => s.sessions);
@@ -37,7 +39,12 @@ export const App = () => {
         ) : active ? (
           <div className="space-y-6">
             <SessionHeader session={active} />
-            {active.paired ? <CallsPage sid={active.id} /> : <SessionPairing session={active} />}
+            {getSessionProvider(active) === "meta" ? (
+              <>
+                <MetaConfiguration key={active.id} session={active} />
+                {isSessionReady(active) && <CallsPage key={active.id} sid={active.id} />}
+              </>
+            ) : active.paired ? <CallsPage key={active.id} sid={active.id} /> : <SessionPairing key={active.id} session={active} />}
           </div>
         ) : (
           <EmptyState title="Selecione uma conta" description="Escolha uma conta na barra lateral." />
