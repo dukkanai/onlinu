@@ -1,3 +1,4 @@
+import 'brand_pane.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -254,6 +255,16 @@ class CoreScreen extends StatelessWidget {
                         Wrap(spacing: 12, children: [
                           if (member.can('settings:read'))
                             ChoiceChip(
+                                label: const Text('مظهر المتجر'),
+                                selected: c.section == CoreSection.appearance,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(c.selectSection(
+                                            CoreSection.appearance));
+                                      }),
+                          if (member.can('settings:read'))
+                            ChoiceChip(
                                 label: const Text('استقبال الطلبات'),
                                 selected: c.section == CoreSection.service,
                                 onSelected: c.busy
@@ -353,6 +364,11 @@ class CoreScreen extends StatelessWidget {
                                             CoreSection.channels));
                                       }),
                         ]),
+                      if (c.section == CoreSection.appearance &&
+                          member?.can('settings:read') == true)
+                        BrandPane(
+                            key: ValueKey('brand-${c.selectedTenant}'),
+                            controller: c),
                       if (c.section == CoreSection.service &&
                           member?.can('settings:read') == true)
                         ServicePane(

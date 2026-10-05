@@ -1,3 +1,4 @@
+import '../test/core_brand_test.dart' show BrandGateway;
 import '../test/core_refund_test.dart' show RefundGateway;
 import 'package:restaurant_admin_prototype/core/refund_dialog.dart';
 import 'dart:convert';
@@ -183,6 +184,44 @@ void main() {
     expect(controller.menu, isNull);
     expect(controller.stock, isEmpty);
     expect(controller.channels, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('Windows appearance draft review and separate publication',
+      (tester) async {
+    final api = BrandGateway()..session.restoreAvailable = true,
+        c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    Future<void> tap(Finder f) async {
+      await tester.ensureVisible(f);
+      await tester.pumpAndSettle();
+      await tester.tap(f);
+      await tester.pumpAndSettle();
+    }
+
+    await tap(find.text('مظهر المتجر'));
+    await tap(find.text('تعديل مسودة المظهر'));
+    await tap(find.byKey(const ValueKey('brand-storefrontTemplate-editorial')));
+    await tap(find.text('مراجعة تغييرات المظهر'));
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'تأكيد حفظ مسودة خاصة'))
+            .onPressed,
+        isNull);
+    await tap(find.byType(CheckboxListTile));
+    await capture(tester, boundary, 'windows-brand-draft-review.png');
+    await tap(find.text('تأكيد حفظ مسودة خاصة'));
+    expect(api.brandWrites, 1);
+    expect(c.appearance!.live.values['storefrontTemplate'], 'classic');
+    expect(c.appearance!.draft!.values['storefrontTemplate'], 'editorial');
+    await tap(find.text('مراجعة نشر المسودة'));
+    await tap(find.byType(CheckboxListTile));
+    await tap(find.text('تأكيد نشر المسودة للعملاء'));
+    expect(api.brandWrites, 2);
+    expect(c.appearance!.live.values['storefrontTemplate'], 'editorial');
     await tester.pumpWidget(const SizedBox());
   });
   testWidgets(

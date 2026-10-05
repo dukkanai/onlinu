@@ -8,6 +8,7 @@ import 'courier_models.dart';
 import 'service_policy.dart';
 import 'finance_models.dart';
 import 'refund_models.dart';
+import 'brand_models.dart';
 import 'transport.dart';
 
 abstract interface class CoreGateway {
@@ -25,6 +26,9 @@ abstract interface class CoreGateway {
   Future<CoreServicePolicy> service(String tenant);
   Future<void> patchService(
       CoreServicePolicy expected, Map<String, bool> changes);
+  Future<CoreBrandState> brand(String tenant);
+  Future<CoreBrandState> brandCommand(
+      CoreBrandState expected, String action, Map<String, dynamic> changes);
   Future<CoreRefundDetail> refund(String tenant, String number, String id);
   Future<CoreRefundDetail> refundCommand(
       CoreRefundDetail expected, String action,
@@ -99,6 +103,10 @@ class CoreApi implements CoreGateway {
     }
     if (reply.status < 200 || reply.status >= 300) {
       const safe = {
+        'brand_changed',
+        'brand_invalid',
+        'brand_contrast',
+        'brand_no_draft',
         'invalid_service_modes',
         'forbidden',
         'not_found',
@@ -135,6 +143,25 @@ class CoreApi implements CoreGateway {
       '/native/api/restaurants/${tenantKey(tenant)}/staff/orders';
   void _tenant(Map<String, dynamic> data, String tenant) {
     if (data['tenantId'] != tenant) invalidResponse();
+  }
+
+  @override
+  Future<CoreBrandState> brand(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/brand');
+    _tenant(data, tenant);
+    return CoreBrandState(data, tenantId: tenant);
+  }
+
+  @override
+  Future<CoreBrandState> brandCommand(CoreBrandState expected, String action,
+      Map<String, dynamic> changes) async {
+    expected.validate(action, changes);
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/brand/$action',
+        body: {...expected.review(), ...changes});
+    _tenant(data, expected.tenantId);
+    return CoreBrandState(data, tenantId: expected.tenantId);
   }
 
   @override

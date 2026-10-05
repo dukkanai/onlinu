@@ -179,6 +179,21 @@ void main() {
     await api.patchService(paused, {'acceptingOrders': true});
     expect((await api.service('restaurant-a')).flags, intake.flags);
 
+    final beforeBrand = await api.brand('restaurant-a');
+    final brandDraft = await api.brandCommand(beforeBrand, 'draft',
+        {'storefrontTemplate': 'compact', 'headingFont': 'amiri'});
+    expect(brandDraft.draft!.values['storefrontTemplate'], 'compact');
+    expect(brandDraft.live.values, beforeBrand.live.values);
+    await expectLater(
+        api.brandCommand(beforeBrand, 'draft', {'hideHero': true}),
+        throwsA(isA<CoreException>()
+            .having((e) => e.code, 'stale appearance', 'brand_changed')));
+    final publishedBrand = await api.brandCommand(brandDraft, 'publish', {});
+    expect(publishedBrand.live.values['storefrontTemplate'], 'compact');
+    expect(publishedBrand.draft, isNull);
+    final restoredBrand = await api.brandCommand(publishedBrand, 'revert', {});
+    expect(restoredBrand.live.values, beforeBrand.live.values);
+
     final team = await api.team('restaurant-a');
     final self = team.singleWhere(
         (v) => v.principalId == Platform.environment['CORE_NATIVE_PRINCIPAL']);

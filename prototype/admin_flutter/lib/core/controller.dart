@@ -10,6 +10,7 @@ import 'courier_models.dart';
 import 'service_policy.dart';
 import 'finance_models.dart';
 import 'refund_models.dart';
+import 'brand_models.dart';
 import 'transport.dart';
 
 enum CoreSection {
@@ -22,7 +23,8 @@ enum CoreSection {
   coverage,
   courier,
   courierLinks,
-  service
+  service,
+  appearance
 }
 
 extension CoreSectionPermission on CoreSection {
@@ -36,7 +38,8 @@ extension CoreSectionPermission on CoreSection {
         CoreSection.coverage => 'settings:read',
         CoreSection.courier => 'courier:read',
         CoreSection.courierLinks => 'couriers:link',
-        CoreSection.service => 'settings:read'
+        CoreSection.service => 'settings:read',
+        CoreSection.appearance => 'settings:read'
       };
 }
 
@@ -55,6 +58,7 @@ class CoreController extends ChangeNotifier {
   CoreBusinessProfile? business;
   CoreDelivery? coverage;
   CoreServicePolicy? service;
+  CoreBrandState? appearance;
   CoreFinance? finance;
   CoreRefundDetail? refund;
   int _refundGeneration = 0;
@@ -99,6 +103,7 @@ class CoreController extends ChangeNotifier {
     business = null;
     coverage = null;
     service = null;
+    appearance = null;
     finance = null;
     refund = null;
     _refundGeneration++;
@@ -244,7 +249,11 @@ class CoreController extends ChangeNotifier {
         return;
       }
       if (refund != null && !canManageRefund) closeRefund();
-      if (section == CoreSection.service) {
+      if (section == CoreSection.appearance) {
+        final result = await api.brand(tenant);
+        if (!_current(generation)) return;
+        appearance = result;
+      } else if (section == CoreSection.service) {
         final result = await api.service(tenant);
         if (!_current(generation)) return;
         service = result;
@@ -530,6 +539,42 @@ class CoreController extends ChangeNotifier {
       return false;
     }
     return true;
+  }
+
+  Future<void> changeAppearance(CoreBrandState expected, String action,
+      Map<String, dynamic> changes) async {
+    if (!_writeGuard(
+            expected.tenantId, 'settings:update', CoreSection.appearance) ||
+        membership?.can('settings:read') != true) return;
+    if (appearance?.version != expected.version ||
+        appearance?.catalogVersion != expected.catalogVersion) {
+      message = 'تغير المظهر أو إعدادات المطعم. حدّث البيانات وأعد المراجعة.';
+      _emit();
+      return;
+    }
+    expected.validate(action, changes);
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.brandCommand(expected, action, changes);
+      if (_current(generation))
+        message = action == 'draft'
+            ? 'حُفظت المسودة الخاصة؛ لم تُنشر للعملاء.'
+            : action == 'publish'
+                ? 'نُشرت المسودة في واجهة العملاء.'
+                : 'استُعيد المظهر المنشور السابق.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
   }
 
   Future<void> patchService(
@@ -1265,6 +1310,11 @@ String errorMessage(Object error) {
       'يجب أن يسجل الموظف الدخول بحساب موثّق أولًا وأن يكون حسابه مفعّلًا.',
     'last_owner_required' => 'لا يمكن تعطيل أو إزالة آخر مالك مفعّل للمطعم.',
     'invalid_owner_permissions' => 'يجب أن يحتفظ المالك بجميع صلاحيات المطعم.',
+    'brand_invalid' => 'تحقق من القالب والخطوط والنصوص المختارة.',
+    'brand_contrast' =>
+      'تباين الألوان غير كافٍ. أصلح الألوان في محرر المظهر الأصلي.',
+    'brand_no_draft' => 'لا توجد نسخة مظهر متاحة لهذا الإجراء.',
+    'brand_changed' ||
     'version_conflict' ||
     'conflict' ||
     'catalog_changed' =>

@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { staffBrandPage,brandFormChoices,brandFormLabels,staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -312,6 +312,31 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         if(req.headers.authorization||url.search)throw problem(403,'browser_session_required');
         if(!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
         const who=await browser(req),[,tenantId,number]=managementFinance;await directory.authorize(who.id,tenantId,'orders:read');const membership=await directory.authorize(who.id,tenantId,'payments:read');const data=await orderClient.finance(tenantId,who.id,number);htmlHeaders(res);res.end(staffFinancePage({tenantId,data,canManage:membership.permissions.includes('refunds:manage')}));return;
+      }
+      const managementBrand=/^\/manage\/([a-z0-9-]{1,64})\/brand(?:\/(review|execute))?$/.exec(url.pathname);
+      if(managementBrand&&orderClient){
+        const [,tenantId,stage]=managementBrand,path='/manage/'+tenantId+'/brand';
+        if(req.headers.authorization||!(req.method==='GET'&&!stage||req.method==='POST'&&stage)||url.search&&!(req.method==='GET'&&url.search==='?outcome=unknown'))throw problem(400,'invalid_request');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(path));
+        const who=await browser(req),membership=await directory.authorize(who.id,tenantId,'settings:read');
+        if(req.method==='GET'){const data=await orderClient.brand(tenantId,who.id);htmlHeaders(res);res.end(staffBrandPage({tenantId,data,canUpdate:membership.permissions.includes('settings:update'),csrf:auth.csrfToken(req),unknown:!!url.search}));return;}
+        await directory.authorize(who.id,tenantId,'settings:update');const input=await body(req);auth.verifyCsrf(req,input.csrf);
+        await directory.authorize(who.id,tenantId,'settings:read');await directory.authorize(who.id,tenantId,'settings:update');
+        const action=input.action;if(!['draft','publish','revert'].includes(action))throw problem(400,'invalid_request');
+        const keys=action==='draft'?Object.keys(brandFormLabels):[],allowed=['csrf','action','version','catalogVersion',...(stage==='execute'?['reviewed']:[]),...keys];
+        if(Object.keys(input).some(key=>!allowed.includes(key)))throw problem(400,'invalid_request');
+        const review={version:Number(input.version),catalogVersion:Number(input.catalogVersion),reviewed:true};
+        if(!Number.isSafeInteger(review.version)||review.version<1||!Number.isSafeInteger(review.catalogVersion)||review.catalogVersion<1)throw problem(400,'invalid_request');
+        const changes={};for(const key of keys){if(!(key in input))continue;if(typeof input[key]!=='string'||brandFormChoices[key]&&!Object.hasOwn(brandFormChoices[key],input[key]))throw problem(400,'invalid_request');if(key==='introTitle'&&input[key].length>640||key==='introText'&&input[key].length>8000)throw problem(400,'invalid_request');changes[key]=key==='hideHero'?input[key]==='true':input[key];}
+        if(action==='draft'&&!Object.keys(changes).length)throw problem(400,'invalid_request');
+        if(stage==='review'){
+          const data=await orderClient.brand(tenantId,who.id);if(data.version!==review.version||data.catalogVersion!==review.catalogVersion)throw problem(409,'brand_changed');
+          if(action==='publish'&&!data.draft||action==='revert'&&!data.hasPrevious)throw problem(400,'brand_no_draft');
+          htmlHeaders(res);res.end(staffBrandPage({tenantId,data,csrf:auth.csrfToken(req),review:{action,changes}}));return;
+        }
+        if(input.reviewed!=='yes')throw problem(400,'invalid_request');
+        try{await orderClient.brandCommand(tenantId,who.id,action,{...review,...changes});}catch(error){if(error?.code==='order_outcome_unknown'||error?.status>=500)return redirect(res,path+'?outcome=unknown',303);throw error;}
+        return redirect(res,path,303);
       }
       const managementService=/^\/manage\/([a-z0-9-]{1,64})\/service$/.exec(url.pathname);
       if(managementService&&orderClient&&['GET','POST'].includes(req.method)){

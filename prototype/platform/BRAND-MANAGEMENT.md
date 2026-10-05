@@ -39,3 +39,24 @@ audit rollback and the original concurrent/legacy/font regressions. Actual
 Node-signed HTTP exercises draft, stale publication, successful publication and
 restore. All216 platform tests, React80/build and Go vet pass locally. Native
 and browser appearance forms remain the next increment; remote CI is pending.
+
+## Reviewed browser/native forms (local verification)
+
+The central browser and Flutter core client now expose a settings-authorized
+appearance section. Saving a private draft, publishing it and restoring the
+previous published appearance are separate reviewed actions. The editor changes
+only selected template/typography/layout/intro choices; existing colors/media
+stay untouched. Publication explicitly warns that the entire stored draft,
+including original-editor colors/media, becomes public.
+
+Native inline choices avoid transient private dropdown overlays. Current grants,
+both versions, foreground freshness and duplicate-click guards are checked;
+unknown writes only refresh the existing state and never repeat a POST. Browser
+forms have CSRF-protected review/execute stages and 303 GET recovery.
+
+Local121 Flutter tests,217 platform tests, real PostgreSQL/race regressions and
+actual Dart TLS/Node/original-Go draft/publish/restore pass. Chromium form flow
+and `windows-brand-draft-review.png` are new remote acceptance checks, not yet
+claimed from local HTTP/widget tests. Native rendering does not implement a
+customer-template visual preview; the original storefront renders the five
+published templates. Color/media editing remains in the original editor.

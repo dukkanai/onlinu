@@ -253,3 +253,22 @@ Local 115-test Flutter suite and actual Dart-to-Node-to-Go TLS integration pass.
 Revoked/closed/backgrounded and stale views are tested; duplicate clicks do not
 resend. Windows `windows-refund-review.png`, actual Chromium and the new full CI
 result remain to be verified. All money and merchant identities are synthetic.
+
+### Refund verification checkpoint — 2026-10-05 23:02 UTC
+
+Refund UI89e650d passed CI37384391681 and RTL fixture27e8096 passed all jobs in
+CI37385242822. Actual Chromium review/cancel, Windows renderer/store/build and
+Dart/Node/Go integration succeeded. `windows-refund-review.png` was inspected:
+Arabic RTL, amount/provider/demo/version and checked confirmation are readable,
+without clipping. This supersedes the pending refund notes above; no real money
+was used. Full SaaS and real-account acceptance remain open.
+
+## Appearance review increment (remote acceptance pending)
+
+The core appearance section edits a private original draft, then separately
+reviews publication or restoration. Both state/catalog versions and current
+settings grants are required. Unedited colors/media are preserved; publication
+warns that the entire existing draft becomes public. Foreground freshness,
+revocation, duplicate clicks, stale versions and no automatic retry are tested.
+Local121 Flutter tests and actual Dart/Node/Go draft/publication/restore pass.
+Actual Chromium and Windows draft-review screenshot still need their new CI result.

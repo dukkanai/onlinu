@@ -117,6 +117,9 @@ try {
   const loginPage=await send('/manage');assert.equal(loginPage.status,302);assert.equal(loginPage.headers.location,'/auth/login?returnTo=%2Fmanage');
   assert.equal((await send(loginPage.headers.location)).status,302,'OIDC accepts the bounded management return path');
   const bobMe=await send('/api/me',{cookie:bob.cookie});
+  const appearancePage=await send('/manage/restaurant-a/brand',{cookie:alice.cookie});assert.equal(appearancePage.status,200);assert.match(appearancePage.data,/قالب واجهة العملاء/);
+  assert.equal((await send('/manage/restaurant-a/brand',{cookie:bob.cookie})).status,403);
+  assert.equal((await send('/manage/restaurant-a/brand/review',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl},body:{csrf:'bad',action:'draft',version:1,catalogVersion:1,storefrontTemplate:'editorial'}})).status,403);
   const financePath=staffPath+'/'+order.number+'/finance';const finance=await send(financePath,{cookie:alice.cookie});assert.equal(finance.status,200,JSON.stringify(finance.data));assert.equal(finance.data.totalMinor,3500);assert.equal(finance.data.capturedMinor,0);assert.equal(finance.data.order,undefined);assert.equal((await send(financePath,{cookie:bob.cookie})).status,403);assert.equal((await send(financePath,{token:alice.token})).status,403);
   const menuPath='/api/restaurants/restaurant-a/staff/menu';
   const kitchenMenu=await send(menuPath,{cookie:bob.cookie});assert.equal(kitchenMenu.status,200);
@@ -449,6 +452,26 @@ try {
       await page.getByLabel('راجعت أثر التغيير على الطلبات الجديدة',{exact:true}).check();
       await page.getByRole('button',{name:'حفظ سياسة الاستقبال',exact:true}).click();
       await page.locator(`input[name="expectedVersion"][value="${serviceVersion+2}"]`).waitFor({state:'attached'});
+      await page.goto(baseUrl+'/manage/restaurant-a/brand');
+      const brandVersion=Number(await page.locator('input[name="version"]').first().inputValue());
+      const oldBrand=(await send('/api/restaurants/restaurant-a/staff/brand',{cookie:alice.cookie})).data;
+      await page.getByLabel('قالب واجهة العملاء',{exact:true}).selectOption('editorial');
+      await page.getByRole('button',{name:'مراجعة حفظ مسودة المظهر',exact:true}).click();
+      await page.getByRole('link',{name:'إلغاء مراجعة المظهر',exact:true}).click();
+      assert.equal(Number(await page.locator('input[name="version"]').first().inputValue()),brandVersion);
+      await page.getByLabel('قالب واجهة العملاء',{exact:true}).selectOption('editorial');
+      await page.getByRole('button',{name:'مراجعة حفظ مسودة المظهر',exact:true}).click();
+      await page.getByLabel('راجعت المطعم والإصدارات وأؤكد هذا الإجراء',{exact:true}).check();
+      await page.getByRole('button',{name:'تأكيد حفظ مسودة خاصة',exact:true}).click();
+      await page.locator(`input[name="version"][value="${brandVersion+1}"]`).first().waitFor({state:'attached'});
+      const privateBrand=(await send('/api/restaurants/restaurant-a/staff/brand',{cookie:alice.cookie})).data;assert.equal(privateBrand.live.storefrontTemplate,oldBrand.live.storefrontTemplate);assert.equal(privateBrand.draft.storefrontTemplate,'editorial');
+      await page.getByRole('button',{name:'مراجعة نشر المسودة',exact:true}).click();
+      await page.getByLabel('راجعت المطعم والإصدارات وأؤكد هذا الإجراء',{exact:true}).check();await page.getByRole('button',{name:'تأكيد نشر المسودة للعملاء',exact:true}).click();
+      await page.locator(`input[name="version"][value="${brandVersion+2}"]`).first().waitFor({state:'attached'});
+      await page.getByRole('button',{name:'مراجعة استعادة المظهر السابق',exact:true}).click();await page.getByLabel('راجعت المطعم والإصدارات وأؤكد هذا الإجراء',{exact:true}).check();await page.getByRole('button',{name:'تأكيد استعادة المظهر السابق',exact:true}).click();
+      await page.locator(`input[name="version"][value="${brandVersion+3}"]`).first().waitFor({state:'attached'});
+      assert.deepEqual((await send('/api/restaurants/restaurant-a/staff/brand',{cookie:alice.cookie})).data.live,oldBrand.live);
+
 
       const beforeProfile=(await send(profilePath,{cookie:alice.cookie})).data;
       await page.goto(baseUrl+'/manage/restaurant-a/profile');

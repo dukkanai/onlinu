@@ -1,4 +1,4 @@
-import {staffRefundPage,refundActions,staffFinancePage,staffServicePage,staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
+import {staffBrandPage,staffRefundPage,refundActions,staffFinancePage,staffServicePage,staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage,staffMenuPage,staffMenuItemPage,menuPriceMinor,staffMembersPage,staffErrorPage} from './staff-pages.mjs';
@@ -124,4 +124,11 @@ test('refund pages separate review from execution, escape notes and require expl
  const page=staffRefundPage({tenantId:'a',data,csrf:'test'});assert.match(page,/\/review/);assert.doesNotMatch(page,/\/execute/);assert.doesNotMatch(page,/<script>/);assert.match(page,/&lt;script&gt;/);
  const review=staffRefundPage({tenantId:'a',data,csrf:'test',review:{action:'authorize'}});assert.match(review,/\/execute/);assert.match(review,/name="reviewed" value="yes" required/);assert.match(review,/name="provider" value="stripe"/);assert.match(review,/name="amountMinor" value="1000"/);assert.match(review,/إلغاء المراجعة/);
  assert.deepEqual(refundActions({...data,status:'manual_reported'}),[]);assert.deepEqual(refundActions({...data,status:'review',submitted:true}),['verify']);
+});
+
+test('appearance browser forms keep drafts private and publication separately reviewed',()=>{
+ const brand={storefrontTemplate:'classic',font:'system',headingFont:'',bodyFont:'',buttonFont:'',layout:'grid',textSize:'normal',radius:'soft',shadow:'soft',imageFit:'cover',hideHero:false,introTitle:'<private>',introText:''},data={version:2,catalogVersion:4,live:brand,draft:{...brand,storefrontTemplate:'editorial'},hasPrevious:true};
+ const read=staffBrandPage({tenantId:'a',data,canUpdate:false,csrf:'test'});assert.doesNotMatch(read,/<form/);assert.match(read,/&lt;private&gt;/);
+ const edit=staffBrandPage({tenantId:'a',data,canUpdate:true,csrf:'test'});assert.match(edit,/\/review/);assert.doesNotMatch(edit,/\/execute/);
+ const review=staffBrandPage({tenantId:'a',data,csrf:'test',review:{action:'publish',changes:{}}});assert.match(review,/name="reviewed" value="yes" required/);assert.match(review,/name="catalogVersion" value="4"/);assert.match(review,/تأكيد نشر المسودة للعملاء/);assert.match(review,/إلغاء مراجعة المظهر/);
 });
