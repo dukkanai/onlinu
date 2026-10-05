@@ -166,10 +166,15 @@ try {
         try{
         if(url.origin===baseUrl){
           if(request.method==='POST')assert.equal(headers.origin,baseUrl,'HTML forms preserve same-origin validation');
-          const response=await fetch(local+url.pathname+url.search,{method:request.method,headers:{...headers,host:'platform.example'},
-            redirect:'manual',...(request.postData===undefined?{}:{body:request.postData})});
-          const responseHeaders=Object.fromEntries([...response.headers].filter(([name])=>!['connection','transfer-encoding','content-length'].includes(name)));
-          await fulfill(response.status,Buffer.from(await response.arrayBuffer()),responseHeaders);return;
+          // Use the same raw HTTP forwarding as the integration helper: keep
+          // Host and browser cookies exactly, without fetch header normalization.
+          const response=await new Promise((resolve,reject)=>{
+            const upstream=httpRequest(local+url.pathname+url.search,{method:request.method,headers:{...headers,host:'platform.example'}},response=>{
+              const chunks=[];response.on('data',chunk=>chunks.push(chunk));response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,body:Buffer.concat(chunks)}));
+            });upstream.on('error',reject);upstream.end(request.postData);
+          });
+          const responseHeaders=Object.fromEntries(Object.entries(response.headers).filter(([name])=>!['connection','transfer-encoding','content-length','set-cookie'].includes(name)));
+          await fulfill(response.status,response.body,responseHeaders);return;
         }
         if(url.origin==='https://checkout.stripe.com'){
           assert.equal(headers.cookie,undefined,'Provider must not receive the platform cookie');
@@ -191,6 +196,8 @@ try {
       page.on('console',message=>{if(message.type()==='error')browserDiagnostics.push(message.text());});
       page.on('response',response=>{if(response.status()>=400)browserDiagnostics.push(`${response.status()} ${new URL(response.url()).pathname}`);});
       await page.goto(baseUrl+cardPath);
+      assert.match(await page.locator('body').innerText(),/الانتقال لصفحة الدفع/,
+        `Initial browser checkout failed: ${JSON.stringify({path:new URL(page.url()).pathname,errors:interceptionErrors,console:browserDiagnostics})}`);
       await page.getByRole('button',{name:'الانتقال لصفحة الدفع'}).click();
       try{await page.waitForURL('https://checkout.stripe.com/**');}
       catch(error){console.error('Synthetic browser navigation diagnostics',new URL(page.url()).pathname,await page.locator('body').innerText(),browserDiagnostics,interceptionErrors);throw error;}
