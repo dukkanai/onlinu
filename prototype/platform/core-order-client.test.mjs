@@ -117,3 +117,10 @@ test('staff image upload signs exact raw bytes instead of JSON/base64 content',a
  assert.equal((await client.uploadImage('restaurant-a',randomUUID(),bytes)).url,url);
  assert.throws(()=>client.uploadImage('restaurant-a',randomUUID(),Buffer.alloc(5*1024*1024+1)),{code:'image_too_large'});
 });
+
+test('staff catalogue summary supports the original 5000-item bound with byte limits unchanged',async()=>{
+ let count=5000;
+ const client=createCoreOrderClient({...config,fetchImpl:async()=>json({version:1,name:'Synthetic',currency:'SAR',categories:[{id:'main',name:'Main',sort:0}],items:Array.from({length:count},(_,i)=>({id:'item-'+i,categoryId:'main',name:'Item',priceMinor:100,available:false,sort:i}))})});
+ assert.equal((await client.menu('restaurant-a',randomUUID())).items.length,5000);
+ count=5001;await assert.rejects(client.menu('restaurant-a',randomUUID()),{code:'restaurant_unavailable'});
+});

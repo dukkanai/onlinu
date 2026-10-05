@@ -104,7 +104,7 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     menu(tenantId,subject){
       return request(tenantId,subject,'GET','/platform-api/staff/menu',undefined,'','staff:menu:read',z.object({
         version:z.number().int().positive(),name:z.string().max(4096),currency:z.literal('SAR'),categories:coreCatalogSchema.shape.categories,
-        items:z.array(z.object({id:menuId,categoryId:menuId,name:z.string().max(4096),priceMinor:z.number().int().min(0).max(100_000_000),available:z.boolean(),sort:z.number().int()})).max(1000),
+        items:z.array(z.object({id:menuId,categoryId:menuId,name:z.string().max(4096),priceMinor:z.number().int().min(0).max(100_000_000),available:z.boolean(),sort:z.number().int()})).max(5000),
       }),2_000_000);
     },
     menuItem(tenantId,subject,itemId){

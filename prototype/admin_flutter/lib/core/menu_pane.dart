@@ -34,6 +34,21 @@ class _MenuPaneState extends State<MenuPane> {
         available: result.available);
   }
 
+  Future<void> _create(CoreMenu menu, bool category) async {
+    final result = await showDialog<MenuCreation>(
+        context: context,
+        builder: (_) => _CreateMenuDialog(menu: menu, category: category));
+    if (!mounted ||
+        result == null ||
+        widget.controller.selectedTenant != menu.tenantId) return;
+    await widget.controller.createMenuEntry(menu,
+        id: result.id,
+        name: result.name,
+        sort: result.sort,
+        categoryId: result.categoryId,
+        price: result.price);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = widget.controller, menu = c.menu;
@@ -48,15 +63,42 @@ class _MenuPaneState extends State<MenuPane> {
             (selected == null || v.categoryId == selected) &&
             (v.name.toLowerCase().contains(filter) ||
                 v.id.toLowerCase().contains(filter)))
-        .toList();
+        .toList()
+      ..sort((a, b) {
+        final order = a.sort.compareTo(b.sort);
+        return order != 0 ? order : a.id.compareTo(b.id);
+      });
     final pages = (all.length / 50).ceil(),
         current = page.clamp(0, pages > 0 ? pages - 1 : 0);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const SizedBox(height: 20),
       Text('قائمة الأصناف • ${menu.name}',
           style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
       const Text(
           'تُحفظ التعديلات في قائمة المطعم الأصلية. الطلبات السابقة تحتفظ بأسمائها وأسعارها وقت الطلب.'),
+      if (c.membership?.can('menu:update') == true)
+        Wrap(spacing: 12, runSpacing: 8, children: [
+          OutlinedButton.icon(
+              onPressed: c.writable && menu.categories.length < 1000
+                  ? () {
+                      unawaited(_create(menu, true));
+                    }
+                  : null,
+              icon: const Icon(Icons.create_new_folder_outlined),
+              label: const Text('إضافة تصنيف')),
+          FilledButton.icon(
+              onPressed: c.writable &&
+                      menu.categories.isNotEmpty &&
+                      menu.items.length < 5000
+                  ? () {
+                      unawaited(_create(menu, false));
+                    }
+                  : null,
+              icon: const Icon(Icons.add),
+              label: const Text('إضافة صنف')),
+        ]),
+      if (menu.categories.isEmpty)
+        const Text('أضف تصنيفًا أولًا قبل إنشاء الأصناف.'),
       const SizedBox(height: 12),
       TextField(
           decoration: const InputDecoration(
@@ -93,6 +135,9 @@ class _MenuPaneState extends State<MenuPane> {
                     children: [
                       Text(item.name,
                           style: Theme.of(context).textTheme.titleMedium),
+                      Text(item.id,
+                          textDirection: TextDirection.ltr,
+                          style: Theme.of(context).textTheme.labelSmall),
                       Text(money(item.priceMinor)),
                       Text(item.available ? 'متاح للطلب' : 'غير متاح للطلب'),
                       if (c.membership?.can('menu:update') == true)
@@ -231,4 +276,129 @@ class _MenuDialogState extends State<_MenuDialog> {
               child: const Text('حفظ التعديلات'))
         ],
       );
+}
+
+typedef MenuCreation = ({
+  String id,
+  String name,
+  int sort,
+  String? categoryId,
+  int? price
+});
+
+class _CreateMenuDialog extends StatefulWidget {
+  const _CreateMenuDialog({required this.menu, required this.category});
+  final CoreMenu menu;
+  final bool category;
+  @override
+  State<_CreateMenuDialog> createState() => _CreateMenuDialogState();
+}
+
+class _CreateMenuDialogState extends State<_CreateMenuDialog> {
+  final name = TextEditingController(),
+      price = TextEditingController(),
+      sort = TextEditingController(text: '0');
+  late final String id;
+  String? categoryId, error;
+  @override
+  void initState() {
+    super.initState();
+    id = newMenuId(widget.category);
+    categoryId = widget.category ? null : widget.menu.categories.first.id;
+  }
+
+  @override
+  void dispose() {
+    name.dispose();
+    price.dispose();
+    sort.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+          title: Text(widget.category ? 'إضافة تصنيف' : 'إضافة صنف'),
+          content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                  child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    Text(
+                        'المطعم: ${widget.menu.name} • ${widget.menu.tenantId}'),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: name,
+                        maxLength: widget.category ? 240 : 320,
+                        decoration: InputDecoration(
+                            labelText: widget.category
+                                ? 'اسم التصنيف الجديد'
+                                : 'اسم الصنف الجديد',
+                            border: const OutlineInputBorder())),
+                    const SizedBox(height: 12),
+                    if (!widget.category) ...[
+                      DropdownButtonFormField<String>(
+                          initialValue: categoryId,
+                          decoration: const InputDecoration(
+                              labelText: 'تصنيف الصنف',
+                              border: OutlineInputBorder()),
+                          items: widget.menu.categories
+                              .map((v) => DropdownMenuItem(
+                                  value: v.id, child: Text(v.name)))
+                              .toList(),
+                          onChanged: (v) => setState(() => categoryId = v)),
+                      const SizedBox(height: 12),
+                      TextField(
+                          controller: price,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                              labelText: 'السعر بالريال السعودي',
+                              helperText: 'حتى منزلتين عشريتين',
+                              border: OutlineInputBorder())),
+                      const SizedBox(height: 12),
+                      const Text(
+                          'يُنشأ الصنف غير متاح للطلب، دون صورة أو إضافات. راجعه ثم فعّله من التعديل.'),
+                    ],
+                    TextField(
+                        controller: sort,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            labelText: 'ترتيب العرض',
+                            helperText: 'عدد صحيح من 0 إلى 10,000',
+                            border: OutlineInputBorder())),
+                    if (error != null)
+                      Text(error!,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error)),
+                  ]))),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إلغاء')),
+            FilledButton(
+                onPressed: () {
+                  final label = name.text.trim(),
+                      position = stockQuantity(sort.text),
+                      amount = widget.category ? null : priceMinor(price.text);
+                  if (label.isEmpty ||
+                      label.length > (widget.category ? 240 : 320) ||
+                      position == null ||
+                      position > 10000 ||
+                      (!widget.category &&
+                          (amount == null || categoryId == null))) {
+                    setState(() => error = 'راجع الاسم والسعر وترتيب العرض.');
+                    return;
+                  }
+                  Navigator.pop(context, (
+                    id: id,
+                    name: label,
+                    sort: position,
+                    categoryId: widget.category ? null : categoryId,
+                    price: amount
+                  ));
+                },
+                child: const Text('إنشاء'))
+          ]);
 }

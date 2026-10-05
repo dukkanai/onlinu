@@ -445,6 +445,53 @@ class CoreController extends ChangeNotifier {
     }
   }
 
+  Future<void> createMenuEntry(CoreMenu expected,
+      {required String id,
+      required String name,
+      required int sort,
+      String? categoryId,
+      int? price}) async {
+    if (section != CoreSection.menu ||
+        !writable ||
+        expected.tenantId != selectedTenant ||
+        membership?.can('menu:update') != true) return;
+    if (menu?.version != expected.version) {
+      message = 'تغيرت القائمة. راجعها قبل إضافة صنف أو تصنيف.';
+      _emit();
+      return;
+    }
+    if (categoryId != null && price == null) return;
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      if (categoryId == null) {
+        await api.createMenuCategory(expected, id: id, name: name, sort: sort);
+      } else {
+        await api.createMenuItem(expected,
+            id: id,
+            name: name,
+            categoryId: categoryId,
+            price: price!,
+            sort: sort);
+      }
+      if (_current(generation))
+        message = categoryId == null
+            ? 'أُضيف التصنيف.'
+            : 'أُضيف الصنف غير متاح للطلب؛ راجعه ثم فعّله عندما يكون جاهزًا.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
   void setSuspended(bool value) {
     if (_disposed || suspended == value) return;
     suspended = value;

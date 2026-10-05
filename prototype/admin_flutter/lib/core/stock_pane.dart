@@ -35,7 +35,7 @@ class _StockPaneState extends State<StockPane> {
     final pages = (all.length / 50).ceil(),
         current = page.clamp(0, pages > 0 ? pages - 1 : 0),
         rows = all.skip(current * 50).take(50);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const SizedBox(height: 20),
       const Text('المخزون',
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),

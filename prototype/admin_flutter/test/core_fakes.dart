@@ -199,6 +199,25 @@ CoreMenu menuFixture(
             category: category),
         tenantId: tenant);
 
+Map<String, dynamic> menuDocument(CoreMenu menu) => {
+      'version': menu.version,
+      'name': menu.name,
+      'currency': 'SAR',
+      'categories': menu.categories
+          .map((v) => {'id': v.id, 'name': v.name, 'sort': v.sort})
+          .toList(),
+      'items': menu.items
+          .map((v) => {
+                'id': v.id,
+                'name': v.name,
+                'categoryId': v.categoryId,
+                'priceMinor': v.priceMinor,
+                'available': v.available,
+                'sort': v.sort
+              })
+          .toList()
+    };
+
 class FakeCoreGateway implements CoreGateway {
   @override
   final FakeCoreSession session = FakeCoreSession();
@@ -323,14 +342,7 @@ class FakeCoreGateway implements CoreGateway {
   Future<CoreMenu> menu(String tenant) async {
     if (readError != null) throw readError!;
     return menuGate?.future ??
-        CoreMenu(
-            menuJson(
-                version: currentMenu.version,
-                name: currentMenu.items.single.name,
-                price: currentMenu.items.single.priceMinor,
-                available: currentMenu.items.single.available,
-                category: currentMenu.items.single.categoryId),
-            tenantId: tenant);
+        CoreMenu(menuDocument(currentMenu), tenantId: tenant);
   }
 
   @override
@@ -341,12 +353,52 @@ class FakeCoreGateway implements CoreGateway {
       required bool available}) async {
     menuWrites++;
     if (writeError != null) throw writeError!;
-    currentMenu = menuFixture(
-        tenant: menu.tenantId,
-        version: menu.version + 1,
-        name: name,
-        price: price,
-        available: available,
-        category: categoryId);
+    final doc = menuDocument(currentMenu);
+    doc['version'] = menu.version + 1;
+    doc['items'] = (doc['items'] as List)
+        .map((v) => (v as Map<String, dynamic>)['id'] == item.id
+            ? <String, dynamic>{
+                ...v,
+                'name': name,
+                'categoryId': categoryId,
+                'priceMinor': price,
+                'available': available
+              }
+            : v)
+        .toList();
+    currentMenu = CoreMenu(doc, tenantId: menu.tenantId);
+  }
+
+  @override
+  Future<void> createMenuCategory(CoreMenu menu,
+      {required String id, required String name, required int sort}) async {
+    menuWrites++;
+    if (writeError != null) throw writeError!;
+    final doc = menuDocument(currentMenu);
+    doc['version'] = menu.version + 1;
+    (doc['categories'] as List).add({'id': id, 'name': name, 'sort': sort});
+    currentMenu = CoreMenu(doc, tenantId: menu.tenantId);
+  }
+
+  @override
+  Future<void> createMenuItem(CoreMenu menu,
+      {required String id,
+      required String name,
+      required String categoryId,
+      required int price,
+      required int sort}) async {
+    menuWrites++;
+    if (writeError != null) throw writeError!;
+    final doc = menuDocument(currentMenu);
+    doc['version'] = menu.version + 1;
+    (doc['items'] as List).add({
+      'id': id,
+      'name': name,
+      'categoryId': categoryId,
+      'priceMinor': price,
+      'available': false,
+      'sort': sort
+    });
+    currentMenu = CoreMenu(doc, tenantId: menu.tenantId);
   }
 }

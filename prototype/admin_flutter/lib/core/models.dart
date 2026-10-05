@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'transport.dart';
 
 Never invalidResponse() => throw const CoreException('invalid_response');
@@ -215,21 +216,24 @@ String menuKey(Object? value) {
 class CoreCategory {
   CoreCategory(Map<String, dynamic> json)
       : id = menuKey(json['id']),
-        name = textField(json['name']);
+        name = textField(json['name']),
+        sort = integer(json['sort'] ?? 0, min: -9007199254740990);
   final String id, name;
+  final int sort;
 }
 
 class CoreMenuItem {
   CoreMenuItem(Map<String, dynamic> json)
       : id = menuKey(json['id']),
         categoryId = menuKey(json['categoryId']),
+        sort = integer(json['sort'] ?? 0, min: -9007199254740990),
         name = textField(json['name']),
         priceMinor = integer(json['priceMinor'], max: 100000000),
         available = json['available'] is bool
             ? json['available'] as bool
             : invalidResponse();
   final String id, categoryId, name;
-  final int priceMinor;
+  final int priceMinor, sort;
   final bool available;
 }
 
@@ -239,12 +243,13 @@ class CoreMenu {
         name = textField(json['name']),
         categories = List.unmodifiable(array(json['categories'], max: 1000)
             .map((v) => CoreCategory(object(v)))),
-        items = List.unmodifiable(array(json['items'], max: 1000)
+        items = List.unmodifiable(array(json['items'], max: 5000)
             .map((v) => CoreMenuItem(object(v)))) {
+    final categoryIds = categories.map((v) => v.id).toSet();
     if (json['currency'] != 'SAR' ||
-        categories.map((v) => v.id).toSet().length != categories.length ||
+        categoryIds.length != categories.length ||
         items.map((v) => v.id).toSet().length != items.length ||
-        items.any((v) => !categories.any((c) => c.id == v.categoryId)))
+        items.any((v) => !categoryIds.contains(v.categoryId)))
       invalidResponse();
   }
   final String tenantId, name;
@@ -272,4 +277,9 @@ int? priceMinor(String raw) {
       fraction = pieces.length == 1 ? 0 : int.parse(pieces[1].padRight(2, '0'));
   final total = whole * 100 + fraction;
   return total <= 100000000 ? total : null;
+}
+
+String newMenuId(bool category) {
+  final random = Random.secure();
+  return '${category ? 'c' : 'i'}_${List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
 }

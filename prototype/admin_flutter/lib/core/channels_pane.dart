@@ -33,7 +33,7 @@ class ChannelsPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const SizedBox(height: 20),
         const Text('قنوات الطلب',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),

@@ -105,6 +105,30 @@ void main() {
     await tap(find.text('حفظ التعديلات'));
     expect(api.menuWrites, 1);
     expect(controller.menu!.items.single.priceMinor, 1230);
+    await tap(find.text('إضافة تصنيف'));
+    await tester.enterText(find.widgetWithText(TextField, 'اسم التصنيف الجديد'),
+        'مشروبات الاختبار');
+    await tap(find.text('إنشاء'));
+    await tap(find.text('إضافة صنف'));
+    await tester.enterText(
+        find.widgetWithText(TextField, 'اسم الصنف الجديد'), 'عصير الاختبار');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'السعر بالريال السعودي'), '٧٫٢٥');
+    await capture(boundary, 'windows-create-item.png');
+    await tap(find.text('إنشاء'));
+    expect(api.menuWrites, 3);
+    expect(
+        controller.menu!.items
+            .where((v) => v.name == 'عصير الاختبار')
+            .single
+            .available,
+        false);
+    expect(
+        controller.menu!.items
+            .where((v) => v.name == 'عصير الاختبار')
+            .single
+            .priceMinor,
+        725);
     await capture(boundary, 'windows-menu.png');
     await tap(find.widgetWithText(ChoiceChip, 'المخزون'));
     await tap(find.text('تعديل الجرد'));

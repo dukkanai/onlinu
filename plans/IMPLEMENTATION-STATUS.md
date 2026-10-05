@@ -5,12 +5,12 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 14:25 UTC
+## Latest verified position — 2026-10-05 14:43 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `d7c1c3ee4fcb085fc41ff07e317649eb3b5e9c3b`, CI [37323385900](https://github.com/dukkanai/onlinu/actions/runs/37323385900), all jobs successful.
+- Latest published and fully verified commit: `88a1a1d5f5cf54e6cd3046722f68fd41ff0a3fc2`, CI [37325002495](https://github.com/dukkanai/onlinu/actions/runs/37325002495), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Published native inventory, channels, suspension settlement and restaurant labels are fully CI verified (49 Flutter tests plus actual Windows smoke/build). Current locally verified increment: native catalogue read/basic item editing and strict successful-mutation checks; 55 Flutter tests pass. Expanded Windows form smoke is pending remote execution.
+- Published native catalogue read/basic editing passed all CI jobs (55 Flutter tests and actual Windows menu/stock/channel form smoke). The resulting Arabic screenshots were inspected. Current locally verified increment: native category/draft-item creation, 5000-item summary compatibility and wider cards; 60 Flutter tests and 191 platform tests pass. Its expanded Windows smoke is pending.
 - Native Windows PKCE client, order/cash UI, actual OS-store/rendering smoke and unsigned build are verified at the published commit above. The synthetic screenshot was inspected; no Arabic clipping observed.
 - POS integration is explicitly deferred by the owner’s voice instruction; continue current development without choosing/connecting a vendor.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
@@ -302,3 +302,19 @@ read-only roles, cancellation, stale forms and unexpected success bodies.
 The Windows native smoke now also exercises menu/stock/channel forms with
 synthetic gateways and captures separate screenshots. Its new run remains pending;
 this does not replace real HTTP/OIDC/MFA or merchant-device acceptance.
+
+
+### Native category and draft-item creation — 2026-10-05
+
+`88a1a1d` passed all jobs in CI37325002495, including the expanded actual Windows
+menu/stock/channel form tests; screenshots were downloaded and inspected. New
+creation forms use stable random IDs per form and the captured catalogue version.
+New items start disabled with empty description/image/options for review; no
+existing item or historical order is replaced. Arabic price/integer validation,
+permission checks, cancellation, stale forms and non-replayed uncertainty have
+local coverage. Staff summary capacity now matches the original 5000-item
+catalogue bound; existing 2 MB response cap is unchanged. Native rendering keeps
+50-item pages and cards use the available width after visual inspection.
+Local analyze/all60 Flutter tests, platform191 PostgreSQL tests and actual
+Go↔Node race integration pass. Windows creation-form smoke is added but not yet
+remotely verified for this increment. POS integration remains deferred.

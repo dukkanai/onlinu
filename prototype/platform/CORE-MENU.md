@@ -90,3 +90,10 @@ option preserves historical order snapshots; nothing deletes old receipts.
 
 Images/uploads and broader management parity remain open; these plain Arabic
 forms are not a claim of complete Flutter or visual-management parity.
+
+Native Flutter now has versioned basic edits and category/draft-item creation.
+Creation IDs are generated once per form, new items start unavailable for review,
+and uncertain writes are not automatically replayed. Summary reads support the
+original 5000-item catalogue bound (previous bridge cap was1000), without raising
+the existing 2 MB response limit. Native pages remain bounded and searchable;
+this is not an unlimited catalogue or a scale/load acceptance claim.

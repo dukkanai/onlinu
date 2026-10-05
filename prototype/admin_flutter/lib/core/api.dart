@@ -6,6 +6,14 @@ abstract interface class CoreGateway {
   CoreSession get session;
   Future<CoreProfile> profile();
   Future<CoreMenu> menu(String tenant);
+  Future<void> createMenuCategory(CoreMenu menu,
+      {required String id, required String name, required int sort});
+  Future<void> createMenuItem(CoreMenu menu,
+      {required String id,
+      required String name,
+      required String categoryId,
+      required int price,
+      required int sort});
   Future<void> patchMenu(CoreMenu menu, CoreMenuItem item,
       {required String name,
       required String categoryId,
@@ -230,6 +238,86 @@ class CoreApi implements CoreGateway {
           changed.categoryId != categoryId ||
           changed.priceMinor != price ||
           changed.available != available) invalidResponse();
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
+  }
+
+  @override
+  Future<void> createMenuCategory(CoreMenu menu,
+      {required String id, required String name, required int sort}) async {
+    final label = name.trim();
+    menuKey(id);
+    if (label.isEmpty ||
+        label.length > 240 ||
+        sort < 0 ||
+        sort > 10000 ||
+        menu.categories.any((v) => v.id == id))
+      throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(menu.tenantId)}/staff/menu/categories',
+        body: {
+          'expectedVersion': menu.version,
+          'category': {'id': id, 'name': label, 'sort': sort}
+        });
+    try {
+      _tenant(data, menu.tenantId);
+      final created = CoreCategory(object(data['category']));
+      if (integer(data['version'], min: 1) <= menu.version ||
+          created.id != id ||
+          created.name != label ||
+          created.sort != sort) invalidResponse();
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
+  }
+
+  @override
+  Future<void> createMenuItem(CoreMenu menu,
+      {required String id,
+      required String name,
+      required String categoryId,
+      required int price,
+      required int sort}) async {
+    final label = name.trim();
+    menuKey(id);
+    menuKey(categoryId);
+    if (label.isEmpty ||
+        label.length > 320 ||
+        price < 0 ||
+        price > 100000000 ||
+        sort < 0 ||
+        sort > 10000 ||
+        menu.items.any((v) => v.id == id) ||
+        !menu.categories.any((v) => v.id == categoryId))
+      throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(menu.tenantId)}/staff/menu/items',
+        body: {
+          'expectedVersion': menu.version,
+          'item': {
+            'id': id,
+            'categoryId': categoryId,
+            'name': label,
+            'description': '',
+            'priceMinor': price,
+            'imageUrl': '',
+            'available': false,
+            'sort': sort,
+            'options': []
+          }
+        });
+    try {
+      _tenant(data, menu.tenantId);
+      final created = CoreMenuItem(object(data['item']));
+      if (integer(data['version'], min: 1) <= menu.version ||
+          data['currency'] != 'SAR' ||
+          created.id != id ||
+          created.name != label ||
+          created.categoryId != categoryId ||
+          created.priceMinor != price ||
+          created.available ||
+          created.sort != sort) invalidResponse();
     } on CoreException {
       throw const CoreException('invalid_response', uncertain: true);
     }
