@@ -4,6 +4,7 @@ import 'package:restaurant_admin_prototype/core/api.dart';
 import 'package:restaurant_admin_prototype/core/team_models.dart';
 import 'package:restaurant_admin_prototype/core/business_profile.dart';
 import 'package:restaurant_admin_prototype/core/delivery_models.dart';
+import 'package:restaurant_admin_prototype/core/courier_models.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
 import 'package:restaurant_admin_prototype/core/models.dart';
 import 'package:restaurant_admin_prototype/core/transport.dart';
@@ -242,6 +243,36 @@ Map<String, dynamic> menuDocument(CoreMenu menu) => {
     };
 
 class FakeCoreGateway implements CoreGateway {
+  CoreCourierLinks? linksValue;
+  CoreCourierWork? workValue;
+  CoreCourierDetail? ownDetail;
+  final courierWrites = <String>[];
+  @override
+  Future<CoreCourierLinks> courierLinks(String tenant) async => linksValue!;
+  @override
+  Future<void> setCourierLink(
+      CoreCourierLinks expected, CoreCourierLink link, String principal) async {
+    courierWrites.add('link:$principal');
+  }
+
+  @override
+  Future<CoreCourierWork> courierWork(String tenant) async => workValue!;
+  @override
+  Future<CoreCourierDetail> courierDetail(
+          CoreCourierWork expected, CoreOrder order) async =>
+      ownDetail!;
+  @override
+  Future<void> courierChange(CoreCourierWork expected, CoreOrder order,
+      {bool cash = false}) async {
+    courierWrites.add(cash ? 'cash' : 'status');
+  }
+
+  @override
+  Future<void> courierAvailability(
+      CoreCourierWork expected, String availability) async {
+    courierWrites.add('availability:$availability');
+  }
+
   @override
   final FakeCoreSession session = FakeCoreSession();
   CoreProfile currentProfile = profileFixture();

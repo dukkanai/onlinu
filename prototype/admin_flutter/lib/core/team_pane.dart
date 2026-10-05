@@ -233,6 +233,15 @@ class _TeamEditorState extends State<TeamEditor> {
                             onChanged: editable
                                 ? (v) => setState(() => enabled = v)
                                 : null),
+                        if (role == 'owner' &&
+                            permissions.length != permissionLabels.length)
+                          OutlinedButton(
+                              onPressed: editable
+                                  ? () => setState(() =>
+                                      permissions = rolePermissions('owner'))
+                                  : null,
+                              child: const Text(
+                                  'مراجعة إضافة صلاحيات المالك الجديدة')),
                         const Text('الصلاحيات التفصيلية'),
                         for (final entry in permissionLabels.entries)
                           CheckboxListTile(

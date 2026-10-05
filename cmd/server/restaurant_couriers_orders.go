@@ -17,11 +17,16 @@ func restaurantDeliveryTransition(from, to string) bool {
 func (s *restaurantCouriers) ListOrders(ctx context.Context, courierID string) ([]restaurantOrder, error) {
 	// Select only the public order document, never receipt credentials, and
 	// recheck active state in the same query that authorizes every returned row.
-	rows, err := s.db.QueryContext(ctx, `SELECT o.document FROM restaurant_orders o
-		JOIN restaurant_couriers c ON c.id=o.document->>'courierId'
-		WHERE c.id=$1 AND c.active AND o.document->>'mode'='delivery'
-		AND o.status NOT IN ('completed','cancelled') AND COALESCE(o.document->>'deliveryStatus','')<>'delivered'
-		ORDER BY o.created_at ASC LIMIT 100`, courierID)
+	query := `SELECT o.document FROM restaurant_orders o
+        JOIN restaurant_couriers c ON c.id=o.document->>'courierId'
+        WHERE c.id=$1 AND c.active AND o.document->>'mode'='delivery'
+        AND o.status NOT IN ('completed','cancelled') AND COALESCE(o.document->>'deliveryStatus','')<>'delivered'`
+	args := []any{courierID}
+	if binding, ok := ctx.Value(platformCourierBindingKey{}).(platformCourierBinding); ok {
+		query += ` AND EXISTS (SELECT 1 FROM platform_courier_links l WHERE l.courier_id=c.id AND l.owner_ref=$2 AND l.version=$3)`
+		args = append(args, binding.OwnerRef, binding.Version)
+	}
+	rows, err := s.db.QueryContext(ctx, query+` ORDER BY o.created_at ASC LIMIT 100`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +145,12 @@ func (s *restaurantCouriers) UpdateOrder(ctx context.Context, courierID, number,
 	}
 	if err != nil {
 		return restaurantOrder{}, err
+	}
+	if err = verifyPlatformCourierBinding(ctx, tx, courierID); err != nil {
+		return restaurantOrder{}, err
+	}
+	if binding, ok := ctx.Value(platformCourierBindingKey{}).(platformCourierBinding); ok && binding.CashOnly && (!collectCash || order.DeliveryStatus != "at_door" || status != "at_door") {
+		return restaurantOrder{}, restaurantFail(409, "invalid_status")
 	}
 	if order.Version != version {
 		return restaurantOrder{}, restaurantFail(409, "conflict")

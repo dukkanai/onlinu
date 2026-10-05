@@ -71,6 +71,9 @@ func newRestaurantCouriers(ctx context.Context, db *sql.DB, orders *restaurantOr
 	if restaurantDummyPassword.err != nil {
 		return nil, restaurantFail(500, "server_error")
 	}
+	if err = initPlatformCourierSchema(ctx, db); err != nil {
+		return nil, err
+	}
 	return &restaurantCouriers{db: db, orders: orders, dummyHash: restaurantDummyPassword.hash}, nil
 }
 
@@ -327,6 +330,9 @@ func (s *restaurantCouriers) Logout(ctx context.Context, token string) error {
 }
 
 func (s *restaurantCouriers) SetAvailability(ctx context.Context, id, value string) (restaurantCourier, error) {
+	if _, ok := ctx.Value(platformCourierBindingKey{}).(platformCourierBinding); ok {
+		return s.setPlatformAvailability(ctx, id, value)
+	}
 	if value != "available" && value != "busy" && value != "offline" {
 		return restaurantCourier{}, restaurantFail(400, "invalid_request")
 	}

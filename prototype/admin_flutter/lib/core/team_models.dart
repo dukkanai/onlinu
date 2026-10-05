@@ -17,6 +17,10 @@ const permissionLabels = {
   'settings:update': 'تعديل الإعدادات',
   'channels:manage': 'إدارة قنوات الطلب',
   'members:manage': 'إدارة الفريق والصلاحيات',
+  'couriers:link': 'ربط هويات المندوبين بحساباتهم',
+  'courier:read': 'عرض مهامي كمندوب',
+  'courier:update': 'تحديث مهامي وتوفري كمندوب',
+  'courier:collect': 'تأكيد نقد طلباتي كمندوب',
 };
 const roleLabels = {
   'owner': 'مالك',
@@ -28,8 +32,12 @@ const roleLabels = {
 };
 Set<String> rolePermissions(String role) => switch (role) {
       'owner' => permissionLabels.keys.toSet(),
-      'manager' =>
-        permissionLabels.keys.where((v) => v != 'members:manage').toSet(),
+      'manager' => permissionLabels.keys
+          .where((v) =>
+              v != 'members:manage' &&
+              v != 'couriers:link' &&
+              !v.startsWith('courier:'))
+          .toSet(),
       'supervisor' => {
           'orders:read',
           'orders:update',
@@ -40,7 +48,7 @@ Set<String> rolePermissions(String role) => switch (role) {
         },
       'kitchen' => {'orders:read', 'orders:update', 'menu:read', 'stock:read'},
       'cashier' => {'orders:read', 'payments:read', 'payments:collect'},
-      'courier' => {'delivery:read'},
+      'courier' => {'courier:read', 'courier:update', 'courier:collect'},
       _ => throw const CoreException('invalid_request')
     };
 String principalKey(Object? value) {
@@ -61,8 +69,9 @@ class CoreTeamMember {
             ? json['enabled'] as bool
             : invalidResponse(),
         version = integer(json['version'], min: 1),
-        permissions = Set.unmodifiable(array(json['permissions'], max: 15)
-            .map((v) => textField(v, max: 80))) {
+        permissions = Set.unmodifiable(
+            array(json['permissions'], max: permissionLabels.length)
+                .map((v) => textField(v, max: 80))) {
     if (!roleLabels.containsKey(role) ||
         permissions.any((v) => !permissionLabels.containsKey(v)))
       invalidResponse();

@@ -52,6 +52,9 @@ class CoreMembership {
                 'payments:read',
                 'payments:collect',
                 'refunds:manage',
+                'courier:read',
+                'courier:update',
+                'courier:collect',
               }.contains(permission));
 }
 

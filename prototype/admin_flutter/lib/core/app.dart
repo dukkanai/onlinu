@@ -10,6 +10,7 @@ import 'team_pane.dart';
 import 'business_pane.dart';
 import 'delivery_pane.dart';
 import 'dispatch_editor.dart';
+import 'courier_pane.dart';
 
 class CoreApp extends StatefulWidget {
   const CoreApp({super.key, required this.controller});
@@ -241,6 +242,26 @@ class CoreScreen extends StatelessWidget {
                             child: Text('اختر المطعم الذي تريد إدارته.')),
                       if (member != null)
                         Wrap(spacing: 12, children: [
+                          if (member.can('courier:read'))
+                            ChoiceChip(
+                                label: const Text('مهامي كمندوب'),
+                                selected: c.section == CoreSection.courier,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(c.selectSection(
+                                            CoreSection.courier));
+                                      }),
+                          if (member.can('couriers:link'))
+                            ChoiceChip(
+                                label: const Text('ربط المندوبين'),
+                                selected: c.section == CoreSection.courierLinks,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(c.selectSection(
+                                            CoreSection.courierLinks));
+                                      }),
                           if (member.can('orders:read'))
                             ChoiceChip(
                                 label: const Text('الطلبات'),
@@ -312,6 +333,16 @@ class CoreScreen extends StatelessWidget {
                                             CoreSection.channels));
                                       }),
                         ]),
+                      if (c.section == CoreSection.courier &&
+                          member?.can('courier:read') == true)
+                        CourierPane(
+                            key: ValueKey('courier-${c.selectedTenant}'),
+                            controller: c),
+                      if (c.section == CoreSection.courierLinks &&
+                          member?.can('couriers:link') == true)
+                        CourierLinksPane(
+                            key: ValueKey('courier-links-${c.selectedTenant}'),
+                            controller: c),
                       if (c.section == CoreSection.coverage &&
                           member?.can('settings:read') == true)
                         DeliveryPane(

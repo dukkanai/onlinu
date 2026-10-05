@@ -179,3 +179,21 @@ late roster revocation, explicit review/cancel, actor attribution and rollback. 
 Dart TLS tests assign then unassign without new orders or payment calls. The parent
 fixture checks both resulting versions before settlement. Windows/Chromium UI
 acceptance remains a distinct remote gate for this increment.
+
+## Explicit courier identities and owned work
+
+New native sections require `couriers:link` or `courier:read` respectively.
+Bindings require an eligible verified tenant principal, explicit selection and
+review; no name/email matching, automatic grant expansion or actual-account
+setup occurs during tests. A separate `courier:collect` grant cannot advance a
+stage, and `courier:update` cannot confirm cash. The own-work list is bounded to
+100 unfinished assignments; selected details show delivery contact/address only.
+Versioned link checks run inside the original order transaction. Native unlink
+is not a password-login revocation; the binding review explains that limit.
+
+`core_courier_test.dart` checks models, acknowledgements, freshness/permission
+fences and review UX. `courier_live_http_test.dart` runs actual Dart through a
+pinned synthetic TLS endpoint to Node and Go, with seeded browser identity and
+explicit PKCE consent. The Windows smoke includes owned cash and link review
+screenshots. Remote results must be recorded before calling this verified on
+Windows. No device GPS, real employee binding or production migration is covered.

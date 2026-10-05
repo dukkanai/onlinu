@@ -4,10 +4,21 @@ import 'models.dart';
 import 'team_models.dart';
 import 'business_profile.dart';
 import 'delivery_models.dart';
+import 'courier_models.dart';
 import 'transport.dart';
 
 abstract interface class CoreGateway {
   CoreSession get session;
+  Future<CoreCourierLinks> courierLinks(String tenant);
+  Future<void> setCourierLink(
+      CoreCourierLinks expected, CoreCourierLink link, String principal);
+  Future<CoreCourierWork> courierWork(String tenant);
+  Future<CoreCourierDetail> courierDetail(
+      CoreCourierWork expected, CoreOrder order);
+  Future<void> courierChange(CoreCourierWork expected, CoreOrder order,
+      {bool cash = false});
+  Future<void> courierAvailability(
+      CoreCourierWork expected, String availability);
   Future<CoreProfile> profile();
   Future<CoreDelivery> delivery(String tenant);
   Future<void> setDeliveryPricing(CoreDelivery expected,
@@ -111,6 +122,116 @@ class CoreApi implements CoreGateway {
       '/native/api/restaurants/${tenantKey(tenant)}/staff/orders';
   void _tenant(Map<String, dynamic> data, String tenant) {
     if (data['tenantId'] != tenant) invalidResponse();
+  }
+
+  @override
+  Future<CoreCourierLinks> courierLinks(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/courier-links');
+    _tenant(data, tenant);
+    return CoreCourierLinks(data, tenantId: tenant);
+  }
+
+  @override
+  Future<void> setCourierLink(
+      CoreCourierLinks expected, CoreCourierLink link, String principal) async {
+    if (principal.isNotEmpty) principalKey(principal);
+    if (!expected.links.any((v) =>
+            v.courier.id == link.courier.id && v.version == link.version) ||
+        principal == (link.principalId ?? '') &&
+            !(link.bound && link.principalId == null) ||
+        principal.isNotEmpty &&
+            (!link.courier.active ||
+                link.activeOrders > 0 ||
+                !expected.candidates.any((v) => v.id == principal)))
+      throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/courier-links/${courierKey(link.courier.id)}',
+        body: {'expectedVersion': link.version, 'principalId': principal});
+    _tenant(data, expected.tenantId);
+    final saved = CoreCourierLink(object(data['link']));
+    if (saved.courier.id != link.courier.id ||
+        saved.version != link.version + 1 ||
+        saved.principalId != (principal.isEmpty ? null : principal) ||
+        saved.bound != principal.isNotEmpty)
+      throw const CoreException('order_outcome_unknown', uncertain: true);
+  }
+
+  @override
+  Future<CoreCourierWork> courierWork(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/courier-work');
+    _tenant(data, tenant);
+    return CoreCourierWork(data, tenantId: tenant);
+  }
+
+  @override
+  Future<CoreCourierDetail> courierDetail(
+      CoreCourierWork expected, CoreOrder order) async {
+    final data = await _request('GET',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/courier-work/orders/${orderKey(order.number)}');
+    _tenant(data, expected.tenantId);
+    final result = CoreCourierDetail(data, tenant: expected.tenantId);
+    if (result.order.number != order.number ||
+        result.order.courierId != expected.courier?.id ||
+        result.bindingVersion != expected.bindingVersion)
+      throw const CoreException('conflict');
+    return result;
+  }
+
+  @override
+  Future<void> courierChange(CoreCourierWork expected, CoreOrder order,
+      {bool cash = false}) async {
+    final next = courierNextStage(order);
+    if (expected.courier == null ||
+        expected.bindingVersion < 1 ||
+        order.tenantId != expected.tenantId ||
+        order.courierId != expected.courier!.id ||
+        !expected.orders.any(
+            (v) => v.number == order.number && v.version == order.version) ||
+        (cash ? !courierCanCollect(order) : next == null))
+      throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/courier-work/orders/${orderKey(order.number)}/${cash ? 'cash' : 'status'}',
+        body: {
+          'version': order.version,
+          'bindingVersion': expected.bindingVersion,
+          if (!cash) 'status': next
+        });
+    _tenant(data, expected.tenantId);
+    final saved = CoreOrder(data, tenantId: expected.tenantId);
+    if (saved.number != order.number ||
+        saved.version != order.version + 1 ||
+        saved.courierId != expected.courier!.id ||
+        saved.deliveryStatus != (cash ? order.deliveryStatus : next) ||
+        saved.totalMinor != order.totalMinor ||
+        saved.paymentMethod != order.paymentMethod ||
+        (cash
+            ? saved.paymentStatus != 'paid'
+            : saved.paymentStatus != order.paymentStatus))
+      throw const CoreException('order_outcome_unknown', uncertain: true);
+  }
+
+  @override
+  Future<void> courierAvailability(
+      CoreCourierWork expected, String availability) async {
+    if (expected.courier == null ||
+        expected.bindingVersion < 1 ||
+        !{'available', 'busy', 'offline'}.contains(availability) ||
+        availability == expected.courier!.availability)
+      throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/courier-work/availability',
+        body: {
+          'bindingVersion': expected.bindingVersion,
+          'availability': availability
+        });
+    _tenant(data, expected.tenantId);
+    final saved = CoreCourier(data);
+    if (saved.id != expected.courier!.id ||
+        !saved.active ||
+        saved.availability != availability)
+      throw const CoreException('order_outcome_unknown', uncertain: true);
   }
 
   @override

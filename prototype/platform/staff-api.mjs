@@ -1,10 +1,13 @@
+import {createCourierApi} from './courier-service.mjs';
 import {problem} from './auth.mjs';
 
 // One permission-checked staff operation router, shared by browser and native
 // transports. Authentication/CSRF belongs to the caller; platform-admin
 // registry endpoints are deliberately not included here.
 export function createStaffApi({directory,orderClient,body,json,uploadSlots={active:0}}){
+  const courierApi=orderClient?createCourierApi({directory,orderClient,body,json}):null;
   return async(req,res,who,url,{restaurantOnly=false}={})=>{
+        if(courierApi&&/^\/api\/restaurants\/[^/]+\/(courier-links|courier-work)(?:\/|$)/.test(url.pathname))return courierApi(req,res,who,url);
         const couriersRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/couriers$/.exec(url.pathname);
         if(couriersRoute&&orderClient&&req.method==='GET'){
           if(url.search)throw problem(400,'invalid_request');const tenantId=couriersRoute[1];await directory.authorize(who.id,tenantId,'delivery:assign');return json(res,200,await orderClient.couriers(tenantId,who.id));

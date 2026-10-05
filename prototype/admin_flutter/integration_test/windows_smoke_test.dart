@@ -16,6 +16,8 @@ import 'package:restaurant_admin_prototype/core/team_models.dart';
 import 'package:restaurant_admin_prototype/core/controller.dart';
 import 'package:restaurant_admin_prototype/core/session_store.dart';
 import '../test/core_fakes.dart';
+import '../test/core_courier_test.dart' show ownWork, linksJson;
+import 'package:restaurant_admin_prototype/core/courier_models.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -179,6 +181,59 @@ void main() {
     expect(controller.menu, isNull);
     expect(controller.stock, isEmpty);
     expect(controller.channels, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('Windows owned courier cash review and explicit identity binding',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile = profileFixture(permissions: [
+        'courier:read',
+        'courier:update',
+        'courier:collect',
+        'couriers:link'
+      ])
+      ..workValue = ownWork(stage: 'at_door')
+      ..linksValue = CoreCourierLinks(linksJson(), tenantId: 'demo-a');
+    final c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الدخول عبر المتصفح'));
+    await tester.pumpAndSettle();
+    final cash = find.text('استلمت نقد هذا الطلب');
+    await tester.ensureVisible(cash);
+    await tester.pumpAndSettle();
+    await tester.tap(cash);
+    await tester.pumpAndSettle();
+    expect(api.courierWrites, isEmpty);
+    await capture(tester, boundary, 'windows-courier-cash-review.png');
+    await tester.tap(find.text('تأكيد'));
+    await tester.pumpAndSettle();
+    expect(api.courierWrites, ['cash']);
+    final tab = find.widgetWithText(ChoiceChip, 'ربط المندوبين');
+    await tester.ensureVisible(tab);
+    await tester.pumpAndSettle();
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    final edit = find.text('مراجعة الربط');
+    await tester.ensureVisible(edit);
+    await tester.pumpAndSettle();
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('هوية تجريبية').last);
+    await tester.pumpAndSettle();
+    final check = find.byType(CheckboxListTile);
+    await tester.ensureVisible(check);
+    await tester.pumpAndSettle();
+    await tester.tap(check);
+    await tester.pumpAndSettle();
+    await capture(tester, boundary, 'windows-courier-link-review.png');
+    await tester.tap(find.text('تأكيد تغيير الربط'));
+    await tester.pumpAndSettle();
+    expect(api.courierWrites, ['cash', 'link:$principalId']);
     await tester.pumpWidget(const SizedBox());
   });
   testWidgets('Windows dispatcher reviews existing courier assignment',

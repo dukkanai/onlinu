@@ -291,3 +291,23 @@ actor in its event; the existing shared staff audit is reused rather than duplic
 Browser/native forms require explicit review. Courier IDs are original 32-hex IDs,
 not principal UUIDs. This does not create courier accounts, reset credentials, link
 native courier identities or expose live location/customer contact data.
+
+## Owned native courier workflow (2026-10-05, local increment)
+
+- Dispatcher `7fc5be0` passed all CI jobs (`37352655371`).
+- The next increment adds explicit `couriers:link` and separate `courier:read`,
+  `courier:update`, `courier:collect` membership grants. No existing rows are
+  automatically granted new permissions. Owners can review updating their full
+  permission set in the existing team editor.
+- Additive tenant tables `platform_courier_links` and `platform_courier_audit` are
+  initialized alongside the original courier store. Versioned links are unique
+  per principal/courier and transactionally audited. Unlink is allowed with active
+  tasks; new bindings wait until tasks have been reassigned/finished.
+- Native sections: reviewed identity binding and own courier tasks. Contact/address
+  details are fetched only for the selected owned, unfinished task. Cash collection
+  and delivery stage changes are separate explicit confirmations. No GPS collection.
+- Use `TestPlatformCourier*`, `courier-service.test.mjs`, native
+  `core_courier_test.dart` and `integration_http/courier_live_http_test.dart` for
+  targeted coverage; the latter is driven by the isolated Go/Node fixture.
+- Full design and release boundaries: `prototype/platform/NATIVE-COURIER.md`.
+  This entry records implementation scope, not production acceptance.

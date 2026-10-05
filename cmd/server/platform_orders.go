@@ -99,8 +99,11 @@ func (a *platformRequestAuth) verify(r *http.Request, body []byte, scope string)
 		return "", denied
 	}
 	// A different namespace from local account UUIDs; no email/phone linking.
-	owner := sha256.Sum256([]byte(a.issuer + "\x00" + a.tenantID + "\x00" + claims.Subject))
-	return "platform:" + hex.EncodeToString(owner[:]), nil
+	return platformPrincipalRef(a.issuer, a.tenantID, claims.Subject), nil
+}
+func platformPrincipalRef(issuer, tenant, subject string) string {
+	owner := sha256.Sum256([]byte(issuer + "\x00" + tenant + "\x00" + subject))
+	return "platform:" + hex.EncodeToString(owner[:])
 }
 
 type platformOrderView struct {

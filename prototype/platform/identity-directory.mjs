@@ -10,14 +10,15 @@ export const RESTAURANT_PERMISSIONS = Object.freeze([
   'orders:read', 'orders:update', 'menu:read', 'menu:update', 'stock:read', 'stock:update',
   'delivery:read', 'delivery:assign', 'payments:read', 'payments:collect', 'refunds:manage',
   'settings:read', 'settings:update', 'channels:manage', 'members:manage',
+  'couriers:link', 'courier:read', 'courier:update', 'courier:collect',
 ]);
 const roles = Object.freeze({
   owner: RESTAURANT_PERMISSIONS,
-  manager: RESTAURANT_PERMISSIONS.filter(p => p !== 'members:manage'),
+  manager: RESTAURANT_PERMISSIONS.filter(p => p !== 'members:manage' && p !== 'couriers:link' && !p.startsWith('courier:')),
   supervisor: ['orders:read', 'orders:update', 'menu:read', 'stock:read', 'delivery:read', 'delivery:assign'],
   kitchen: ['orders:read', 'orders:update', 'menu:read', 'stock:read'],
   cashier: ['orders:read', 'payments:read', 'payments:collect'],
-  courier: ['delivery:read'],
+  courier: ['courier:read','courier:update','courier:collect'],
 });
 const key = z.string().uuid();
 const tenantIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
@@ -191,7 +192,7 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
     if (!rows[0]?.permissions.includes(permission)) throw problem(403, 'forbidden');
     // Suspension prevents new business, not completion/refund of existing work.
     const settlement = ['orders:read', 'orders:update', 'delivery:read', 'delivery:assign',
-      'payments:read', 'payments:collect', 'refunds:manage'];
+      'payments:read', 'payments:collect', 'refunds:manage','courier:read','courier:update','courier:collect'];
     if (rows[0].tenant_status === 'suspended' && !settlement.includes(permission)) throw problem(403, 'tenant_suspended');
     return safeRow(rows[0]);
   }
@@ -208,5 +209,10 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
       return rows.map(safeRow);
     });
   }
-  return { init, verifiedIdentity, resolve, createTenant, setTenantStatus, setMembership, authorize, published, members };
+  async function courierCandidates(actorId,tenantId){
+    await authorize(actorId,tenantId,'couriers:link');
+    const {rows}=await pool.query(`SELECT m.principal_id,m.display_name,m.enabled AS member_enabled,m.permissions,i.enabled AS identity_enabled FROM platform_memberships m JOIN platform_identities i ON i.id=m.principal_id WHERE m.tenant_id=$1 ORDER BY m.principal_id LIMIT 5000`,[tenantId]);
+    return rows.map(row=>({principalId:row.principal_id,displayName:row.display_name??'',eligible:row.member_enabled&&row.identity_enabled&&row.permissions.includes('courier:read')}));
+  }
+  return { init, verifiedIdentity, resolve, createTenant, setTenantStatus, setMembership, authorize, published, members, courierCandidates };
 }

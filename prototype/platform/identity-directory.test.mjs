@@ -92,6 +92,23 @@ test('persistent tenant identity, roles, concurrency and OAuth revocation', {
 
   });
 
+  await t.test('courier candidates require explicit local grant and independently enabled identities',async()=>{
+    const courier=await make('candidate-courier'),manager=await make('candidate-manager'),foreign=await make('candidate-foreign');
+    await directory.setMembership(ownerA.id,'a',courier.id,{role:'courier',enabled:true,expectedVersion:null,displayName:'Same name'});
+    await directory.setMembership(ownerA.id,'a',manager.id,{role:'manager',enabled:true,expectedVersion:null,displayName:'Same name'});
+    await directory.setMembership(ownerB.id,'b',foreign.id,{role:'courier',enabled:true,expectedVersion:null});
+    await directory.authorize(courier.id,'a','courier:read');
+    for(const permission of ['orders:read','couriers:link','delivery:assign'])await assert.rejects(directory.authorize(courier.id,'a',permission),{code:'forbidden'});
+    for(const person of [courier,manager,root])await assert.rejects(directory.courierCandidates(person.id,'a'),{code:'forbidden'});
+    const candidates=await directory.courierCandidates(ownerA.id,'a');assert.equal(candidates.find(v=>v.principalId===courier.id).eligible,true);assert.equal(candidates.find(v=>v.principalId===manager.id).eligible,false);assert.equal(candidates.some(v=>v.principalId===foreign.id),false);
+    await pool.query('UPDATE platform_identities SET enabled=FALSE WHERE id=$1',[courier.id]);
+    assert.equal((await directory.courierCandidates(ownerA.id,'a')).find(v=>v.principalId===courier.id).eligible,false);
+    await assert.rejects(directory.authorize(courier.id,'a','courier:read'));
+    await pool.query('UPDATE platform_identities SET enabled=TRUE WHERE id=$1',[courier.id]);
+    await directory.setMembership(ownerA.id,'a',courier.id,{role:'courier',enabled:false,expectedVersion:1});
+    assert.equal((await directory.courierCandidates(ownerA.id,'a')).find(v=>v.principalId===courier.id).eligible,false);
+  });
+
   await t.test('last owner cannot be removed, including concurrent owner removals', async () => {
     await assert.rejects(directory.setMembership(root.id, 'a', ownerA.id, { role: 'owner', enabled: false, expectedVersion: 1 }), { code: 'last_owner_required' });
     await assert.rejects(directory.setMembership(ownerA.id, 'a', ownerA.id, { role: 'owner', permissions: ['orders:read'], enabled: true, expectedVersion: 1 }), { code: 'invalid_owner_permissions' });
@@ -138,10 +155,11 @@ test('persistent tenant identity, roles, concurrency and OAuth revocation', {
   });
 
   await t.test('closing tenants preserves data and cannot silently reactivate', async () => {
+    const before=(await pool.query('SELECT count(*)::int AS n FROM platform_memberships WHERE tenant_id=$1',['b'])).rows[0].n;
     await directory.setTenantStatus(root.id, 'b', { status: 'closed', expectedVersion: 4 });
     await assert.rejects(directory.setTenantStatus(root.id, 'b', { status: 'active', expectedVersion: 5 }), { code: 'invalid_tenant_transition' });
     await assert.rejects(directory.authorize(ownerB.id, 'b', 'orders:read'), { code: 'forbidden' });
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM platform_memberships WHERE tenant_id=$1', ['b'])).rows[0].n, 1);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM platform_memberships WHERE tenant_id=$1', ['b'])).rows[0].n, before);
     assert.ok(RESTAURANT_PERMISSIONS.includes('channels:manage'));
   });
 

@@ -6,9 +6,20 @@ import 'models.dart';
 import 'team_models.dart';
 import 'business_profile.dart';
 import 'delivery_models.dart';
+import 'courier_models.dart';
 import 'transport.dart';
 
-enum CoreSection { orders, stock, channels, menu, team, business, coverage }
+enum CoreSection {
+  orders,
+  stock,
+  channels,
+  menu,
+  team,
+  business,
+  coverage,
+  courier,
+  courierLinks
+}
 
 extension CoreSectionPermission on CoreSection {
   String get permission => switch (this) {
@@ -18,7 +29,9 @@ extension CoreSectionPermission on CoreSection {
         CoreSection.menu => 'menu:read',
         CoreSection.team => 'members:manage',
         CoreSection.business => 'settings:read',
-        CoreSection.coverage => 'settings:read'
+        CoreSection.coverage => 'settings:read',
+        CoreSection.courier => 'courier:read',
+        CoreSection.courierLinks => 'couriers:link'
       };
 }
 
@@ -36,6 +49,9 @@ class CoreController extends ChangeNotifier {
   CoreMenu? menu;
   CoreBusinessProfile? business;
   CoreDelivery? coverage;
+  CoreCourierLinks? courierLinks;
+  CoreCourierWork? courierWork;
+  CoreCourierDetail? courierDetail;
   List<CoreTeamMember> team = const [];
   CoreProfile? profile;
   String? selectedTenant;
@@ -72,6 +88,9 @@ class CoreController extends ChangeNotifier {
     menu = null;
     business = null;
     coverage = null;
+    courierLinks = null;
+    courierWork = null;
+    courierDetail = null;
     team = const [];
     channels = const [];
     stock = const [];
@@ -209,7 +228,23 @@ class CoreController extends ChangeNotifier {
         _emit();
         return;
       }
-      if (section == CoreSection.orders) {
+      if (section == CoreSection.courierLinks) {
+        final result = await api.courierLinks(tenant);
+        if (!_current(generation)) return;
+        courierLinks = result;
+      } else if (section == CoreSection.courier) {
+        final result = await api.courierWork(tenant);
+        if (!_current(generation)) return;
+        courierWork = result;
+        if (courierDetail != null &&
+            (courierDetail!.bindingVersion != result.bindingVersion ||
+                !result.orders.any((v) =>
+                    v.number == courierDetail!.order.number &&
+                    v.version == courierDetail!.order.version))) {
+          courierDetail = null;
+          _detailGeneration++;
+        }
+      } else if (section == CoreSection.orders) {
         final result = await api.orders(tenant);
         if (!_current(generation)) return;
         orders = result;
@@ -258,6 +293,7 @@ class CoreController extends ChangeNotifier {
   }
 
   void _failure(Object error) {
+    courierDetail = null;
     online = false;
     message = errorMessage(error);
     if (!api.session.hasSession ||
@@ -300,6 +336,7 @@ class CoreController extends ChangeNotifier {
   }
 
   void closeDetail() {
+    courierDetail = null;
     _detailGeneration++;
     detail = null;
     loadingDetail = false;
@@ -316,6 +353,107 @@ class CoreController extends ChangeNotifier {
       return false;
     }
     return true;
+  }
+
+  Future<void> showCourierDetail(CoreOrder order) async {
+    final work = courierWork;
+    if (work == null ||
+        section != CoreSection.courier ||
+        !signedIn ||
+        suspended ||
+        membership?.can('courier:read') != true) return;
+    final generation = _generation, detailGeneration = ++_detailGeneration;
+    courierDetail = null;
+    loadingDetail = true;
+    _emit();
+    try {
+      final result = await api.courierDetail(work, order);
+      if (_current(generation) && detailGeneration == _detailGeneration)
+        courierDetail = result;
+    } catch (error) {
+      if (_current(generation) && detailGeneration == _detailGeneration)
+        _failure(error);
+    } finally {
+      if (_current(generation) && detailGeneration == _detailGeneration) {
+        loadingDetail = false;
+        _emit();
+      }
+    }
+  }
+
+  Future<void> _courierMutation(
+      String tenant,
+      String permission,
+      CoreSection target,
+      Future<void> Function() action,
+      String success) async {
+    if (!_writeGuard(tenant, permission, target)) return;
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    courierDetail = null;
+    _detailGeneration++;
+    _emit();
+    try {
+      await action();
+      if (_current(generation)) message = success;
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
+  Future<void> setCourierLink(
+      CoreCourierLinks expected, CoreCourierLink link, String principal) async {
+    final current = courierLinks;
+    if (current == null ||
+        current.tenantId != expected.tenantId ||
+        !current.links.any((v) =>
+            v.courier.id == link.courier.id && v.version == link.version))
+      return;
+    await _courierMutation(
+        expected.tenantId,
+        'couriers:link',
+        CoreSection.courierLinks,
+        () => api.setCourierLink(expected, link, principal),
+        'حُفظ ربط هوية المندوب.');
+  }
+
+  Future<void> changeCourier(CoreCourierWork expected, CoreOrder order,
+      {bool cash = false}) async {
+    final current = courierWork;
+    if (current == null ||
+        current.bindingVersion != expected.bindingVersion ||
+        current.courier?.id != expected.courier?.id ||
+        !current.orders
+            .any((v) => v.number == order.number && v.version == order.version))
+      return;
+    await _courierMutation(
+        expected.tenantId,
+        cash ? 'courier:collect' : 'courier:update',
+        CoreSection.courier,
+        () => api.courierChange(expected, order, cash: cash),
+        cash ? 'سُجل استلام نقد الطلب.' : 'حُدثت مرحلة التوصيل.');
+  }
+
+  Future<void> setCourierAvailability(
+      CoreCourierWork expected, String availability) async {
+    final current = courierWork;
+    if (current == null ||
+        current.bindingVersion != expected.bindingVersion ||
+        current.courier?.id != expected.courier?.id) return;
+    await _courierMutation(
+        expected.tenantId,
+        'courier:update',
+        CoreSection.courier,
+        () => api.courierAvailability(expected, availability),
+        'حُدثت حالة توفر المندوب.');
   }
 
   Future<List<CoreCourier>> couriers(String tenant) async {
