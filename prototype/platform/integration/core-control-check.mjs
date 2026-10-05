@@ -4,6 +4,7 @@ import { createServer, request as httpRequest } from 'node:http';
 import pg from 'pg';
 import { createControlPlane } from '../control-plane.mjs';
 import { MCP_PROTOCOL_VERSION } from '../mcp.mjs';
+import { Webhook } from 'standardwebhooks';
 
 const fixture=JSON.parse(process.env.CORE_ORDER_FIXTURE);
 const database=new URL(process.env.IDENTITY_TEST_DATABASE_URL);
@@ -14,13 +15,24 @@ const pool=new pg.Pool({connectionString:database.href,options:`-c search_path=$
 const baseUrl='https://platform.example',issuer='https://identity.example/';
 let server;
 try {
+  const callbackBodies=[];
+  const webhookSecret=`whsec_${randomBytes(32).toString('base64')}`;
   const app=await createControlPlane({pool,baseUrl,csrfKey:randomBytes(32).toString('base64'),serviceSigningKey:fixture.privateKey,
+    eventsEncryptionKey:randomBytes(32).toString('base64'),
     oidc:{issuer,clientId:'integration-test',clientSecret:'synthetic-client-secret-only'},
     restaurants:[{id:'restaurant-a',name:'Actual Go fixture',cuisine:'saudi',baseUrl:fixture.baseUrl}],
-  },{oidcClientAdapter:{async authorizationUrl(){return `${issuer}authorize`;},async exchange(){throw Error('unused');}}});
+  },{oidcClientAdapter:{async authorizationUrl(){return `${issuer}authorize`;},async exchange(){throw Error('unused');}},
+    webhookFetch:async(url,options)=>{
+      assert.equal(url,'https://receiver.example/events');
+      const value=JSON.parse(options.body);
+      if(value.type==='verification')return new Response(JSON.stringify({challenge:value.challenge}),{headers:{'content-type':'application/json'}});
+      new Webhook(webhookSecret).verify(options.body,options.headers);callbackBodies.push(value);
+      return new Response('{}',{headers:{'content-type':'application/json'}});
+    },
+  });
   const make=async subject=>{
     const {id}=await app.directory.verifiedIdentity({issuer,subject});
-    const browser=await app.auth.issue(id,undefined,{kind:'browser'}),oauth=await app.auth.issue(id,['orders:read','orders:write']);
+    const browser=await app.auth.issue(id,undefined,{kind:'browser'}),oauth=await app.auth.issue(id,['orders:read','orders:write','events:read']);
     return{id,cookie:`__Host-platform_session=${browser.accessToken}`,token:oauth.accessToken};
   };
   const alice=await make('alice'),bob=await make('bob');
@@ -69,6 +81,54 @@ try {
   assert.equal((await rpc('get_order_status',{tenantId:'restaurant-a',orderId:order.number},bob)).isError,true);
   for(const field of ['customerName','phone','address','accessCode','trackingToken'])assert.equal(order[field],undefined);
   const state=(await pool.query('SELECT state FROM platform_core_checkouts WHERE id=$1',[checkout.checkoutId])).rows[0];assert.equal(state.state,'confirmed');
+  const subscription={name:'order.status_changed',arguments:{tenantId:'restaurant-a',orderId:order.number},delivery:{mode:'webhook',url:'https://receiver.example/events',secret:webhookSecret}};
+  const eventResponse=await send('/mcp',{method:'POST',token:alice.token,
+    headers:{'MCP-Protocol-Version':MCP_PROTOCOL_VERSION,'Mcp-Method':'events/subscribe','Mcp-Name':subscription.name},
+    body:{jsonrpc:'2.0',id:2,method:'events/subscribe',params:{...subscription,_meta:{
+      'io.modelcontextprotocol/protocolVersion':MCP_PROTOCOL_VERSION,
+      'io.modelcontextprotocol/clientInfo':{name:'core-checkout-test',version:'1'},'io.modelcontextprotocol/clientCapabilities':{},
+    }}}});
+  assert.equal(eventResponse.status,200);assert.equal(eventResponse.data.error,undefined,JSON.stringify(eventResponse.data));
+  assert.ok(Date.parse(eventResponse.data.result.refreshBefore)<=Date.now()+1800_000,'Event lifetime cannot outlast the active grant');
+  await app.eventWorker.ingest(alice.id,'restaurant-a');
+  assert.equal((await app.events.dispatchOnce()).attempted,0,'No pre-subscription history replay');
+  // Existing native management API is used only with the Go fixture's synthetic
+  // admin key. The real control plane never receives a restaurant master key.
+  const advanced=await fetch(`${fixture.baseUrl}/api/restaurant/orders/${order.number}`,{method:'PATCH',headers:{'content-type':'application/json','X-API-Key':'restaurant-test-master'},body:JSON.stringify({status:'accepted',version:order.version})});
+  assert.equal(advanced.status,200);
+  await pool.query(`CREATE FUNCTION reject_core_cursor() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic cursor failure';END $$;
+    CREATE TRIGGER reject_core_cursor BEFORE UPDATE ON platform_core_event_cursors FOR EACH ROW EXECUTE FUNCTION reject_core_cursor()`);
+  await assert.rejects(app.eventWorker.ingest(alice.id,'restaurant-a'));
+  await pool.query('DROP TRIGGER reject_core_cursor ON platform_core_event_cursors');
+  await app.eventWorker.ingest(alice.id,'restaurant-a');
+  assert.equal((await app.events.dispatchOnce()).delivered,1);assert.equal(callbackBodies.length,1);
+  assert.equal(callbackBodies[0].data.orderId,order.number);assert.equal(callbackBodies[0].data.status,'accepted');
+  assert.equal(JSON.stringify(callbackBodies[0]).includes(contact.phone),false);
+  await app.eventWorker.ingest(alice.id,'restaurant-a');assert.equal((await app.events.dispatchOnce()).attempted,0);
+  await app.eventWorker.tick();
+  assert.equal(app.eventWorker.health.consecutiveFailures,0);
+  assert.ok(app.eventWorker.health.lastSuccessAt,'Scheduled worker query and dispatch complete');
+  assert.equal(callbackBodies.length,1,'Scheduled replay remains deduplicated');
+  const card=await rpc('prepare_checkout',{...cart,mode:'pickup',expectedTotalMinor:3000,idempotencyKey:'browser-card-checkout'},alice);
+  assert.equal(card.isError,undefined);
+  const cardPath='/checkout/'+card.structuredContent.checkoutId;
+  const cardPage=await send(cardPath,{cookie:alice.cookie});
+  assert.match(cardPage.data,/<option value="stripe">/);
+  const cardConfirm=await send(cardPath+'/confirm',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl},
+    body:{...contact,paymentMethod:'card',paymentProvider:'stripe',csrf}});
+  assert.equal(cardConfirm.status,200);assert.equal(cardConfirm.data.order.paymentStatus,'unpaid');
+  const pay=(cookie,token=csrf)=>send(cardPath+'/payment',{method:'POST',cookie,headers:{origin:baseUrl},body:{csrf:token}});
+  assert.equal((await pay(alice.cookie,'bad')).status,403);
+  assert.equal((await pay(bob.cookie)).status,403);
+  const payment=await pay(alice.cookie);assert.equal(payment.status,303);
+  assert.match(payment.headers.location,/^https:\/\/checkout\.stripe\.com\//);
+  assert.equal((await pay(alice.cookie)).headers.location,payment.headers.location);
+  const refresh=await send(cardPath+'/refresh-payment',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl},body:{csrf}});
+  assert.equal(refresh.status,303);assert.equal(refresh.headers.location,cardPath);
+  assert.match((await send(cardPath,{cookie:alice.cookie})).data,/حالة الدفع: paid/);
+  await app.auth.revoke(alice.token);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_subscriptions WHERE active')).rows[0].n,0);
+  console.log('Verified transactional original-core events, owner-only ingestion, signed callback, crash-safe cursor deduplication and OAuth revocation; callback transport mocked');
   console.log('Verified MCP preview -> owned handoff -> CSRF-protected browser confirmation -> signed original Go order -> private MCP status; duplicate confirmation stays one order');
 } finally {
   if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

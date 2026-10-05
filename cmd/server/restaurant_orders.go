@@ -86,6 +86,9 @@ func newRestaurantOrders(ctx context.Context, store *restaurantStore) (*restaura
 	if err = restaurantInitStockSchema(ctx, store.db); err != nil {
 		return nil, err
 	}
+	if err = initPlatformEventSchema(ctx, store.db); err != nil {
+		return nil, err
+	}
 	if err = restaurantInitCancellationSchema(ctx, store.db); err != nil {
 		return nil, err
 	}
@@ -802,7 +805,10 @@ func restaurantWriteOrderEvent(ctx context.Context, tx *sql.Tx, order restaurant
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO restaurant_order_events (order_number,version,kind,document,created_at) VALUES ($1,$2,$3,$4,$5)`, order.Number, order.Version, kind, document, order.UpdatedAt)
-	return err
+	if err != nil {
+		return err
+	}
+	return writePlatformOrderEvent(ctx, tx, order)
 }
 
 func restaurantNormalizeOrderInput(input restaurantOrderInput) restaurantOrderInput {

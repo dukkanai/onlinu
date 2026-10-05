@@ -8,6 +8,8 @@
   },
   "scripts": {
     "start": "node src.mjs",
+    "start:core": "node control-server.mjs",
+    "start:core-catalog": "node core-server.mjs",
     "test": "node --test *.test.mjs",
     "test:integration": "node --test integration/*.test.mjs"
   },

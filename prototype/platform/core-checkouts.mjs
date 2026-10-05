@@ -131,5 +131,13 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     try { return await orderClient.status(tenantId,who.id,number); }
     catch(error) { if(error.code==='invalid_order_access')throw problem(404,'not_found');throw error; }
   }
-  return { init, prepare, get, confirm, status };
+  async function payment(identity,checkoutId,action) {
+    const who=await principal(identity,action==='start'?'orders:write':'orders:read');
+    const row=await owned(who.id,checkoutId);
+    if(row.state!=='confirmed')throw problem(409,'order_not_confirmed');
+    const order=await orderClient.status(row.tenant_id,who.id,row.order_number);
+    if(order.paymentMethod!=='card')throw problem(409,'payment_not_required');
+    return orderClient.payment(row.tenant_id,who.id,row.order_number,action,order.paymentProvider);
+  }
+  return { init, prepare, get, confirm, status, payment };
 }

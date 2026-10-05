@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -103,18 +104,22 @@ func (a *platformRequestAuth) verify(r *http.Request, body []byte, scope string)
 }
 
 type platformOrderView struct {
-	Number        string    `json:"number"`
-	Version       int64     `json:"version"`
-	Status        string    `json:"status"`
-	PaymentStatus string    `json:"paymentStatus"`
-	TotalMinor    int64     `json:"totalMinor"`
-	Currency      string    `json:"currency"`
-	Mode          string    `json:"mode"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	Number          string    `json:"number"`
+	Version         int64     `json:"version"`
+	Status          string    `json:"status"`
+	PaymentStatus   string    `json:"paymentStatus"`
+	TotalMinor      int64     `json:"totalMinor"`
+	Currency        string    `json:"currency"`
+	Mode            string    `json:"mode"`
+	PaymentMethod   string    `json:"paymentMethod,omitempty"`
+	PaymentProvider string    `json:"paymentProvider,omitempty"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 func publicPlatformOrder(order restaurantOrder) platformOrderView {
-	return platformOrderView{order.Number, order.Version, order.Status, order.Payment.Status, order.TotalMinor, order.Currency, order.Mode, order.UpdatedAt}
+	return platformOrderView{Number: order.Number, Version: order.Version, Status: order.Status,
+		PaymentStatus: order.Payment.Status, TotalMinor: order.TotalMinor, Currency: order.Currency,
+		Mode: order.Mode, PaymentMethod: order.Payment.Method, PaymentProvider: order.Payment.Provider, UpdatedAt: order.UpdatedAt}
 }
 
 func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
@@ -208,5 +213,88 @@ func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, 200, publicPlatformOrder(order))
+	}))
+	for _, method := range []string{"GET", "POST"} {
+		scope := "payments:read"
+		if method == "POST" {
+			scope = "payments:write"
+		}
+		mux.HandleFunc(method+" /platform-api/payments/{number}", wrap(scope, func(w http.ResponseWriter, r *http.Request, body []byte, owner string) {
+			if s.payments == nil {
+				writeRestaurantError(w, restaurantFail(503, "payment_unavailable"))
+				return
+			}
+			var view restaurantPaymentView
+			var err error
+			if r.Method == "GET" {
+				view, err = s.payments.Status(r.Context(), r.PathValue("number"), "", owner)
+			} else {
+				r.Body = io.NopCloser(bytes.NewReader(body))
+				var input struct {
+					Provider string `json:"provider"`
+				}
+				if !decodeRestaurantBody(w, r, &input) {
+					return
+				}
+				view, err = s.payments.Start(r.Context(), r.PathValue("number"), "", owner, input.Provider)
+			}
+			if err != nil {
+				writeRestaurantError(w, err)
+				return
+			}
+			writeJSON(w, 200, view)
+		}))
+	}
+	mux.HandleFunc("POST /platform-api/payments/{number}/refresh", wrap("payments:read", func(w http.ResponseWriter, r *http.Request, body []byte, owner string) {
+		if s.payments == nil {
+			writeRestaurantError(w, restaurantFail(503, "payment_unavailable"))
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		var input struct{}
+		if !decodeRestaurantBody(w, r, &input) {
+			return
+		}
+		view, err := s.payments.Refresh(r.Context(), r.PathValue("number"), "", owner)
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, view)
+	}))
+	mux.HandleFunc("GET /platform-api/order-events", wrap("events:read", func(w http.ResponseWriter, r *http.Request, _ []byte, owner string) {
+		query := r.URL.Query()
+		if len(query) > 2 || len(query["after"]) > 1 || len(query["limit"]) > 1 {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		for key := range query {
+			if key != "after" && key != "limit" {
+				writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+				return
+			}
+		}
+		after, limit := int64(0), 100
+		var err error
+		if query.Has("after") {
+			after, err = strconv.ParseInt(query.Get("after"), 10, 64)
+			if err != nil {
+				writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+				return
+			}
+		}
+		if query.Has("limit") {
+			limit, err = strconv.Atoi(query.Get("limit"))
+			if err != nil {
+				writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+				return
+			}
+		}
+		events, err := s.orders.platformEvents(r.Context(), owner, after, limit)
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"events": events})
 	}))
 }

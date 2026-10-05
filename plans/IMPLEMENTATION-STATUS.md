@@ -47,10 +47,19 @@ Subject-based identity, granular tenant memberships and control-plane HTTP are
 the next increment. They reuse verified OIDC and OAuth/PKCE while excluding
 fixture identities in persistent mode. See `prototype/platform/IDENTITY-CONTROL.md`.
 Identity increment a1f6647 passed CI run 37279746306 with 134 platform tests.
-The next increment implements owned original-core checkout and signed requests;
-see `prototype/platform/CORE-ORDERS.md`. Focused real-service tests pass, full
-regression/publication follows. Provider payment handoff and production deployment
-remain incomplete.
+Owned original-core checkout and signed requests are pushed in 996fa81 and passed
+CI run 37282467824. See `prototype/platform/CORE-ORDERS.md`.
+
+The current increment adds owned provider redirects, independently verified
+payment refresh, transactional original-core outbox and durable central Events
+delivery, plus the explicit control-plane runtime/image. Local full regression:
+583 Go passes, the same five sandbox netlink/media failures and one native codec
+skip; tenant eight, platform 149, client 80, Python 37. Go vet/build and client
+type-check/build pass. Counts include subtests. Cross-language tests use real
+Go HTTP/PostgreSQL/MCP with simulated provider/callback transports, not live
+merchant or ChatGPT acceptance. CI now separately builds and checks the non-root
+control image. Publication and this increment's remote CI outcome are pending.
+See `prototype/platform/CORE-PAYMENTS-EVENTS.md` for scope and limitations.
 
 ## External acceptance still required
 

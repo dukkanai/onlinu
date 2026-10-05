@@ -124,6 +124,9 @@ export function createCoreAdapter({ restaurants, fetchImpl = fetch, timeoutMs = 
         && (!cuisine || row.cuisine === cuisine)).map(({ id, name, cuisine }) => ({ id, name, cuisine }));
     },
     getMenu: tenantId => read(tenantId, '/storefront-api/catalog', coreCatalogSchema),
+    payments: tenantId => read(tenantId, '/storefront-api/payments', z.object({ providers: z.array(z.object({
+      id: z.string().max(40), name: text, mode: z.enum(['test','live']),
+    })).max(50) })),
     quote(tenantId, input) {
       route(tenantId);
       const parsed = coreQuoteInput.safeParse(input);

@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -162,6 +163,41 @@ func TestPlatformOrdersOwnedIdempotentAndMinimal(t *testing.T) {
 	if w.Code != 409 {
 		t.Fatalf("changed retry: %d", w.Code)
 	}
+	probe := platformTestRequest(t, private, actor, "GET", "/platform-api/orders/"+number, "", "orders:read", nil, nil)
+	owner, err := s.platformAuth.verify(probe, nil, "orders:read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	feed, err := s.orders.platformEvents(context.Background(), owner, 0, 100)
+	if err != nil || len(feed) != 1 || feed[0].Sequence != 1 {
+		t.Fatalf("initial outbox: %+v %v", feed, err)
+	}
+	order, err := s.orders.Track(context.Background(), number, "", "", owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := s.restaurant.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order.Version++
+	order.UpdatedAt = time.Now().UTC()
+	if err = restaurantUpdateOrder(context.Background(), tx, order); err != nil {
+		t.Fatal(err)
+	}
+	if err = restaurantWriteOrderEvent(context.Background(), tx, order, "test", map[string]string{"fixture": "rollback"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.orders.SetStatus(context.Background(), number, "accepted", 1); err != nil {
+		t.Fatal(err)
+	}
+	feed, err = s.orders.platformEvents(context.Background(), owner, 0, 100)
+	if err != nil || len(feed) != 2 || feed[1].Sequence != 2 || feed[1].Order.Status != "accepted" {
+		t.Fatalf("rollback consumed cursor: %+v %v", feed, err)
+	}
 	r := platformTestRequest(t, private, actor, "GET", "/platform-api/orders/"+number, "", "orders:read", nil, nil)
 	r.Header.Set("Cookie", "untrusted=browser")
 	if send(r).Code != 401 {
@@ -218,6 +254,30 @@ func TestPlatformOrderNodeSignatureCompatibility(t *testing.T) {
 	if _, err = s.restaurant.SaveCatalog(context.Background(), catalog); err != nil {
 		t.Fatal(err)
 	}
+	payments, err := newRestaurantPayments(context.Background(), s.restaurant.db, s.orders, "https://restaurant.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = payments.Configure(context.Background(), "stripe", restaurantPaymentConfigInput{Enabled: true, Mode: "test", Secrets: map[string]string{"secretKey": "sk_test_unit_only"}}); err != nil {
+		t.Fatal(err)
+	}
+	s.payments = payments
+	s.orders.PaymentAvailable = payments.Available
+	var calls atomic.Int32
+	var attempt atomic.Value
+	payments.adapter = &restaurantPaymentFakeAdapter{
+		create: func(_ context.Context, _ restaurantPaymentConfig, r restaurantPaymentRequest) (restaurantPaymentRemote, error) {
+			calls.Add(1)
+			attempt.Store(r.AttemptID)
+			return restaurantPaymentRemote{ID: "cs_test_signed", URL: "https://checkout.stripe.com/c/test", Status: "paid", Currency: "SAR", AmountMinor: 3000, Reference: r.AttemptID}, nil
+		},
+		fetch: func(_ context.Context, _ restaurantPaymentConfig, id, reference string) (restaurantPaymentRemote, error) {
+			if id != "cs_test_signed" || reference != attempt.Load() {
+				t.Error("unbound payment verification")
+			}
+			return restaurantPaymentRemote{ID: id, Status: "paid", Currency: "SAR", AmountMinor: 3000, Reference: reference}, nil
+		},
+	}
 	service := httptest.NewServer(h)
 	defer service.Close()
 	der, err := x509.MarshalPKCS8PrivateKey(private)
@@ -251,8 +311,23 @@ func TestPlatformOrderNodeSignatureCompatibility(t *testing.T) {
 		}
 		t.Log(string(output))
 		var count int
-		if err = s.restaurant.db.QueryRow("SELECT count(*) FROM restaurant_orders").Scan(&count); err != nil || count != 2 {
-			t.Fatalf("two independent integration flows should create exactly two orders: %d %v", count, err)
+		if err = s.restaurant.db.QueryRow("SELECT count(*) FROM restaurant_orders").Scan(&count); err != nil || count != 3 {
+			t.Fatalf("integration flows should create exactly three orders including browser card checkout: %d %v", count, err)
 		}
 	}
+	paymentFlow := exec.CommandContext(ctx, "node", "integration/core-payment-check.mjs")
+	paymentFlow.Dir = command.Dir
+	paymentFlow.Env = command.Env
+	output, err = paymentFlow.CombinedOutput()
+	if err != nil {
+		t.Fatalf("signed payment integration: %v\n%s", err, output)
+	}
+	expectedCalls := int32(1)
+	if os.Getenv("IDENTITY_TEST_DATABASE_URL") != "" {
+		expectedCalls++
+	}
+	if calls.Load() != expectedCalls {
+		t.Fatalf("duplicate provider invocation: %d", calls.Load())
+	}
+	t.Log(string(output))
 }

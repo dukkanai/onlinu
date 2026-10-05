@@ -97,7 +97,7 @@ function safeEventFailure(error) {
 export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMenu, quoteCart, prepareCheckout, getOrderStatus, events, uiHtml, coreAdapter, coreCheckouts, requireCatalogAuth = false, onProtocolExchange = () => {} }) {
   const base = new URL(baseUrl);
   const metadataUrl = new URL('/.well-known/oauth-protected-resource', base).href;
-  const eventEnabled = !coreAdapter && ['list', 'subscribe', 'unsubscribe'].every(key => typeof events?.[key] === 'function');
+  const eventEnabled = (!coreAdapter || !!coreCheckouts) && ['list', 'subscribe', 'unsubscribe'].every(key => typeof events?.[key] === 'function');
   if (base.username || base.password || base.pathname !== '/' || base.search || base.hash) throw new Error('invalid_mcp_base_url');
   if (typeof requireCatalogAuth !== 'boolean') throw new Error('invalid_catalog_auth_option');
   if (typeof onProtocolExchange !== 'function') throw new Error('invalid_protocol_reporter');
@@ -125,7 +125,7 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
     const modernEvents = eventEnabled && era === 'modern';
     const server = new McpServer({ name: coreAdapter ? 'restaurant-core-catalog' : 'restaurant-saas-synthetic-prototype', version: '0.1.0' }, {
       instructions: coreAdapter
-        ? 'Restaurant core integration. Money is in SAR minor units. Cart previews do not reserve stock, place orders or accept payments. Do not collect customer names, phone numbers or street addresses. If delivery requires location, ask the customer before supplying it. ' + (coreCheckouts ? 'Prepare checkout only creates an owned website handoff. The customer must confirm on the website to place the order; preparing a link is not an order or payment. Order status is private to the connected customer. Events are not yet enabled.' : 'Orders, checkout and events are not available in this integration stage.')
+        ? 'Restaurant core integration. Money is in SAR minor units. Cart previews do not reserve stock, place orders or accept payments. Do not collect customer names, phone numbers or street addresses. If delivery requires location, ask the customer before supplying it. ' + (coreCheckouts ? 'Prepare checkout only creates an owned website handoff. The customer must confirm on the website to place the order; preparing a link is not an order or payment. Order status is private to the connected customer. ' + (eventEnabled?'Owned order Events are available.':'Events are not enabled.') : 'Orders, checkout and events are not available in this integration stage.')
         : 'Synthetic restaurant prototype. All money is SAR minor units. Quote before preparing checkout. Checkout only creates a handoff; a customer must confirm on the website. No real payment, personal details, precise locations, or merchant operations are available through these tools.',
       capabilities: { ...(modernEvents ? { events: {} } : {}) },
     });

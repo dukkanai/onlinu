@@ -14,7 +14,8 @@ const RESPONSE_BYTES = 16_384;
 const MAX_ATTEMPTS = 5;
 const ROTATION_MS = 300_000;
 const VERIFY_CACHE_MS = 300_000;
-const VALID_STATES = new Set(['pending_payment', 'accepted', 'preparing', 'ready', 'completed']);
+const VALID_STATES = new Set(['pending_payment', 'new', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'completed', 'cancelled']);
+const VALID_PAYMENT_STATES = ['unpaid','pending','paid','failed','refunded','review'];
 
 export class EventError extends Error {
   constructor(message, code = -32602, reason) {
@@ -188,7 +189,7 @@ function subscriptionInput(principal, params, creating) {
 
 function eventBody(event) {
   if (!object(event) || !identifier(event.eventId) || !identifier(event.tenantId) || !identifier(event.orderId) ||
-      !identifier(event.ownerId) || !VALID_STATES.has(event.status) || !['pending', 'paid'].includes(event.paymentStatus) ||
+      !identifier(event.ownerId) || !VALID_STATES.has(event.status) || !VALID_PAYMENT_STATES.includes(event.paymentStatus) ||
       !Number.isSafeInteger(event.version) || event.version < 1 ||
       typeof event.occurredAt !== 'string' || !/(Z|[+-]\d\d:\d\d)$/.test(event.occurredAt) ||
       !Number.isFinite(Date.parse(event.occurredAt))) invalid('Invalid source event');
@@ -270,7 +271,7 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
       }, required: ['tenantId', 'orderId'], additionalProperties: false },
       payloadSchema: { type: 'object', properties: {
         tenantId: { type: 'string' }, orderId: { type: 'string' }, status: { type: 'string', enum: [...VALID_STATES] },
-        paymentStatus: { type: 'string', enum: ['pending', 'paid'] }, version: { type: 'integer', minimum: 1 },
+        paymentStatus: { type: 'string', enum: VALID_PAYMENT_STATES }, version: { type: 'integer', minimum: 1 },
       }, required: ['tenantId', 'orderId', 'status', 'paymentStatus', 'version'], additionalProperties: false },
     }] };
   }
@@ -312,6 +313,11 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
     if (ttl === undefined || ttl === null) ttl = DAY; // Never grant non-expiring subscriptions.
     if (!Number.isSafeInteger(ttl) || ttl < 1) invalid('Invalid subscription lifetime');
     ttl = Math.min(ttl, 7 * DAY);
+    if(principal.eventGrantExpiresAt!==undefined){
+      const remaining=Date.parse(principal.eventGrantExpiresAt)-clock().getTime();
+      if(!Number.isFinite(remaining)||remaining<=0)throw new EventError('Event grant expired',-32001);
+      ttl=Math.min(ttl,remaining);
+    }
     const secret = validateSecret(params.delivery.secret);
     const secretHash = digest(secret);
     await verify({ id, identity, secret, callback_url: url }, secretHash);
@@ -326,6 +332,8 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
         rotation_until=CASE WHEN event_subscriptions.secret_hash<>EXCLUDED.secret_hash
           THEN $11 ELSE event_subscriptions.rotation_until END,
         secret_cipher=EXCLUDED.secret_cipher, secret_hash=EXCLUDED.secret_hash,
+        created_at=CASE WHEN NOT event_subscriptions.active OR event_subscriptions.expires_at<=EXCLUDED.updated_at
+          THEN EXCLUDED.created_at ELSE event_subscriptions.created_at END,
         expires_at=EXCLUDED.expires_at, principal=EXCLUDED.principal, active=true, updated_at=EXCLUDED.updated_at`,
     [id, identity.id, identity, NAME, args, url, encrypt(secret, id), secretHash, expires, at, new Date(at.getTime() + ROTATION_MS)]);
     return { id, refreshBefore: expires.toISOString(), cursor: null, truncated: false };
@@ -380,8 +388,9 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
       SELECT id,$1,$2,$3,$3 FROM event_subscriptions
       WHERE active AND expires_at>$3 AND owner_id=$4 AND event_name=$5
         AND arguments->>'tenantId'=$6 AND arguments->>'orderId'=$7
+        AND created_at<=$8
       ON CONFLICT (subscription_id,event_id) DO NOTHING`,
-    [event.eventId, body, at, event.ownerId, NAME, event.tenantId, event.orderId]);
+    [event.eventId, body, at, event.ownerId, NAME, event.tenantId, event.orderId, new Date(event.occurredAt)]);
     return { enqueued: result.rowCount };
   }
 

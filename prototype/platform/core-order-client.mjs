@@ -11,6 +11,18 @@ export const coreOrderView = z.object({ number: z.string().regex(/^R[0-9]{8,20}$
   version: z.number().int().positive(), status: z.string().max(40), paymentStatus: z.string().max(40),
   totalMinor: z.number().int().min(0).max(100_000_000), currency: z.literal('SAR'),
   mode: z.enum(['pickup','delivery','table']), updatedAt: z.string().datetime({ offset: true }),
+  paymentMethod: z.string().max(40).optional(), paymentProvider: z.string().max(40).optional(),
+});
+export function allowedPaymentURL(provider, raw) {
+  if(typeof raw!=='string'||!raw.startsWith('https://'))return false;
+  const hosts={stripe:['checkout.stripe.com'],moyasar:['checkout.moyasar.com'],tap:['checkout.tap.company','payment.tap.company','tap.company'],
+    paytabs:['secure.paytabs.sa'],geidea:['www.ksamerchant.geidea.net','ksamerchant.geidea.net','merchant.geidea.net'],
+    myfatoorah:['sa.myfatoorah.com','demo.myfatoorah.com','portal.myfatoorah.com']};
+  try {const url=new URL(raw),authority=raw.slice(8).split(/[/?#]/)[0];return !url.username&&!url.password&&!authority.includes(':')&&!!hosts[provider]?.includes(url.hostname);}
+  catch{return false;}
+}
+const paymentView=z.object({attemptId:z.string().max(128),status:z.string().max(40),provider:z.string().max(40),mode:z.enum(['','test','live']),
+  url:z.string().url().optional(),widget:z.object({checkoutId:z.string().max(512),scriptUrl:z.string().url(),brands:z.array(z.string().max(40)),returnUrl:z.string().url()}).optional(),
 });
 const safeCodes = new Set(['invalid_request','invalid_quantity','invalid_option','phone_required',
   'address_required','country_required','location_required','outside_delivery_area','invalid_district',
@@ -32,13 +44,13 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
         || url.search || url.hash || routes.has(parsed.id) || [...routes.values()].includes(url.origin)) throw new Error('invalid_restaurant_routes');
     routes.set(parsed.id, url.origin);
   }
-  async function request(tenantId, subject, method, path, input, idempotencyKey = '') {
+  async function request(tenantId, subject, method, path, input, idempotencyKey = '', overrideScope, resultSchema=coreOrderView) {
     if (!routes.has(tenantId)) throw problem(404, 'restaurant_not_found');
     if (!uuid.safeParse(subject).success) throw problem(403, 'invalid_identity');
     const body = input === undefined ? '' : JSON.stringify(input);
     const issuedAt = Math.floor(now() / 1000);
     const claims = Buffer.from(JSON.stringify({ issuer, audience: tenantId, subject,
-      scope: method === 'POST' ? 'orders:write' : 'orders:read', method, path,
+      scope: overrideScope ?? (method === 'POST' ? 'orders:write' : 'orders:read'), method, path,
       bodySha256: createHash('sha256').update(body).digest('hex'), idempotencyKey,
       issuedAt, expiresAt: issuedAt + 60 }));
     const authorization = `Platform ${claims.toString('base64url')}.${sign(null, claims, signingKey).toString('base64url')}`;
@@ -55,7 +67,10 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
       const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (!response.ok) throw problem([400,401,403,404,409].includes(response.status) ? response.status : 503,
         safeCodes.has(value?.error) ? value.error : 'restaurant_unavailable');
-      return { tenantId, ...coreOrderView.parse(value) };
+      const parsed=resultSchema.parse(value);
+      if(resultSchema===paymentView&&parsed.attemptId&&!['test','live'].includes(parsed.mode))throw Error('invalid_payment_mode');
+      if(resultSchema===paymentView&&parsed.url&&!allowedPaymentURL(parsed.provider,parsed.url))throw Error('unsafe_payment_url');
+      return { tenantId, ...parsed };
     } catch (error) {
       if (safeCodes.has(error?.code) || error?.code === 'restaurant_unavailable') throw error;
       throw problem(503, method === 'POST' ? 'order_outcome_unknown' : 'restaurant_unavailable');
@@ -74,6 +89,21 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     recover(tenantId, subject, idempotencyKey) {
       if (!uuid.safeParse(idempotencyKey).success || idempotencyKey[14] !== '4') throw problem(400, 'invalid_request');
       return request(tenantId, subject, 'GET', `/platform-api/orders/by-idempotency/${idempotencyKey}`);
+    },
+    payment(tenantId,subject,number,action,provider) {
+      if(!/^R[0-9]{8,20}$/.test(number??'')||!['status','start','refresh'].includes(action))throw problem(400,'invalid_request');
+      if(action==='start'&&(typeof provider!=='string'||!/^[a-z]{1,40}$/.test(provider)))throw problem(400,'invalid_request');
+      const path=`/platform-api/payments/${number}${action==='refresh'?'/refresh':''}`;
+      return request(tenantId,subject,action==='status'?'GET':'POST',path,action==='status'?undefined:action==='start'?{provider}:{},'',
+        action==='start'?'payments:write':'payments:read',paymentView);
+    },
+    async events(tenantId,subject,after=0,limit=100) {
+      if(!Number.isSafeInteger(after)||after<0||!Number.isInteger(limit)||limit<1||limit>100)throw problem(400,'invalid_request');
+      const schema=z.object({events:z.array(z.object({sequence:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),order:coreOrderView})).max(100)});
+      const result=await request(tenantId,subject,'GET',`/platform-api/order-events?after=${after}&limit=${limit}`,undefined,'','events:read',schema);
+      let cursor=after;
+      for(const event of result.events){if(event.sequence<=cursor)throw problem(502,'invalid_event_order');cursor=event.sequence;}
+      return result;
     },
   });
 }

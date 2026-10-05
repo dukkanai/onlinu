@@ -67,10 +67,9 @@ enables cross-language tests. Node dependencies must be installed first.
 
 ## Still incomplete
 
-Card checkout currently creates an unpaid order only; provider-hosted payment
-handoff and reconciliation must be connected and separately accepted. The
-confirmation page states this explicitly. The basic provider entry and form
-need the full payment/UI integration before release. Durable original-core
-events, complete staff interfaces/Flutter parity, provisioning, external account
+Owned checkout 996fa81 passed CI run 37282467824. Provider redirect handoff and
+durable original-core events are implemented in the next increment, documented
+in `CORE-PAYMENTS-EVENTS.md`; real provider and ChatGPT account acceptance remain
+separate. Complete staff interfaces/Flutter parity, provisioning, external account
 acceptance and production rollout remain in the completion ledger. No production
-server, live account, real customer or real payment was used for this increment.
+server, live account, real customer or real payment was used for these checks.

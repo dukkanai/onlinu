@@ -135,13 +135,15 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
       token = browserToken(req);
     }
     if (!token) return null;
-    const { rows } = await pool.query(`SELECT s.principal_id,s.scopes,s.session_kind FROM demo_sessions s
+    const { rows } = await pool.query(`SELECT s.principal_id,s.scopes,s.session_kind,s.expires_at,g.expires_at AS grant_expires_at FROM demo_sessions s
       LEFT JOIN demo_oauth_grants g ON g.id=s.oauth_family_id
       WHERE s.token_hash=$1 AND s.issuer=$2 AND s.audience=$3 AND s.expires_at>now()
       AND (s.oauth_family_id IS NULL OR (g.revoked=FALSE AND g.expires_at>now()))`, [hash(token), baseUrl, resource]);
     if((cookieOnly || !authorization) && rows[0]?.session_kind!=='browser')return null;
     if(!allowSyntheticAuthorization && authorization && !cookieOnly && rows[0]?.session_kind!=='oauth')return null;
-    return rows[0] ? principal(rows[0].principal_id, rows[0].scopes) : null;
+    const identity=rows[0]?await principal(rows[0].principal_id,rows[0].scopes):null;
+    if(identity&&rows[0].session_kind==='oauth'&&rows[0].expires_at)return{...identity,eventGrantExpiresAt:new Date(rows[0].grant_expires_at??rows[0].expires_at).toISOString()};
+    return identity;
   }
   async function register(input) {
     const rejected = [];
@@ -314,13 +316,17 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
     try {
       await client.query('BEGIN');
       const tokenHash = hash(token);
-      const {rows} = await client.query(`SELECT oauth_family_id AS family_id FROM demo_sessions WHERE token_hash=$1
-        UNION SELECT family_id FROM demo_oauth_refresh_tokens WHERE token_hash=$1`,[tokenHash]);
+      const {rows} = await client.query(`SELECT oauth_family_id AS family_id,principal_id,session_kind FROM demo_sessions WHERE token_hash=$1
+        UNION SELECT r.family_id,g.principal_id,'oauth' AS session_kind FROM demo_oauth_refresh_tokens r
+        JOIN demo_oauth_grants g ON g.id=r.family_id WHERE r.token_hash=$1`,[tokenHash]);
       let owner = null;
       if (rows[0]?.family_id) {
         const {rows:families} = await client.query('SELECT * FROM demo_oauth_grants WHERE id=$1 FOR UPDATE',[rows[0].family_id]);
         if (families[0]) {await revokeFamily(client,families[0]);owner=families[0].principal_id;}
-      } else await client.query('DELETE FROM demo_sessions WHERE token_hash=$1',[tokenHash]);
+      } else {
+        await client.query('DELETE FROM demo_sessions WHERE token_hash=$1',[tokenHash]);
+        if(rows[0]?.session_kind==='oauth'){owner=rows[0].principal_id;await onGrantRevoked(owner,client);}
+      }
       await client.query('COMMIT');
       return owner;
     } catch(error) {await client.query('ROLLBACK');throw error;}

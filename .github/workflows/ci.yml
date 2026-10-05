@@ -15,6 +15,17 @@ permissions:
   contents: read
 
 jobs:
+  control-image:
+    name: control-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated control runtime image
+        run: docker build -f prototype/platform/Dockerfile.control -t onlinu-control:test prototype/platform
+      - name: Verify non-root runtime modules
+        run: |
+          docker run --rm --entrypoint node onlinu-control:test --input-type=module -e "import './control-server.mjs'; if (process.getuid() === 0) throw new Error('root runtime'); console.log('Runtime imports and non-root user verified');"
+
   server:
     name: server
     runs-on: ubuntu-latest

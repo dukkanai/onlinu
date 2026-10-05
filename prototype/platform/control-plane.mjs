@@ -9,13 +9,15 @@ import { createCoreAdapter } from './core-adapter.mjs';
 import { createMcpHandler } from './mcp.mjs';
 import { createCoreOrderClient } from './core-order-client.mjs';
 import { createCoreCheckouts } from './core-checkouts.mjs';
+import { createEvents } from './events.mjs';
+import { createCoreEventWorker } from './core-events.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
 const bindingName = '__Host-platform_oidc';
 function cookie(name, value, age) { return `${name}=${value}; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}`; }
 function json(res, status, value) { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); }
-function redirect(res, target) { res.writeHead(302, { location: target }); res.end(); }
+function redirect(res, target, status=302) { res.writeHead(status, { location: target }); res.end(); }
 function fields(entries) {
   if (new Set(entries.map(([key]) => key)).size !== entries.length) throw problem(400, 'duplicate_parameter');
   return Object.fromEntries(entries);
@@ -32,13 +34,15 @@ async function body(req) {
   return parsed;
 }
 
-export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey }, { oidcClientAdapter } = {}) {
+export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey, eventsEncryptionKey }, { oidcClientAdapter, webhookFetch } = {}) {
   const base = new URL(baseUrl);
   if (base.protocol !== 'https:' || base.pathname !== '/' || base.username || base.password || base.search || base.hash) throw new Error('control_plane_requires_https_origin');
   const directory = createIdentityDirectory({ pool, trustedIssuers: [new URL(oidc.issuer).href] });
   await directory.init();
+  let events=null,eventWorker=null,timer;
   const auth = createAuth({ pool, baseUrl: base.origin, cookieName, allowSyntheticAuthorization: false,
-    csrfKey, principalResolver: directory.resolve, redirectAllowlist });
+    csrfKey, principalResolver: directory.resolve, redirectAllowlist,
+    onGrantRevoked:async(id,db)=>{if(events)await events.revokeAll(id,db);} });
   await auth.init();
   const login = createOidcLogin({ pool, ...oidc, baseUrl: base.origin,
     identityResolver: directory.verifiedIdentity, clientAdapter: oidcClientAdapter });
@@ -64,7 +68,20 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
   const checkouts = orderClient ? createCoreCheckouts({ pool, baseUrl: base.origin, core, orderClient,
     resolvePrincipal: directory.resolve, isTenantActive: async id=>(await directory.published([id])).length===1 }) : null;
   if(checkouts)await checkouts.init();
-  const mcp = createMcpHandler({ baseUrl: base.origin, authenticate: req => auth.authenticate(req, { bearerOnly: true }), coreAdapter: publicCore, coreCheckouts: checkouts });
+  if(eventsEncryptionKey){
+    if(!orderClient)throw new Error('events_require_owned_core_integration');
+    events=createEvents({pool,encryptionKey:eventsEncryptionKey,webhookFetch,authorizeOrder:async(identity,args)=>{
+      if(!await directory.resolve(identity.id))throw problem(403,'identity_disabled');
+      const consent=await pool.query(`SELECT 1 FROM demo_sessions s LEFT JOIN demo_oauth_grants g ON g.id=s.oauth_family_id
+        WHERE s.principal_id=$1 AND s.session_kind='oauth' AND s.expires_at>now() AND s.scopes ? 'events:read'
+          AND (s.oauth_family_id IS NULL OR (g.revoked=FALSE AND g.expires_at>now()))
+        UNION SELECT 1 FROM demo_oauth_grants WHERE principal_id=$1 AND revoked=FALSE AND expires_at>now() AND scopes ? 'events:read' LIMIT 1`,[identity.id]);
+      if(!consent.rows.length)throw problem(403,'event_grant_expired');
+      return orderClient.status(args.tenantId,identity.id,args.orderId);
+    }});await events.init();
+    eventWorker=createCoreEventWorker({pool,orderClient,events,resolvePrincipal:directory.resolve});await eventWorker.init();
+  }
+  const mcp = createMcpHandler({ baseUrl: base.origin, authenticate: req => auth.authenticate(req, { bearerOnly: true }), coreAdapter: publicCore, coreCheckouts: checkouts,events });
   const limits = new Map();
   function rate(req) {
     const now = Date.now(), key = req.socket.remoteAddress;
@@ -139,7 +156,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         auth.verifyCsrf(req); await auth.revoke(auth.browserToken(req));
         res.setHeader('set-cookie', cookie(cookieName, '', 0)); return json(res, 200, { loggedOut: true });
       }
-      const checkoutRoute=/^\/checkout\/([a-f0-9-]{36})(\/confirm)?$/.exec(url.pathname);
+      const checkoutRoute=/^\/checkout\/([a-f0-9-]{36})(?:\/(confirm|payment|refresh-payment))?$/.exec(url.pathname);
       if(checkoutRoute && checkouts) {
         const who=await auth.authenticate(req,{cookieOnly:true});
         if(!who) {
@@ -153,12 +170,30 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           const csrf=auth.csrfToken(req);
           const methods=checkout.quote.paymentMethods.map(value=>`<option value="${escape(value)}">${escape(value)}</option>`).join('');
           const items=(checkout.quote.items??[]).map(item=>`<li>${escape(item.name)} × ${escape(item.quantity)}: ${escape((item.totalMinor/100).toFixed(2))} SAR</li>`).join('');
+          if(checkout.state==='confirmed') {
+            const order=await checkouts.status(who,checkout.tenantId,checkout.orderId);
+            const button=(action,label)=>`<form method="post" action="/checkout/${checkoutId}/${action}"><input type="hidden" name="csrf" value="${escape(csrf)}"><button>${label}</button></form>`;
+            const pay=order.paymentMethod==='card'&&['unpaid','pending'].includes(order.paymentStatus)?button('payment','الانتقال لصفحة الدفع'):'';
+            const refresh=order.paymentMethod==='card'?button('refresh-payment','التحقق من حالة الدفع'):'';
+            res.writeHead(200,{'content-type':'text/html; charset=utf-8'});
+            res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>طلبك</title><h1>طلب ${escape(order.number)}</h1><p>حالة الطلب: ${escape(order.status)}</p><p>حالة الدفع: ${escape(order.paymentStatus)}</p><p>الإجمالي: ${escape((order.totalMinor/100).toFixed(2))} SAR</p>${checkout.quote.demo?'<p>هذا طلب تجريبي.</p>':''}${pay}${refresh}<p>لا يعتبر الدفع مكتملًا إلا بعد التحقق لدى مزود الدفع.</p></html>`);return;
+          }
+          const providers=(await core.payments(checkout.tenantId)).providers.filter(row=>['stripe','moyasar','tap','paytabs','geidea','myfatoorah'].includes(row.id));
+          const providerOptions=providers.map(row=>`<option value="${escape(row.id)}">${escape(row.name)}${row.mode==='test'?' (اختبار)':''}</option>`).join('');
           res.writeHead(200,{'content-type':'text/html; charset=utf-8'});
-          if(checkout.state==='confirmed') { res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>طلبك</title><h1>تم إنشاء الطلب ${escape(checkout.orderId)}</h1><p>إنشاء الطلب لا يعني اكتمال الدفع. يمكنك متابعة الحالة من حسابك.</p></html>`);return; }
           const delivery=checkout.cart.mode==='delivery'?'<fieldset><legend>عنوان التوصيل</legend><label>العنوان التفصيلي <textarea name="addressLine" maxlength="500"></textarea></label><label>العنوان الوطني أو المختصر <input name="nationalAddress" maxlength="300"></label></fieldset>':'';
-          res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>تأكيد الطلب</title><h1>راجع الطلب ثم أكّد</h1><ul>${items}</ul><p>الإجمالي: ${escape((checkout.totalMinor/100).toFixed(2))} SAR، شامل الرسوم والضريبة المعروضة.</p><form method="post" action="/checkout/${checkoutId}/confirm"><input type="hidden" name="csrf" value="${escape(csrf)}"><label>الاسم <input name="customerName" required maxlength="100" autocomplete="name"></label><label>الهاتف <input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>${delivery}<label>طريقة الدفع <select name="paymentMethod">${methods}</select></label><label>مزود الدفع الإلكتروني عند اختياره <input name="paymentProvider" maxlength="40"></label><label>ملاحظات <textarea name="notes" maxlength="1000"></textarea></label><button type="submit">تأكيد وإنشاء الطلب</button></form><p>هذه الخطوة تنشئ الطلب فقط، ولا تثبت سدادًا إلكترونيًا.</p></html>`);return;
+          res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>تأكيد الطلب</title><h1>راجع الطلب ثم أكّد</h1><ul>${items}</ul><p>الإجمالي: ${escape((checkout.totalMinor/100).toFixed(2))} SAR، شامل الرسوم والضريبة المعروضة.</p><form method="post" action="/checkout/${checkoutId}/confirm"><input type="hidden" name="csrf" value="${escape(csrf)}"><label>الاسم <input name="customerName" required maxlength="100" autocomplete="name"></label><label>الهاتف <input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>${delivery}<label>طريقة الدفع <select name="paymentMethod">${methods}</select></label><label>مزود الدفع الإلكتروني <select name="paymentProvider"><option value="">اختر المزود عند الدفع الإلكتروني</option>${providerOptions}</select></label><label>ملاحظات <textarea name="notes" maxlength="1000"></textarea></label><button type="submit">تأكيد وإنشاء الطلب</button></form><p>هذه الخطوة تنشئ الطلب فقط، ولا تثبت سدادًا إلكترونيًا.</p></html>`);return;
         }
-        if(req.method==='POST'&&checkoutRoute[2]) {
+        if(req.method==='POST'&&['payment','refresh-payment'].includes(checkoutRoute[2])) {
+          const input=await body(req);auth.verifyCsrf(req,input.csrf);
+          if(Object.keys(input).some(key=>key!=='csrf'))throw problem(400,'invalid_request');
+          const payment=await checkouts.payment(who,checkoutId,checkoutRoute[2]==='payment'?'start':'refresh');
+          if(checkoutRoute[2]==='refresh-payment'||payment.status==='paid')return redirect(res,'/checkout/'+checkoutId,303);
+          if(payment.status==='review')throw problem(409,'payment_requires_review');
+          if(!payment.url)throw problem(409,'payment_link_unavailable');
+          res.writeHead(303,{location:payment.url});res.end();return;
+        }
+        if(req.method==='POST'&&checkoutRoute[2]==='confirm') {
           const input=await body(req);auth.verifyCsrf(req,input.csrf);
           const {csrf,...submitted}=input;
           let contact=submitted;
@@ -171,7 +206,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           }
           const order=await checkouts.confirm(who,checkoutId,contact);
           if(req.headers.accept?.includes('application/json'))return json(res,200,{order});
-          return redirect(res,'/checkout/'+checkoutId);
+          return redirect(res,'/checkout/'+checkoutId,303);
         }
       }
       if (req.method === 'GET' && url.pathname === '/') {
@@ -197,5 +232,8 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       json(res, status, { error: code });
     }
   }
-  return { handle, auth, directory, login, core: publicCore, checkouts };
+  return { handle, auth, directory, login, core: publicCore, checkouts,events,eventWorker,
+    startWorkers(){if(eventWorker&&!timer){timer=setInterval(()=>eventWorker.tick(),1000);timer.unref();}},
+    async stopWorkers(){clearInterval(timer);timer=undefined;await eventWorker?.settle();},
+  };
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, randomUUID, verify } from 'node:crypto';
-import { createCoreOrderClient } from './core-order-client.mjs';
+import { createCoreOrderClient, allowedPaymentURL } from './core-order-client.mjs';
 
 const { publicKey, privateKey } = generateKeyPairSync('ed25519');
 const config = { issuer: 'https://platform.example', privateKey, restaurants: [{ id: 'restaurant-a', baseUrl: 'http://127.0.0.1:3001' }] };
@@ -52,4 +52,16 @@ test('recovery preserves safe not-found while suppressing private errors', async
   await assert.rejects(missing.recover('restaurant-a', randomUUID(), randomUUID()), { code: 'invalid_order_access', status: 404 });
   const privateError = createCoreOrderClient({ ...config, fetchImpl: async () => json({ error: 'password=private' }, 500) });
   await assert.rejects(privateError.status('restaurant-a', randomUUID(), view.number), { code: 'restaurant_unavailable', status: 503 });
+});
+
+test('payment URLs stay provider-bound and payment scope is separate from order creation',async()=>{
+  for(const raw of ['https://checkout.stripe.com.evil.test/x','javascript:alert(1)','http://checkout.stripe.com/x','https://checkout.stripe.com:443/x','https://checkout.stripe.com@evil.test/x'])assert.equal(allowedPaymentURL('stripe',raw),false);
+  assert.equal(allowedPaymentURL('stripe','https://checkout.stripe.com/c/test#fragment'),true);
+  assert.equal(allowedPaymentURL('moyasar','https://checkout.stripe.com/c/test'),false);
+  const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{
+    const claims=JSON.parse(Buffer.from(options.headers.authorization.slice('Platform '.length).split('.')[0],'base64url'));
+    assert.equal(claims.scope,'payments:write');assert.equal(claims.idempotencyKey,'');
+    return json({attemptId:'test-attempt',status:'pending',provider:'stripe',mode:'test',url:'https://evil.example/pay'});
+  }});
+  await assert.rejects(client.payment('restaurant-a',randomUUID(),view.number,'start','stripe'),{code:'order_outcome_unknown'});
 });

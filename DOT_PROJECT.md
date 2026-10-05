@@ -186,3 +186,20 @@ call. The original source was already identified in project code and plans:
   image build was not run (Docker unavailable).
 - Earlier missing-geography blocker is resolved and no files are needed from
   the user for this dataset. Existing gofmt CI errors are a separate open issue.
+
+## Ongoing development update — 2026-10-05
+
+The preceding baseline is historical. Formatting and isolated PostgreSQL test
+setup were subsequently fixed. Current work is on `feat/saas-core-integration`;
+the original-core adapter, persistent identity and owned checkout milestones
+have each passed remote CI, most recently commit `996fa81`, run `37282467824`.
+No production deployment or main-branch merge has occurred.
+
+Use `plans/IMPLEMENTATION-STATUS.md` for current test evidence and remaining
+acceptance gates. Real-core runtime/identity/order/payment documentation lives
+in `prototype/platform/IDENTITY-CONTROL.md`, `CORE-ORDERS.md` and
+`CORE-PAYMENTS-EVENTS.md`. `npm run start:core` uses the persistent control plane;
+the ordinary prototype start command still runs synthetic data intentionally.
+The new Docker control runtime has a separate CI image-build/import check.
+Real provider credentials, ChatGPT acceptance, complete staff/Flutter parity and
+approved production rollout are separate outstanding requirements.
