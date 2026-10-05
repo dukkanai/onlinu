@@ -1,4 +1,4 @@
-import {staffFinancePage,staffServicePage,staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
+import {staffRefundPage,refundActions,staffFinancePage,staffServicePage,staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage,staffMenuPage,staffMenuItemPage,menuPriceMinor,staffMembersPage,staffErrorPage} from './staff-pages.mjs';
@@ -115,4 +115,13 @@ test('service validation error gives a useful Arabic browser explanation',()=>{a
 
 test('financial page is read-only and distinguishes manual reports from settled refunds',()=>{
  const html=staffFinancePage({tenantId:'<a>',data:{number:'R1234567890',demo:true,paymentStatus:'paid',provider:'<provider>',totalMinor:3500,capturedMinor:3500,reservedMinor:1000,refundedMinor:0,availableMinor:2500,refunds:[{id:'<id>',status:'manual_reported',amountMinor:1000,taxMinor:0,updatedAt:'2026-10-05T00:00:00Z'}]}});assert.match(html,/&lt;provider&gt;/);assert.match(html,/إبلاغ يدوي غير مؤكد/);assert.match(html,/25\.00/);assert.doesNotMatch(html,/<form|<button|<provider>/);
+});
+
+
+test('refund pages separate review from execution, escape notes and require explicit confirmation',()=>{
+ const data={number:'R1234567890',id:'11111111-1111-4111-8111-111111111111',version:2,status:'requested',authorized:false,submitted:false,amountMinor:1000,currency:'SAR',provider:'stripe',demo:true,capturedMinor:1000,orderTotalMinor:1000,capability:{automatic:true},reason:'<script>private</script>',providerReference:'',manualReference:'',resolutionReason:''};
+ assert.deepEqual(refundActions(data),['authorize']);
+ const page=staffRefundPage({tenantId:'a',data,csrf:'test'});assert.match(page,/\/review/);assert.doesNotMatch(page,/\/execute/);assert.doesNotMatch(page,/<script>/);assert.match(page,/&lt;script&gt;/);
+ const review=staffRefundPage({tenantId:'a',data,csrf:'test',review:{action:'authorize'}});assert.match(review,/\/execute/);assert.match(review,/name="reviewed" value="yes" required/);assert.match(review,/name="provider" value="stripe"/);assert.match(review,/name="amountMinor" value="1000"/);assert.match(review,/إلغاء المراجعة/);
+ assert.deepEqual(refundActions({...data,status:'manual_reported'}),[]);assert.deepEqual(refundActions({...data,status:'review',submitted:true}),['verify']);
 });

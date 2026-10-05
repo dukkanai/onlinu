@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -284,11 +284,34 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         }
         return redirect(res,'/manage/'+tenantId+'/delivery'+(action==='zone'?'?filter='+encodeURIComponent(input.districtId):''),303);
       }
+      const managementRefund=/^\/manage\/([a-z0-9-]{1,64})\/orders\/(R[0-9]{8,20})\/refunds\/([a-f0-9-]{36})(?:\/(review|execute))?$/.exec(url.pathname);
+      if(managementRefund&&orderClient){
+        const [,tenantId,number,refundId,stage]=managementRefund,path='/manage/'+tenantId+'/orders/'+number+'/refunds/'+refundId;
+        if(req.headers.authorization||!(req.method==='GET'&&!stage||req.method==='POST'&&stage)||url.search&&!(req.method==='GET'&&url.search==='?outcome=unknown'))throw problem(400,'invalid_request');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(path));
+        const who=await browser(req),authorize=async()=>{for(const grant of ['orders:read','payments:read','refunds:manage'])await directory.authorize(who.id,tenantId,grant);};
+        await authorize();
+        if(req.method==='GET'){const data=await orderClient.refund(tenantId,who.id,number,refundId);htmlHeaders(res);res.end(staffRefundPage({tenantId,data,csrf:auth.csrfToken(req),unknown:!!url.search}));return;}
+        const input=await body(req);auth.verifyCsrf(req,input.csrf);await authorize();
+        if(!['authorize','manual','verify','refresh'].includes(input.action))throw problem(400,'invalid_request');
+        const allowed=stage==='review'?['csrf','action','reference','reason']:['csrf','action','reference','reason','version','amountMinor','currency','provider','demo','reviewed'];
+        if(Object.keys(input).some(key=>!allowed.includes(key)))throw problem(400,'invalid_request');
+        const references=['manual','verify'].includes(input.action);
+        if(references&&(typeof input.reference!=='string'||typeof input.reason!=='string'||input.reference.trim().length<3||input.reason.trim().length<3)||!references&&(input.reference||input.reason))throw problem(400,'invalid_request');
+        if(stage==='review'){
+          const data=await orderClient.refund(tenantId,who.id,number,refundId);if(!refundActions(data).includes(input.action))throw problem(409,'invalid_status');
+          htmlHeaders(res);res.end(staffRefundPage({tenantId,data,csrf:auth.csrfToken(req),review:input}));return;
+        }
+        if(input.reviewed!=='yes'||!['true','false'].includes(input.demo)||typeof input.provider!=='string')throw problem(400,'invalid_request');
+        try{await orderClient.refundCommand(tenantId,who.id,number,refundId,input.action,{version:Number(input.version),reviewed:true,amountMinor:Number(input.amountMinor),currency:input.currency,provider:input.provider,demo:input.demo==='true',...(references?{reference:input.reference.trim(),reason:input.reason.trim()}:{})});}
+        catch(error){if(error?.code==='order_outcome_unknown'||error?.status>=500)return redirect(res,path+'?outcome=unknown',303);throw error;}
+        return redirect(res,path,303);
+      }
       const managementFinance=/^\/manage\/([a-z0-9-]{1,64})\/orders\/(R[0-9]{8,20})\/finance$/.exec(url.pathname);
       if(managementFinance&&orderClient&&req.method==='GET'){
         if(req.headers.authorization||url.search)throw problem(403,'browser_session_required');
         if(!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
-        const who=await browser(req),[,tenantId,number]=managementFinance;await directory.authorize(who.id,tenantId,'orders:read');await directory.authorize(who.id,tenantId,'payments:read');const data=await orderClient.finance(tenantId,who.id,number);htmlHeaders(res);res.end(staffFinancePage({tenantId,data}));return;
+        const who=await browser(req),[,tenantId,number]=managementFinance;await directory.authorize(who.id,tenantId,'orders:read');const membership=await directory.authorize(who.id,tenantId,'payments:read');const data=await orderClient.finance(tenantId,who.id,number);htmlHeaders(res);res.end(staffFinancePage({tenantId,data,canManage:membership.permissions.includes('refunds:manage')}));return;
       }
       const managementService=/^\/manage\/([a-z0-9-]{1,64})\/service$/.exec(url.pathname);
       if(managementService&&orderClient&&['GET','POST'].includes(req.method)){

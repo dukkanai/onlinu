@@ -7,6 +7,7 @@ import 'delivery_models.dart';
 import 'courier_models.dart';
 import 'service_policy.dart';
 import 'finance_models.dart';
+import 'refund_models.dart';
 import 'transport.dart';
 
 abstract interface class CoreGateway {
@@ -24,6 +25,10 @@ abstract interface class CoreGateway {
   Future<CoreServicePolicy> service(String tenant);
   Future<void> patchService(
       CoreServicePolicy expected, Map<String, bool> changes);
+  Future<CoreRefundDetail> refund(String tenant, String number, String id);
+  Future<CoreRefundDetail> refundCommand(
+      CoreRefundDetail expected, String action,
+      {String? reference, String? reason});
   Future<CoreFinance> finance(String tenant, String number);
   Future<CoreProfile> profile();
   Future<CoreDelivery> delivery(String tenant);
@@ -130,6 +135,40 @@ class CoreApi implements CoreGateway {
       '/native/api/restaurants/${tenantKey(tenant)}/staff/orders';
   void _tenant(Map<String, dynamic> data, String tenant) {
     if (data['tenantId'] != tenant) invalidResponse();
+  }
+
+  @override
+  Future<CoreRefundDetail> refund(
+      String tenant, String number, String id) async {
+    final data = await _request('GET',
+        '/native/api/restaurants/${tenantKey(tenant)}/staff/orders/${orderKey(number)}/refunds/${principalKey(id)}');
+    _tenant(data, tenant);
+    final value = CoreRefundDetail(data, tenantId: tenant);
+    if (value.number != number || value.id != id) invalidResponse();
+    return value;
+  }
+
+  @override
+  Future<CoreRefundDetail> refundCommand(
+      CoreRefundDetail expected, String action,
+      {String? reference, String? reason}) async {
+    if (!expected.supports(action)) throw const CoreException('invalid_status');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/orders/${orderKey(expected.number)}/refunds/${principalKey(expected.id)}/$action',
+        body: {
+          ...expected.review(),
+          if (reference != null) 'reference': reference,
+          if (reason != null) 'reason': reason
+        });
+    _tenant(data, expected.tenantId);
+    final value = CoreRefundDetail(data, tenantId: expected.tenantId);
+    if (value.id != expected.id ||
+        value.number != expected.number ||
+        value.amount != expected.amount ||
+        value.provider != expected.provider ||
+        value.demo != expected.demo)
+      throw const CoreException('order_outcome_unknown', uncertain: true);
+    return value;
   }
 
   @override

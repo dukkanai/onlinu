@@ -1,6 +1,6 @@
 # Reviewed management of existing refund intents
 
-Status: implementation in progress. The financial snapshot is already verified at
+Status: backend `3662cae` verified by all jobs in CI37383212394; UI remote acceptance pending. The financial snapshot is already verified at
 `35eb297`; this increment is separate and is not production or provider acceptance.
 
 ## Scope
@@ -57,7 +57,26 @@ existing-intent recovery, audit-failure rollback, manual-not-confirmed accountin
 and private-field separation. An actual Node-to-Go test exercises signing,
 authorization and recovery without dispatching a provider payout.
 
-Browser and Flutter review forms are the next increment. The current visible
-financial views remain read-only until that increment is independently tested.
-Remote CI for this backend checkpoint must be recorded separately; previous
-commit results do not cover these changes.
+Backend checkpoint `3662cae` passed all CI37383212394 jobs. Browser and Flutter
+review forms are the following increment described below and need their own
+remote acceptance; the backend checkpoint alone does not verify those forms.
+
+## Reviewed browser/native UI increment
+
+The financial summary links to manager-only existing-refund details. Native
+Windows forms explicitly display tenant, order, refund ID/version, amount,
+provider and demo/live warning before a separate review and checked confirmation.
+Manual/reference verification requires the reference and explanation. Busy,
+stale, revoked, dismissed and backgrounded views cannot submit or resurrect a
+private late response. Unknown replies read the same ID and never retry the POST.
+
+The central browser has CSRF-protected `/review` and `/execute` stages. Review
+performs no mutation; unchecked execution and mismatched money are rejected.
+Successful/unknown writes use 303 redirects to a GET of the existing ID, avoiding
+POST resubmission on page refresh. Browser/native reads require all three grants.
+
+Local validation includes 115 Flutter tests, actual Dart TLS/PKCE through Node
+and original Go, actual browser-session HTTP/CSRF routes, and original refund
+regressions. Actual Chromium review/cancellation and Windows rendering/build are
+remote CI acceptance checks and must be recorded against the new UI commit.
+New intent creation, real provider acceptance and deployment remain out of scope.

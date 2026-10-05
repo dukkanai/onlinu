@@ -9,6 +9,7 @@ import 'delivery_models.dart';
 import 'courier_models.dart';
 import 'service_policy.dart';
 import 'finance_models.dart';
+import 'refund_models.dart';
 import 'transport.dart';
 
 enum CoreSection {
@@ -55,6 +56,9 @@ class CoreController extends ChangeNotifier {
   CoreDelivery? coverage;
   CoreServicePolicy? service;
   CoreFinance? finance;
+  CoreRefundDetail? refund;
+  int _refundGeneration = 0;
+  bool loadingRefund = false;
   CoreCourierLinks? courierLinks;
   CoreCourierWork? courierWork;
   CoreCourierDetail? courierDetail;
@@ -96,6 +100,9 @@ class CoreController extends ChangeNotifier {
     coverage = null;
     service = null;
     finance = null;
+    refund = null;
+    _refundGeneration++;
+    loadingRefund = false;
     courierLinks = null;
     courierWork = null;
     courierDetail = null;
@@ -236,6 +243,7 @@ class CoreController extends ChangeNotifier {
         _emit();
         return;
       }
+      if (refund != null && !canManageRefund) closeRefund();
       if (section == CoreSection.service) {
         final result = await api.service(tenant);
         if (!_current(generation)) return;
@@ -288,12 +296,25 @@ class CoreController extends ChangeNotifier {
       if (finance != null) {
         if (!member.can('payments:read')) {
           finance = null;
+          refund = null;
+          _refundGeneration++;
+          loadingRefund = false;
           _detailGeneration++;
         } else {
           final ticket = _detailGeneration,
               value = await api.finance(tenant, finance!.number);
           if (!_current(generation)) return;
           if (ticket == _detailGeneration && finance != null) finance = value;
+        }
+      }
+      if (refund != null) {
+        if (!canManageRefund) {
+          closeRefund();
+        } else {
+          final ticket = _refundGeneration, current = refund!;
+          final value = await api.refund(tenant, current.number, current.id);
+          if (!_current(generation)) return;
+          if (ticket == _refundGeneration && canManageRefund) refund = value;
         }
       }
       online = true;
@@ -317,6 +338,9 @@ class CoreController extends ChangeNotifier {
 
   void _failure(Object error) {
     finance = null;
+    refund = null;
+    _refundGeneration++;
+    loadingRefund = false;
     courierDetail = null;
     online = false;
     message = errorMessage(error);
@@ -333,6 +357,100 @@ class CoreController extends ChangeNotifier {
     }
   }
 
+  bool get canManageRefund =>
+      signedIn &&
+      !suspended &&
+      section == CoreSection.orders &&
+      membership?.can('orders:read') == true &&
+      membership?.can('payments:read') == true &&
+      membership?.can('refunds:manage') == true;
+  void closeRefund() {
+    refund = null;
+    loadingRefund = false;
+    _refundGeneration++;
+    _emit();
+  }
+
+  Future<void> showRefund(String number, String id) async {
+    final tenant = selectedTenant;
+    if (tenant == null || !canManageRefund || busy) return;
+    final generation = _generation, ticket = ++_refundGeneration;
+    refund = null;
+    loadingRefund = true;
+    _emit();
+    try {
+      final value = await api.refund(tenant, number, id);
+      if (_current(generation) &&
+          ticket == _refundGeneration &&
+          canManageRefund) refund = value;
+    } catch (error) {
+      if (_current(generation) && ticket == _refundGeneration) {
+        _failure(error);
+        _emit();
+      }
+    } finally {
+      if (_current(generation) && ticket == _refundGeneration) {
+        loadingRefund = false;
+        _emit();
+      }
+    }
+  }
+
+  Future<void> manageRefund(CoreRefundDetail expected, String action,
+      {String? reference, String? reason}) async {
+    if (!canManageRefund ||
+        !_writeGuard(expected.tenantId, 'refunds:manage', CoreSection.orders))
+      return;
+    if (refund?.id != expected.id ||
+        refund?.version != expected.version ||
+        !expected.supports(action)) {
+      message = 'تغيرت عملية الاسترداد. حدّث السجل وأعد المراجعة.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation, ticket = _refundGeneration;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    bool recover = false;
+    int? recoveryTicket;
+    try {
+      final value = await api.refundCommand(expected, action,
+          reference: reference, reason: reason);
+      if (_current(generation) &&
+          ticket == _refundGeneration &&
+          canManageRefund) {
+        refund = value;
+        message =
+            'حُدّث سجل الاسترداد. الحالة الحالية: ${refundStatusLabel(value.status)}.';
+      }
+    } catch (error) {
+      if (_current(generation)) {
+        recover = ticket == _refundGeneration &&
+            !(error is CoreException &&
+                (error.status == 401 || error.status == 403));
+        _failure(error);
+        recoveryTicket = _refundGeneration;
+        if (recover)
+          message =
+              'تعذر تأكيد نتيجة الإجراء. سنقرأ العملية نفسها؛ لن نكرر الإرسال تلقائيًا.';
+      }
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+        if (recover &&
+            recoveryTicket == _refundGeneration &&
+            _current(generation) &&
+            canManageRefund &&
+            selectedTenant == expected.tenantId)
+          await showRefund(expected.number, expected.id);
+      }
+    }
+  }
+
   Future<void> showFinance(String number) async {
     final tenant = selectedTenant;
     bool allowed() =>
@@ -344,6 +462,9 @@ class CoreController extends ChangeNotifier {
     if (tenant == null || !allowed()) return;
     final generation = _generation, ticket = ++_detailGeneration;
     finance = null;
+    refund = null;
+    _refundGeneration++;
+    loadingRefund = false;
     detail = null;
     loadingDetail = true;
     _emit();
@@ -389,6 +510,9 @@ class CoreController extends ChangeNotifier {
 
   void closeDetail() {
     finance = null;
+    refund = null;
+    _refundGeneration++;
+    loadingRefund = false;
     courierDetail = null;
     _detailGeneration++;
     detail = null;
@@ -1095,6 +1219,7 @@ class CoreController extends ChangeNotifier {
     if (_disposed || suspended == value) return;
     suspended = value;
     if (value) {
+      closeRefund();
       _timer?.cancel();
       online = false;
     } else {

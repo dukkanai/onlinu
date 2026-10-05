@@ -240,3 +240,16 @@ Local tests cover sanitized projection, original refund processing/idempotency,
 late-response dismissal, current grants, DTO validation and no native payout button.
 Actual Dart reads through the Node/Go fixture; new Chromium and Windows rendering
 checks must still pass remotely. No real payment or refund has been executed.
+
+## Existing refund review increment (remote acceptance pending)
+
+Manager-only detail now supports reviewed authorization, manual reporting,
+provider-reference verification and provider-state refresh for an existing ID.
+No new refund creation is added. Two-stage native review binds amount/provider/
+demo/version and requires an explicit checked confirmation. Manual reports remain
+unconfirmed by the provider. Unknown replies recover by reading the same ID.
+
+Local 115-test Flutter suite and actual Dart-to-Node-to-Go TLS integration pass.
+Revoked/closed/backgrounded and stale views are tested; duplicate clicks do not
+resend. Windows `windows-refund-review.png`, actual Chromium and the new full CI
+result remain to be verified. All money and merchant identities are synthetic.

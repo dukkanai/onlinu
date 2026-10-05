@@ -1,3 +1,4 @@
+import 'package:restaurant_admin_prototype/core/refund_models.dart';
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:restaurant_admin_prototype/core/api.dart';
@@ -245,6 +246,16 @@ Map<String, dynamic> menuDocument(CoreMenu menu) => {
     };
 
 class FakeCoreGateway implements CoreGateway {
+  @override
+  Future<CoreRefundDetail> refund(
+          String tenant, String number, String id) async =>
+      throw const CoreException('not_found');
+  @override
+  Future<CoreRefundDetail> refundCommand(
+          CoreRefundDetail expected, String action,
+          {String? reference, String? reason}) async =>
+      throw const CoreException('not_found');
+
   @override
   Future<CoreFinance> finance(String tenant, String number) async =>
       CoreFinance({

@@ -220,7 +220,7 @@ func TestPlatformStaffRefundActualNodeSignedCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, "node", "integration/refund-control-check.mjs")
 	command.Dir = filepath.Join("..", "..", "prototype", "platform")

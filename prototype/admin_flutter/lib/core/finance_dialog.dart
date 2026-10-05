@@ -1,14 +1,16 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'controller.dart';
 import 'finance_models.dart';
 import 'models.dart';
+import 'refund_dialog.dart';
 
 class FinanceDialog extends StatelessWidget {
   const FinanceDialog(
       {super.key, required this.controller, required this.number});
   final CoreController controller;
   final String number;
-  Widget content(CoreFinance data) => Column(
+  Widget content(BuildContext context, CoreFinance data) => Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -44,6 +46,22 @@ class FinanceDialog extends StatelessWidget {
                             Text(
                                 '${refundStatusLabel(refund.status)} • ${money(refund.amount)}'),
                             Text('الضريبة ضمن المبلغ: ${money(refund.tax)}'),
+                            if (controller.canManageRefund)
+                              TextButton(
+                                  onPressed: controller.busy
+                                      ? null
+                                      : () async {
+                                          unawaited(controller.showRefund(
+                                              data.number, refund.id));
+                                          await showDialog<void>(
+                                              context: context,
+                                              builder: (_) => RefundDialog(
+                                                  controller: controller,
+                                                  number: data.number,
+                                                  id: refund.id));
+                                          controller.closeRefund();
+                                        },
+                                  child: const Text('إدارة عملية الاسترداد')),
                             SelectableText(refund.id,
                                 textDirection: TextDirection.ltr),
                             Text(
@@ -70,7 +88,7 @@ class FinanceDialog extends StatelessWidget {
                             ? 'جارٍ تحميل السجل المالي…'
                             : c.message ??
                                 'لم يعد السجل المالي متاحًا. حدّث البيانات.')
-                        : content(data))),
+                        : content(context, data))),
             actions: [
               TextButton(
                   onPressed: c.busy || c.loadingDetail

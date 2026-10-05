@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {checkRefundUI} from './refund-ui-check.mjs';
 import {createCoreOrderClient} from '../core-order-client.mjs';
 const fixture=JSON.parse(process.env.CORE_REFUND_FIXTURE);
 const client=createCoreOrderClient({issuer:'https://platform.example',privateKey:fixture.privateKey,restaurants:[{id:'restaurant-a',baseUrl:fixture.baseUrl}]}),actor=randomUUID();
@@ -7,6 +8,7 @@ const before=await client.refund('restaurant-a',actor,fixture.number,fixture.ref
 assert.equal(before.authorized,false);assert.equal(before.submitted,false);
 const review={version:before.version,reviewed:true,amountMinor:before.amountMinor,currency:before.currency,provider:before.provider,demo:before.demo};
 await assert.rejects(client.refundCommand('restaurant-a',actor,fixture.number,fixture.refundId,'authorize',{...review,amountMinor:review.amountMinor+1}),{code:'conflict'});
+if(process.env.IDENTITY_TEST_DATABASE_URL)await checkRefundUI({...fixture,version:before.version,amountMinor:before.amountMinor,provider:before.provider,demo:before.demo});
 const after=await client.refundCommand('restaurant-a',actor,fixture.number,fixture.refundId,'authorize',review);
 assert.equal(after.authorized,true);assert.equal(after.version,before.version+1);assert.equal(after.submitted,false);
 const recovered=await client.refund('restaurant-a',actor,fixture.number,fixture.refundId);

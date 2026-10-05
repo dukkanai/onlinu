@@ -1,3 +1,5 @@
+import '../test/core_refund_test.dart' show RefundGateway;
+import 'package:restaurant_admin_prototype/core/refund_dialog.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:io';
@@ -182,6 +184,44 @@ void main() {
     expect(controller.stock, isEmpty);
     expect(controller.channels, isEmpty);
     await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets(
+      'Windows existing refund requires reviewed financial confirmation',
+      (tester) async {
+    final api = RefundGateway(),
+        c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await c.start(restore: false);
+    await c.showRefund('R1234567890', principalId);
+    await tester.pumpWidget(RepaintBoundary(
+        key: boundary,
+        child: MaterialApp(
+            home: Scaffold(
+                body: RefundDialog(
+                    controller: c, number: 'R1234567890', id: principalId)))));
+    await tester.pumpAndSettle();
+    Future<void> tap(Finder f) async {
+      await tester.ensureVisible(f);
+      await tester.pumpAndSettle();
+      await tester.tap(f);
+      await tester.pumpAndSettle();
+    }
+
+    await tap(find.text('التصريح بتنفيذ الاسترداد'));
+    await tap(find.text('مراجعة الإجراء'));
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'تأكيد إجراء الاسترداد'))
+            .onPressed,
+        isNull);
+    await tap(find.byType(CheckboxListTile));
+    await capture(tester, boundary, 'windows-refund-review.png');
+    await tap(find.text('تأكيد إجراء الاسترداد'));
+    expect(api.refundWrites, 1);
+    expect(c.refund!.authorized, true);
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
   });
   testWidgets(
       'Windows financial snapshot is read-only and private on dismissal',
