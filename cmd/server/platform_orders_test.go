@@ -308,6 +308,11 @@ func TestPlatformOrderNodeSignatureCompatibility(t *testing.T) {
 	if err = restaurantImportGeographyRecords(context.Background(), s.restaurant.db, restaurantGeographyFixtureRecords(), "synthetic-platform-geography"); err != nil {
 		t.Fatal(err)
 	}
+	s.couriers, err = newRestaurantCouriers(context.Background(), s.restaurant.db, s.orders)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restaurantCourierCreateTest(t, s.couriers, "platform-synthetic-driver")
 	payments, err := newRestaurantPayments(context.Background(), s.restaurant.db, s.orders, "https://restaurant.test")
 	if err != nil {
 		t.Fatal(err)

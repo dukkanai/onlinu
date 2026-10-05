@@ -35,9 +35,15 @@ Map<String, dynamic> orderJson(
         String method = 'card',
         String mode = 'pickup',
         int version = 1,
-        String number = 'R1234567890'}) =>
+        String number = 'R1234567890',
+        String courierId = '',
+        String courierName = '',
+        String deliveryStatus = ''}) =>
     {
       'number': number,
+      'courierId': courierId,
+      'courierName': courierName,
+      'deliveryStatus': deliveryStatus,
       'version': version,
       'status': status,
       'paymentStatus': payment,
@@ -411,9 +417,46 @@ class FakeCoreGateway implements CoreGateway {
                   version: currentOrder.version,
                   method: currentOrder.paymentMethod,
                   payment: currentOrder.paymentStatus,
-                  mode: currentOrder.mode),
+                  mode: currentOrder.mode,
+                  courierId: currentOrder.courierId,
+                  courierName: currentOrder.courierName,
+                  deliveryStatus: currentOrder.deliveryStatus),
               tenantId: tenant)
         ];
+  }
+
+  int assignments = 0;
+  Completer<List<CoreCourier>>? courierGate;
+  List<CoreCourier> currentCouriers = [
+    CoreCourier({
+      'id': '12345678123442348234123456789def',
+      'name': 'مندوب تجريبي',
+      'active': true,
+      'availability': 'available'
+    })
+  ];
+  @override
+  Future<List<CoreCourier>> couriers(String tenant) async =>
+      courierGate?.future ?? currentCouriers;
+  @override
+  Future<CoreOrder> assignCourier(
+      String tenant, CoreOrder expected, String courier) async {
+    assignments++;
+    if (writeError != null) throw writeError!;
+    currentOrder = CoreOrder(
+        orderJson(
+            mode: 'delivery',
+            version: expected.version + 1,
+            status: expected.status,
+            payment: expected.paymentStatus,
+            method: expected.paymentMethod,
+            courierId: courier,
+            courierName: courier.isEmpty
+                ? ''
+                : currentCouriers.firstWhere((v) => v.id == courier).name,
+            deliveryStatus: courier.isEmpty ? '' : 'assigned'),
+        tenantId: tenant);
+    return currentOrder;
   }
 
   @override
@@ -429,13 +472,18 @@ class FakeCoreGateway implements CoreGateway {
     writeVersion = order.version;
     if (writeError != null) throw writeError!;
     if (writeGate != null) return writeGate!.future;
-    currentOrder = orderFixture(
-        tenant: tenant,
-        status: status ?? order.status,
-        payment: cash ? 'paid' : order.paymentStatus,
-        method: order.paymentMethod,
-        mode: order.mode,
-        version: order.version + 1);
+    currentOrder = CoreOrder(
+        orderJson(
+            number: order.number,
+            status: status ?? order.status,
+            payment: cash ? 'paid' : order.paymentStatus,
+            method: order.paymentMethod,
+            mode: order.mode,
+            version: order.version + 1,
+            courierId: order.courierId,
+            courierName: order.courierName,
+            deliveryStatus: order.deliveryStatus),
+        tenantId: tenant);
     return currentOrder;
   }
 

@@ -149,6 +149,16 @@ void main() {
     expect(controller.orders.firstWhere((v) => v.number == number).status,
         'preparing');
 
+    final roster = await api.couriers('restaurant-a');
+    expect(roster, hasLength(1));
+    final assigned = await api.assignCourier('restaurant-a',
+        await api.detail('restaurant-a', number), roster.single.id);
+    expect(assigned.courierName, roster.single.name);
+    expect(assigned.deliveryStatus, 'assigned');
+    final unassigned = await api.assignCourier('restaurant-a', assigned, '');
+    expect(unassigned.courierId, '');
+    expect(unassigned.version, assigned.version + 1);
+
     final team = await api.team('restaurant-a');
     final self = team.singleWhere(
         (v) => v.principalId == Platform.environment['CORE_NATIVE_PRINCIPAL']);

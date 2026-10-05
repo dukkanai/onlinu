@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -236,6 +236,22 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           if(req.headers.accept?.includes('application/json'))return json(res,200,{order});
           return redirect(res,'/checkout/'+checkoutId,303);
         }
+      }
+      const managementDispatch=/^\/manage\/([a-z0-9-]{1,64})\/orders\/(R[0-9]{8,20})\/courier$/.exec(url.pathname);
+      if(managementDispatch&&orderClient&&['GET','POST'].includes(req.method)){
+        if(req.headers.authorization||url.search)throw problem(403,'browser_session_required');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
+        const who=await browser(req),[,tenantId,number]=managementDispatch;
+        await directory.authorize(who.id,tenantId,'orders:read');await directory.authorize(who.id,tenantId,'delivery:assign');
+        if(req.method==='GET'){
+          const order=await orderClient.staffOrder(tenantId,who.id,number);
+          if(order.mode!=='delivery'||['completed','cancelled'].includes(order.status)||order.deliveryStatus==='delivered')throw problem(409,'invalid_status');
+          const {couriers}=await orderClient.couriers(tenantId,who.id);htmlHeaders(res);res.end(staffDispatchPage({tenantId,order,couriers,csrf:auth.csrfToken(req)}));return;
+        }
+        const input=await body(req);auth.verifyCsrf(req,input.csrf);
+        if(input.reviewed!=='yes'||typeof input.courierId!=='string'||input.courierId===''||Object.keys(input).some(k=>!['csrf','version','courierId','reviewed'].includes(k)))throw problem(400,'invalid_request');
+        await orderClient.assignCourier(tenantId,who.id,number,{version:Number(input.version),courierId:input.courierId==='__remove__'?'':input.courierId});
+        return redirect(res,'/manage/'+tenantId+'/orders/'+number,303);
       }
       const managementDelivery=/^\/manage\/([a-z0-9-]{1,64})\/delivery(?:\/(pricing|zone))?$/.exec(url.pathname);
       if(managementDelivery&&orderClient){

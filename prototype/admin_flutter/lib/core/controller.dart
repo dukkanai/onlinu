@@ -318,6 +318,68 @@ class CoreController extends ChangeNotifier {
     return true;
   }
 
+  Future<List<CoreCourier>> couriers(String tenant) async {
+    final generation = _generation;
+    if (!signedIn ||
+        selectedTenant != tenant ||
+        membership?.can('delivery:assign') != true)
+      throw const CoreException('forbidden');
+    try {
+      final result = await api.couriers(tenant);
+      if (!_current(generation) || selectedTenant != tenant)
+        throw const CoreException('cancelled');
+      if (!signedIn || membership?.can('delivery:assign') != true)
+        throw const CoreException('forbidden', status: 403);
+      return result;
+    } catch (error) {
+      if (_current(generation)) {
+        _failure(error);
+        _emit();
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> assignCourier(CoreOrder expected, String courier) async {
+    if (!_writeGuard(expected.tenantId, 'delivery:assign', CoreSection.orders))
+      return;
+    if (!expected.canAssign ||
+        !orders.any((v) =>
+            v.number == expected.number && v.version == expected.version)) {
+      message = 'تغير الطلب أو لم يعد يقبل إسناد مندوب. حدّث البيانات.';
+      _emit();
+      return;
+    }
+    if (courier == expected.courierId) {
+      message = 'المندوب المحدد هو المندوب الحالي؛ لم يُرسل تغيير.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    detail = null;
+    loadingDetail = false;
+    _detailGeneration++;
+    message = null;
+    _emit();
+    try {
+      await api.assignCourier(expected.tenantId, expected, courier);
+      if (_current(generation))
+        message = courier.isEmpty
+            ? 'أُلغي إسناد المندوب للطلب.'
+            : 'أُسند الطلب للمندوب المحدد.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
   Future<void> change(CoreOrder expected, {bool cash = false}) async {
     final tenant = selectedTenant;
     final permission = cash ? 'payments:collect' : 'orders:update';

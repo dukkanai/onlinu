@@ -4,6 +4,7 @@ import { coreQuoteInput, coreQuoteSchema, coreCatalogSchema } from './core-adapt
 import { problem } from './auth.mjs';
 
 const uuid = z.string().uuid();
+const courierId=z.string().regex(/^[a-f0-9]{32}$/);
 const id = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
 const orderInput = coreQuoteInput.extend({ expectedTotalMinor: z.number().int().min(0).max(100_000_000),
   notes: z.string().max(1000).optional(),expectedQuoteHash:z.string().regex(/^[0-9a-f]{64}$/).optional() }).strict();
@@ -12,6 +13,7 @@ export const coreOrderView = z.object({ number: z.string().regex(/^R[0-9]{8,20}$
   totalMinor: z.number().int().min(0).max(100_000_000), currency: z.literal('SAR'),
   mode: z.enum(['pickup','delivery','table']), updatedAt: z.string().datetime({ offset: true }),
   paymentMethod: z.string().max(40).optional(), paymentProvider: z.string().max(40).optional(),
+  courierId:z.union([courierId,z.literal('')]).optional(),courierName:z.string().max(4096).optional(),deliveryStatus:z.string().max(40).optional(),
 });
 const coreOrderDetails=coreOrderView.extend({items:coreQuoteSchema.shape.items,tax:coreQuoteSchema.shape.tax,
   subtotalMinor:coreQuoteSchema.shape.subtotalMinor,deliveryFeeMinor:coreQuoteSchema.shape.deliveryFeeMinor,
@@ -106,6 +108,12 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    couriers(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/couriers',undefined,'','staff:delivery:assign',z.object({limit:z.literal(500),couriers:z.array(z.object({id:courierId,name:z.string().max(4096),active:z.boolean(),availability:z.enum(['available','busy','offline'])})).max(500)}),2_000_000);},
+    assignCourier(tenantId,subject,number,input){
+      const parsed=z.object({version:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),courierId:z.union([courierId,z.literal('')])}).strict().safeParse(input);
+      if(!/^R[0-9]{8,20}$/.test(number??'')||!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST',`/platform-api/staff/orders/${number}/courier`,parsed.data,'','staff:delivery:assign',coreOrderView.extend({courierId:z.union([courierId,z.literal('')]),courierName:z.string().max(4096),deliveryStatus:z.string().max(40)}));
+    },
     delivery(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/delivery',undefined,'','staff:settings:read',deliveryView,2_000_000);},
     patchDelivery(tenantId,subject,action,input){
       const version=z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1);

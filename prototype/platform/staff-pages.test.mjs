@@ -1,4 +1,4 @@
-import {staffProfilePage,staffDeliveryPage} from './staff-pages.mjs';
+import {staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage,staffMenuPage,staffMenuItemPage,menuPriceMinor,staffMembersPage,staffErrorPage} from './staff-pages.mjs';
@@ -96,4 +96,11 @@ test('delivery coverage page preserves null versus free fees, reviewed writes an
  const html=staffDeliveryPage(args);assert.match(html,/توصيل مجاني/);assert.match(html,/الرسم غير محدد/);assert.match(html,/&lt;حي&gt;/);assert.match(html,/GPL-2.0/);assert.match(html,/name="expectedVersion" value="7"/);assert.match(html,/غير نشط؛ اختر التعطيل/);assert.match(html,/name="reviewed" value="yes" required/);
  assert.match(html,/name="region" aria-label="المنطقة"/);assert.match(html,/name="mode" aria-label="طريقة التسعير"/);assert.match(html,/name="enabled" aria-label="حالة الحي"/);
  const readOnly=staffDeliveryPage({...args,canUpdate:false});assert.doesNotMatch(readOnly,/>حفظ حي التوصيل</);assert.doesNotMatch(readOnly,/>حفظ تسعير التوصيل</);
+});
+
+test('dispatch view requires an explicit courier choice, escapes names and omits account secrets',()=>{
+ const html=staffDispatchPage({tenantId:'a',order:{number:'R2026000001',version:3,courierName:'<old>'},couriers:[{id:'driver',name:'<driver>',active:true,availability:'offline',phone:'private-phone',username:'private-login'}],csrf:'token'});
+ assert.match(html,/aria-label="المندوب المطلوب" required/);assert.match(html,/value="__remove__"/);assert.match(html,/&lt;driver&gt;/);assert.doesNotMatch(html,/private-phone|private-login/);assert.match(html,/name="reviewed" value="yes" required/);
+ assert.doesNotMatch(staffOrdersPage({tenantId:'a',membership:{permissions:['orders:read']},orders:[{...order,mode:'delivery'}],csrf:'x'}),/إسناد مندوب/);
+ assert.match(staffOrdersPage({tenantId:'a',membership:{permissions:['orders:read','delivery:assign']},orders:[{...order,mode:'delivery'}],csrf:'x'}),/إسناد مندوب/);
 });

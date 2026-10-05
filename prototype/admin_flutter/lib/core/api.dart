@@ -48,6 +48,9 @@ abstract interface class CoreGateway {
   Future<List<CoreStockItem>> stock(String tenant);
   Future<CoreStockItem> setStock(String tenant, CoreStockItem item,
       {required bool tracked, required int available});
+  Future<List<CoreCourier>> couriers(String tenant);
+  Future<CoreOrder> assignCourier(
+      String tenant, CoreOrder expected, String courier);
   Future<List<CoreOrder>> orders(String tenant);
   Future<CoreOrder> detail(String tenant, String number);
   Future<CoreOrder> change(String tenant, CoreOrder order,
@@ -75,6 +78,8 @@ class CoreApi implements CoreGateway {
     if (reply.status < 200 || reply.status >= 300) {
       const safe = {
         'forbidden',
+        'not_found',
+        'mode_unavailable',
         'conflict',
         'catalog_changed',
         'payment_required',
@@ -247,6 +252,49 @@ class CoreApi implements CoreGateway {
   @override
   Future<CoreProfile> profile() async => CoreProfile(
       object((await _request('GET', '/native/api/me'))['principal']));
+  @override
+  Future<List<CoreCourier>> couriers(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/couriers');
+    _tenant(data, tenant);
+    final rows = array(data['couriers'], max: 500)
+        .map((v) => CoreCourier(object(v)))
+        .toList();
+    if (data['limit'] != 500 ||
+        rows.map((v) => v.id).toSet().length != rows.length) invalidResponse();
+    return List.unmodifiable(rows);
+  }
+
+  @override
+  Future<CoreOrder> assignCourier(
+      String tenant, CoreOrder expected, String courier) async {
+    if (expected.tenantId != tenant ||
+        !expected.canAssign ||
+        courier == expected.courierId)
+      throw const CoreException('invalid_request');
+    if (courier.isNotEmpty) courierKey(courier);
+    final data = await _request(
+        'POST', '${_path(tenant)}/${orderKey(expected.number)}/courier',
+        body: {'version': expected.version, 'courierId': courier});
+    try {
+      _tenant(data, tenant);
+      final result = CoreOrder(data, tenantId: tenant);
+      if (result.number != expected.number ||
+          result.version != expected.version + 1 ||
+          result.courierId != courier ||
+          result.mode != 'delivery' ||
+          result.totalMinor != expected.totalMinor ||
+          result.paymentStatus != expected.paymentStatus ||
+          result.paymentMethod != expected.paymentMethod ||
+          result.status != expected.status ||
+          result.deliveryStatus != (courier.isEmpty ? '' : 'assigned'))
+        invalidResponse();
+      return result;
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
+  }
+
   @override
   Future<List<CoreOrder>> orders(String tenant) async {
     final data = await _request('GET', _path(tenant));

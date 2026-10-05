@@ -281,3 +281,13 @@ Existing order fees stay immutable. Browser zone lists/search are paginated in
 50-row pages; native lists use the same page size. Geographic names are descriptive
 metadata, not financial authority. Global service flags, radius/location settings,
 couriers and per-kilometre pricing are outside this increment.
+
+### Dispatcher assignment
+
+`platform_staff_dispatch.go` exposes only minimal courier roster data and a signed
+versioned assignment operation under `staff:delivery:assign`. The original Assign
+transaction retains status/financial rules and now records the verified platform
+actor in its event; the existing shared staff audit is reused rather than duplicated.
+Browser/native forms require explicit review. Courier IDs are original 32-hex IDs,
+not principal UUIDs. This does not create courier accounts, reset credentials, link
+native courier identities or expose live location/customer contact data.

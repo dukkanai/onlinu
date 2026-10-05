@@ -89,6 +89,9 @@ class CoreOrder {
         paymentStatus = textField(json['paymentStatus'], max: 40),
         paymentMethod = textField(json['paymentMethod'] ?? '', max: 40),
         mode = textField(json['mode'], max: 20),
+        courierId = textField(json['courierId'] ?? '', max: 80),
+        courierName = textField(json['courierName'] ?? '', max: 4096),
+        deliveryStatus = textField(json['deliveryStatus'] ?? '', max: 40),
         totalMinor = integer(json['totalMinor'], max: 100000000),
         updatedAt = DateTime.tryParse(textField(json['updatedAt'], max: 80)) ??
             invalidResponse(),
@@ -108,10 +111,17 @@ class CoreOrder {
       paymentMethod,
       mode,
       notes,
-      tableName;
+      tableName,
+      courierId,
+      courierName,
+      deliveryStatus;
   final int version, totalMinor;
   final DateTime updatedAt;
   final List<CoreLine> items;
+  bool get canAssign =>
+      mode == 'delivery' &&
+      !{'completed', 'cancelled'}.contains(status) &&
+      deliveryStatus != 'delivered';
   bool get isCash =>
       (mode == 'table' &&
           {'cash_before', 'cash_after'}.contains(paymentMethod)) ||
@@ -327,4 +337,40 @@ class CoreMenuDetails {
   final int version;
   final CoreMenuItem item;
   final List<CoreOption> options;
+}
+
+class CoreCourier {
+  CoreCourier(Map<String, dynamic> json)
+      : id = textField(json['id'], max: 36),
+        name = textField(json['name'], max: 4096),
+        active =
+            json['active'] is bool ? json['active'] as bool : invalidResponse(),
+        availability = textField(json['availability'], max: 20) {
+    if (!RegExp(r'^[a-f0-9]{32}$').hasMatch(id) ||
+        !{'available', 'busy', 'offline'}.contains(availability))
+      invalidResponse();
+  }
+  final String id, name, availability;
+  final bool active;
+  String get availabilityLabel => switch (availability) {
+        'available' => 'متاح',
+        'busy' => 'مشغول',
+        _ => 'غير متصل'
+      };
+}
+
+String deliveryStatusLabel(String value) => switch (value) {
+      'assigned' => 'تم تعيين مندوب',
+      'picked_up' => 'استلم المندوب الطلب',
+      'on_the_way' => 'في الطريق',
+      'nearby' => 'قريب من الوجهة',
+      'at_door' => 'عند الباب',
+      'delivered' => 'تم التسليم',
+      _ => 'لم يُسند لمندوب'
+    };
+
+String courierKey(String id) {
+  if (!RegExp(r'^[a-f0-9]{32}$').hasMatch(id))
+    throw const CoreException('invalid_request');
+  return id;
 }

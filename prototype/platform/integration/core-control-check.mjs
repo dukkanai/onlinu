@@ -246,6 +246,7 @@ try {
   const nativeToken=nativeExchange.data.access_token,nativeMenuPath='/native/api/restaurants/restaurant-a/staff/menu';
   assert.equal((await send('/native/api/me',{token:alice.token})).status,401);
   assert.equal((await send(menuPath,{token:nativeToken})).status,403);
+  const rosterReply=await send('/api/restaurants/restaurant-a/staff/couriers',{cookie:alice.cookie});assert.equal(rosterReply.status,200,JSON.stringify(rosterReply.data));const roster=rosterReply.data;assert.equal(roster.limit,500);assert.equal(roster.couriers.length,1);assert.equal(roster.couriers[0].phone,undefined);assert.equal(roster.couriers[0].username,undefined);assert.equal((await send('/api/restaurants/restaurant-a/staff/couriers',{cookie:bob.cookie})).status,403);
   const nativeOrders=await send('/native/api/restaurants/restaurant-a/staff/orders',{token:nativeToken});assert.equal(nativeOrders.status,200);assert.ok(nativeOrders.data.orders.some(row=>row.number===order.number));
   assert.equal((await send('/native/api/restaurants/restaurant-b/staff/orders',{token:nativeToken})).status,403);
   const nativeItem=(await send(nativeMenuPath+'/items/rice',{token:nativeToken})).data;
@@ -327,6 +328,19 @@ try {
       await page.waitForURL(baseUrl+'/manage/restaurant-a/orders/'+order.number);
       assert.match(await page.locator('body').innerText(),/Rice/);
       assert.equal((await page.locator('body').innerText()).includes(contact.phone),false);
+      await page.getByRole('link',{name:'إسناد مندوب',exact:true}).click();
+      await page.getByLabel('المندوب المطلوب',{exact:true}).selectOption(roster.couriers[0].id);
+      await page.getByLabel('راجعت المندوب المطلوب وأثر إعادة الإسناد',{exact:true}).check();
+      await page.getByRole('button',{name:'تأكيد إسناد المندوب',exact:true}).click();
+      await page.waitForURL(baseUrl+'/manage/restaurant-a/orders/'+order.number);
+      assert.ok((await page.locator('body').innerText()).includes(roster.couriers[0].name));
+      await page.getByRole('link',{name:'إسناد مندوب',exact:true}).click();
+      await page.getByLabel('المندوب المطلوب',{exact:true}).selectOption('__remove__');
+      await page.getByLabel('راجعت المندوب المطلوب وأثر إعادة الإسناد',{exact:true}).check();
+      await page.getByRole('button',{name:'تأكيد إسناد المندوب',exact:true}).click();
+      await page.waitForURL(baseUrl+'/manage/restaurant-a/orders/'+order.number);
+      const browserDispatch=(await send(staffPath+'/'+order.number,{cookie:alice.cookie})).data;
+      assert.equal(browserDispatch.courierId,'');assert.equal(browserDispatch.version,settlementVersion+2);settlementVersion=browserDispatch.version;
       await page.goto(baseUrl+'/manage/restaurant-a/channels');
       assert.equal(await page.locator('form[action$="/channels/whatsapp_qr"]').count(),0);
       const webForm=page.locator('form[action$="/channels/web"]');
@@ -558,7 +572,7 @@ try {
     await checkNativeDart({app,browserCookie:alice.cookie,principalId:alice.id,orderNumber:order.number,imageBase64:fixture.imageBase64});
     const nativeAdvanced=await send(staffPath+'/'+order.number,{cookie:alice.cookie});
     assert.equal(nativeAdvanced.status,200);assert.equal(nativeAdvanced.data.status,'preparing');
-    assert.equal(nativeAdvanced.data.version,advanced.data.version+1);settlementVersion=nativeAdvanced.data.version;
+    assert.equal(nativeAdvanced.data.version,settlementVersion+3);assert.equal(nativeAdvanced.data.courierId,'');settlementVersion=nativeAdvanced.data.version;
   }
   await app.auth.revoke(alice.token);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_subscriptions WHERE active')).rows[0].n,0);

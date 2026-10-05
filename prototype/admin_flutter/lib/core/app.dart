@@ -9,6 +9,7 @@ import 'menu_pane.dart';
 import 'team_pane.dart';
 import 'business_pane.dart';
 import 'delivery_pane.dart';
+import 'dispatch_editor.dart';
 
 class CoreApp extends StatefulWidget {
   const CoreApp({super.key, required this.controller});
@@ -77,6 +78,16 @@ class CoreScreen extends StatelessWidget {
         accepted != true ||
         controller.selectedTenant != tenant) return;
     await controller.change(order, cash: cash);
+  }
+
+  Future<void> _assign(BuildContext context, CoreOrder order) async {
+    final selected = await showDialog<String>(
+        context: context,
+        builder: (_) => DispatchEditor(controller: controller, order: order));
+    if (!context.mounted ||
+        selected == null ||
+        controller.selectedTenant != order.tenantId) return;
+    await controller.assignCourier(order, selected);
   }
 
   Future<void> _details(BuildContext context, String number) async {
@@ -367,7 +378,10 @@ class CoreScreen extends StatelessWidget {
                                                           'unpaid'
                                                       ? 'غير مدفوع'
                                                       : 'الدفع قيد المراجعة'),
-                                              Text(modeLabel(order.mode))
+                                              Text(modeLabel(order.mode)),
+                                              if (order.mode == 'delivery')
+                                                Text(
+                                                    '${deliveryStatusLabel(order.deliveryStatus)}${order.courierName.isEmpty ? '' : ' • ${order.courierName}'}')
                                             ]),
                                         const SizedBox(height: 12),
                                         Wrap(
@@ -394,6 +408,16 @@ class CoreScreen extends StatelessWidget {
                                                         : null,
                                                     child: Text(
                                                         'نقل إلى ${coreStatusLabel(order.nextStatus!)}')),
+                                              if (member
+                                                      .can('delivery:assign') &&
+                                                  order.canAssign)
+                                                OutlinedButton(
+                                                    onPressed: c.writable
+                                                        ? () => _assign(
+                                                            context, order)
+                                                        : null,
+                                                    child: const Text(
+                                                        'إسناد مندوب')),
                                               if (member.can(
                                                       'payments:collect') &&
                                                   order.canCollect)

@@ -85,6 +85,10 @@ func (s *restaurantCouriers) Assign(ctx context.Context, number, courierID strin
 	if len(order.DeliveryEvents) >= 200 {
 		return restaurantOrder{}, restaurantFail(409, "conflict")
 	}
+	actorID := "admin"
+	if actor, ok := ctx.Value(platformStaffActorKey{}).(platformStaffActor); ok {
+		actorID = actor.ID
+	}
 	previousID, previousName := order.CourierID, order.CourierName
 	order.CourierID, order.CourierName = courierID, courier.Name
 	status := "unassigned"
@@ -95,11 +99,11 @@ func (s *restaurantCouriers) Assign(ctx context.Context, number, courierID strin
 	}
 	order.Version++
 	order.UpdatedAt = time.Now().UTC()
-	order.DeliveryEvents = append(order.DeliveryEvents, restaurantDeliveryEvent{Status: status, CourierID: courierID, CourierName: courier.Name, Actor: "admin", At: order.UpdatedAt})
+	order.DeliveryEvents = append(order.DeliveryEvents, restaurantDeliveryEvent{Status: status, CourierID: courierID, CourierName: courier.Name, Actor: actorID, At: order.UpdatedAt})
 	if err = restaurantUpdateOrder(ctx, tx, order); err != nil {
 		return restaurantOrder{}, err
 	}
-	if err = restaurantWriteOrderEvent(ctx, tx, order, "courier_assigned", map[string]string{"actor": "admin", "fromCourierId": previousID, "fromCourierName": previousName, "toCourierId": courierID, "toCourierName": courier.Name, "deliveryStatus": status}); err != nil {
+	if err = restaurantWriteOrderEvent(ctx, tx, order, "courier_assigned", map[string]string{"actor": actorID, "fromCourierId": previousID, "fromCourierName": previousName, "toCourierId": courierID, "toCourierName": courier.Name, "deliveryStatus": status}); err != nil {
 		return restaurantOrder{}, err
 	}
 	if err = tx.Commit(); err != nil {

@@ -5,6 +5,14 @@ import {problem} from './auth.mjs';
 // registry endpoints are deliberately not included here.
 export function createStaffApi({directory,orderClient,body,json,uploadSlots={active:0}}){
   return async(req,res,who,url,{restaurantOnly=false}={})=>{
+        const couriersRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/couriers$/.exec(url.pathname);
+        if(couriersRoute&&orderClient&&req.method==='GET'){
+          if(url.search)throw problem(400,'invalid_request');const tenantId=couriersRoute[1];await directory.authorize(who.id,tenantId,'delivery:assign');return json(res,200,await orderClient.couriers(tenantId,who.id));
+        }
+        const assignRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/orders\/(R[0-9]{8,20})\/courier$/.exec(url.pathname);
+        if(assignRoute&&orderClient&&req.method==='POST'){
+          if(url.search)throw problem(400,'invalid_request');const [,tenantId,number]=assignRoute;await directory.authorize(who.id,tenantId,'delivery:assign');return json(res,200,await orderClient.assignCourier(tenantId,who.id,number,await body(req)));
+        }
         const deliveryRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/delivery(?:\/(pricing|zone))?$/.exec(url.pathname);
         if(deliveryRoute&&orderClient){
           const [,tenantId,action]=deliveryRoute;if(url.search||!(req.method==='GET'&&!action||req.method==='POST'&&action))throw problem(400,'invalid_request');

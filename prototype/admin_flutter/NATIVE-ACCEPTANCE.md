@@ -155,3 +155,27 @@ asserts the observed peer. Production limits, proxy trust and authentication rem
 unchanged. This isolates functional client scenarios rather than disabling throttling.
 It is not a NAT/shared-IP or distributed-load acceptance test: those capacity/fairness
 gates remain required before production, especially with multiple polling devices.
+
+## Dispatch to existing original-core couriers
+
+The dispatcher can read a minimal roster (at most 500 rows: ID/name/active/current
+availability) and explicitly assign, reassign or unassign an unfinished delivery
+order. Native/browser review binds the restaurant, order and version. Original
+`restaurantCouriers.Assign` remains authoritative and atomically writes its existing
+event plus the platform actor audit; a failed audit rolls back the assignment.
+No contact details, usernames, passwords, tracking capabilities or location data are
+returned by the roster/assignment projection. Existing financial values are unchanged.
+
+Original courier account IDs are **32 lowercase hexadecimal characters** and are
+not the control-plane principal UUIDs. No automatic identity linkage is attempted.
+A native `delivery:read` grant alone cannot enumerate the roster or dispatch orders;
+`delivery:assign` is required. The native screen operates from authorized order rows.
+Account creation/password resets, native courier login/identity linking and location
+tracking remain separate incomplete work. Existing original courier account flows
+are preserved; all accounts created in automated tests are isolated synthetic data.
+
+Local tests cover exact response/version/money bindings, stale/no-op/revoked writes,
+late roster revocation, explicit review/cancel, actor attribution and rollback. Actual
+Dart TLS tests assign then unassign without new orders or payment calls. The parent
+fixture checks both resulting versions before settlement. Windows/Chromium UI
+acceptance remains a distinct remote gate for this increment.

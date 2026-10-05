@@ -14,8 +14,19 @@ import (
 
 type platformStaffActorKey struct{}
 type platformStaffActor struct{ ID, Scope string }
-type platformStaffOrderView struct {
+type platformStaffOrderSummary struct {
 	platformOrderView
+	DeliveryStatus string `json:"deliveryStatus"`
+	CourierID      string `json:"courierId"`
+	CourierName    string `json:"courierName"`
+}
+
+func staffOrderSummary(order restaurantOrder) platformStaffOrderSummary {
+	return platformStaffOrderSummary{publicPlatformOrder(order), order.DeliveryStatus, order.CourierID, order.CourierName}
+}
+
+type platformStaffOrderView struct {
+	platformStaffOrderSummary
 	Items     []restaurantOrderLine `json:"items"`
 	Notes     string                `json:"notes"`
 	TableName string                `json:"tableName,omitempty"`
@@ -27,6 +38,7 @@ type platformStaffOrderView struct {
 // No restaurant master key or caller-supplied role enters this path.
 func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(string, func(http.ResponseWriter, *http.Request, []byte, string)) http.HandlerFunc) {
 	s.registerPlatformStaffDeliveryRoutes(mux, wrap)
+	s.registerPlatformStaffDispatchRoutes(mux, wrap)
 	mux.HandleFunc("GET /platform-api/staff/profile", wrap("staff:settings:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
 		if r.URL.RawQuery != "" {
 			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
@@ -237,7 +249,7 @@ func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(
 		// Fulfilment notes can contain customer-provided instructions. They stay
 		// in staff scope; structured contacts, receipt capabilities and payment
 		// secrets are not copied into this kitchen-facing representation.
-		writeJSON(w, 200, platformStaffOrderView{publicPlatformOrder(order), order.Items, order.Notes, order.TableName, order.CreatedAt})
+		writeJSON(w, 200, platformStaffOrderView{staffOrderSummary(order), order.Items, order.Notes, order.TableName, order.CreatedAt})
 	}))
 	mux.HandleFunc("GET /platform-api/staff/orders", wrap("staff:orders:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
 		if r.URL.RawQuery != "" {
@@ -249,9 +261,9 @@ func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(
 			writeRestaurantError(w, err)
 			return
 		}
-		result := make([]platformOrderView, 0, len(orders))
+		result := make([]platformStaffOrderSummary, 0, len(orders))
 		for _, order := range orders {
-			result = append(result, publicPlatformOrder(order))
+			result = append(result, staffOrderSummary(order))
 		}
 		writeJSON(w, 200, map[string]any{"orders": result, "limit": 100})
 	}))
@@ -287,7 +299,7 @@ func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(
 				writeRestaurantError(w, err)
 				return
 			}
-			writeJSON(w, 200, publicPlatformOrder(order))
+			writeJSON(w, 200, staffOrderSummary(order))
 		}))
 	}
 }

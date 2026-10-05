@@ -181,6 +181,40 @@ void main() {
     expect(controller.channels, isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets('Windows dispatcher reviews existing courier assignment',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile =
+          profileFixture(permissions: ['orders:read', 'delivery:assign'])
+      ..currentOrder = orderFixture(mode: 'delivery');
+    final c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الدخول عبر المتصفح'));
+    await tester.pumpAndSettle();
+    final assign = find.text('إسناد مندوب');
+    await tester.ensureVisible(assign);
+    await tester.pumpAndSettle();
+    await tester.tap(assign);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(
+        DropdownButtonFormField<String>, 'المندوب المطلوب'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('مندوب تجريبي • متاح').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('مراجعة الإسناد'));
+    await tester.pumpAndSettle();
+    expect(api.assignments, 0);
+    await capture(tester, boundary, 'windows-dispatch-review.png');
+    await tester.tap(find.text('تأكيد الإسناد'));
+    await tester.pumpAndSettle();
+    expect(api.assignments, 1);
+    expect(c.orders.single.courierId, api.currentCouriers.single.id);
+    await capture(tester, boundary, 'windows-dispatch-assigned.png');
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets(
       'Windows geographic selection and zero-fee review preserve delivery semantics',
       (tester) async {
