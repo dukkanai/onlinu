@@ -196,6 +196,8 @@ void main() {
     await tester.pumpWidget(RepaintBoundary(
         key: boundary,
         child: MaterialApp(
+            builder: (context, child) =>
+                Directionality(textDirection: TextDirection.rtl, child: child!),
             home: Scaffold(
                 body: RefundDialog(
                     controller: c, number: 'R1234567890', id: principalId)))));

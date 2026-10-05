@@ -154,6 +154,8 @@ void main() {
     await c.start(restore: false);
     await c.showRefund('R1234567890', principalId);
     await tester.pumpWidget(MaterialApp(
+        builder: (context, child) =>
+            Directionality(textDirection: TextDirection.rtl, child: child!),
         home: Scaffold(
             body: RefundDialog(
                 controller: c, number: 'R1234567890', id: principalId))));
@@ -190,6 +192,8 @@ void main() {
     await c.start(restore: false);
     await c.showRefund('R1234567890', principalId);
     await tester.pumpWidget(MaterialApp(
+        builder: (context, child) =>
+            Directionality(textDirection: TextDirection.rtl, child: child!),
         home: Scaffold(
             body: RefundDialog(
                 controller: c, number: 'R1234567890', id: principalId))));
