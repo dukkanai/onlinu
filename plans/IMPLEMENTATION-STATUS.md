@@ -70,6 +70,10 @@ Staff increment local checks retain 583 Go passes/five known local restrictions/
 one codec skip, with 150 platform tests passing, including staff page escaping.
 Browser diagnostics were expanded and CI now runs the focused browser test
 before the full suite, so a failure cannot be hidden among unrelated checks.
+CI 37288011980 identified the HTML form's `Origin: null`/referrer-policy conflict.
+The correction preserves strict Origin/CSRF checks while using `same-origin`
+referrer policy only on HTML. Local focused Go and all 150 platform tests pass;
+Chromium acceptance must still be confirmed on the new remote run.
 
 ## External acceptance still required
 

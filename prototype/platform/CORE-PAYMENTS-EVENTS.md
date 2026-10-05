@@ -76,6 +76,14 @@ redirect, cookie isolation and Back navigation. The cloud shell's Unix-socket
 restriction prevents Chromium startup locally; its browser result must be read
 from the final CI job rather than inferred from the HTTP integration test.
 
+CI `37288011980` isolated the browser failure to `origin_rejected` on the HTML
+payment POST. `no-referrer` makes non-CORS form POSTs send `Origin: null` under
+the [Fetch Origin-header algorithm](https://fetch.spec.whatwg.org/#append-a-request-origin-header).
+HTML responses now use `same-origin`; API/redirect responses retain `no-referrer`.
+The strict Origin and CSRF checks remain in place. Browser assertions require
+the real same-origin Origin and forbid both session cookies and private checkout
+referrers at the simulated provider. Remote validation of this fix is pending.
+
 Production acceptance still requires actual provider/account flows, image/host
 tests, operational limits and retention policy, full staff/Flutter parity,
 licensing gates and approved deployment. No automatic outbox deletion is enabled.

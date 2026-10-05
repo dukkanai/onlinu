@@ -19,6 +19,13 @@ const cookieName = '__Host-platform_session';
 const bindingName = '__Host-platform_oidc';
 function cookie(name, value, age) { return `${name}=${value}; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}`; }
 function json(res, status, value) { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); }
+function htmlHeaders(res) {
+  // Fetch sets Origin:null for non-CORS form POSTs under no-referrer. Preserve
+  // the same-origin Origin check without leaking page URLs to payment providers.
+  // https://fetch.spec.whatwg.org/#append-a-request-origin-header
+  res.setHeader('referrer-policy','same-origin');
+  res.writeHead(200,{'content-type':'text/html; charset=utf-8'});
+}
 function redirect(res, target, status=302) { res.writeHead(status, { location: target }); res.end(); }
 function fields(entries) {
   if (new Set(entries.map(([key]) => key)).size !== entries.length) throw problem(400, 'duplicate_parameter');
@@ -141,7 +148,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const who = await auth.authenticate(req, { cookieOnly: true });
         if (!who) return redirect(res, '/auth/login?returnTo=' + encodeURIComponent(url.pathname + url.search));
         const hidden = Object.entries(input).map(([key, value]) => `<input type="hidden" name="${escape(key)}" value="${escape(value)}">`).join('');
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        htmlHeaders(res);
         res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>موافقة الربط</title><h1>ربط حسابك</h1><p>الصلاحيات المطلوبة: ${escape(input.scope)}</p><p>العميل: ${escape(input.client_id)}</p><form method="post" action="/oauth/authorize">${hidden}<input type="hidden" name="csrf" value="${escape(auth.csrfToken(req))}"><button name="approve" value="yes">موافقة</button><button name="approve" value="no">رفض</button></form></html>`); return;
       }
       if (['POST','PATCH','PUT','DELETE'].includes(req.method)) {
@@ -180,12 +187,12 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
             const button=(action,label)=>`<form method="post" action="/checkout/${checkoutId}/${action}"><input type="hidden" name="csrf" value="${escape(csrf)}"><button>${label}</button></form>`;
             const pay=order.paymentMethod==='card'&&['unpaid','pending'].includes(order.paymentStatus)?button('payment','الانتقال لصفحة الدفع'):'';
             const refresh=order.paymentMethod==='card'?button('refresh-payment','التحقق من حالة الدفع'):'';
-            res.writeHead(200,{'content-type':'text/html; charset=utf-8'});
+            htmlHeaders(res);
             res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>طلبك</title><h1>طلب ${escape(order.number)}</h1><p>حالة الطلب: ${escape(order.status)}</p><p>حالة الدفع: ${escape(order.paymentStatus)}</p><p>الإجمالي: ${escape((order.totalMinor/100).toFixed(2))} SAR</p>${checkout.quote.demo?'<p>هذا طلب تجريبي.</p>':''}${pay}${refresh}<p>لا يعتبر الدفع مكتملًا إلا بعد التحقق لدى مزود الدفع.</p></html>`);return;
           }
           const providers=(await core.payments(checkout.tenantId)).providers.filter(row=>['stripe','moyasar','tap','paytabs','geidea','myfatoorah'].includes(row.id));
           const providerOptions=providers.map(row=>`<option value="${escape(row.id)}">${escape(row.name)}${row.mode==='test'?' (اختبار)':''}</option>`).join('');
-          res.writeHead(200,{'content-type':'text/html; charset=utf-8'});
+          htmlHeaders(res);
           const delivery=checkout.cart.mode==='delivery'?'<fieldset><legend>عنوان التوصيل</legend><label>العنوان التفصيلي <textarea name="addressLine" maxlength="500"></textarea></label><label>العنوان الوطني أو المختصر <input name="nationalAddress" maxlength="300"></label></fieldset>':'';
           res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>تأكيد الطلب</title><h1>راجع الطلب ثم أكّد</h1><ul>${items}</ul><p>الإجمالي: ${escape((checkout.totalMinor/100).toFixed(2))} SAR، شامل الرسوم والضريبة المعروضة.</p><form method="post" action="/checkout/${checkoutId}/confirm"><input type="hidden" name="csrf" value="${escape(csrf)}"><label>الاسم <input name="customerName" required maxlength="100" autocomplete="name"></label><label>الهاتف <input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>${delivery}<label>طريقة الدفع <select name="paymentMethod">${methods}</select></label><label>مزود الدفع الإلكتروني <select name="paymentProvider"><option value="">اختر المزود عند الدفع الإلكتروني</option>${providerOptions}</select></label><label>ملاحظات <textarea name="notes" maxlength="1000"></textarea></label><button type="submit">تأكيد وإنشاء الطلب</button></form><p>هذه الخطوة تنشئ الطلب فقط، ولا تثبت سدادًا إلكترونيًا.</p></html>`);return;
         }
@@ -227,7 +234,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
             const {orders}=await orderClient.staffOrders(tenantId,who.id);
             html=staffOrdersPage({tenantId,membership,orders,csrf:auth.csrfToken(req)});
           }
-          res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(html);return;
+          htmlHeaders(res);res.end(html);return;
         }
         if(req.method==='POST'&&number){
           const input=await body(req);auth.verifyCsrf(req,input.csrf);
@@ -239,7 +246,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         }
       }
       if (req.method === 'GET' && url.pathname === '/') {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        htmlHeaders(res);
         res.end('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>منصة المطاعم</title><h1>منصة المطاعم</h1><a href="/manage">دخول إدارة المطاعم</a></html>'); return;
       }
       if (url.pathname.startsWith('/api/')) {

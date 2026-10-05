@@ -130,6 +130,7 @@ try {
   assert.equal(card.isError,undefined);
   const cardPath='/checkout/'+card.structuredContent.checkoutId;
   const cardPage=await send(cardPath,{cookie:alice.cookie});
+  assert.equal(cardPage.headers['referrer-policy'],'same-origin');
   assert.match(cardPage.headers['content-security-policy'],/form-action 'self' https:\/\/checkout\.stripe\.com /);
   assert.equal(cardPage.headers['content-security-policy'].includes('*'),false);
   assert.match(cardPage.data,/<option value="stripe">/);
@@ -150,11 +151,13 @@ try {
       await context.route('**/*',async route=>{
         const request=route.request(),url=new URL(request.url());
         if(url.origin===baseUrl){
+          if(request.method()==='POST')assert.equal((await request.allHeaders()).origin,baseUrl,'HTML forms preserve same-origin validation');
           const response=await route.fetch({url:local+url.pathname+url.search,headers:{...await request.allHeaders(),host:'platform.example'},maxRedirects:0});
           await route.fulfill({response});return;
         }
         if(url.origin==='https://checkout.stripe.com'){
           assert.equal((await request.allHeaders()).cookie,undefined,'Provider must not receive the platform cookie');
+          assert.equal((await request.allHeaders()).referer,undefined,'Provider must not receive private checkout URLs');
           providerVisits++;
           await route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><title>Synthetic provider</title><h1>Mock payment page</h1>'});return;
         }
