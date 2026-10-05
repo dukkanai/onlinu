@@ -13,7 +13,7 @@ test('native HTTP consent, audience isolation, membership limits and own-device 
  let server;
  t.after(async()=>{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await pool.end();await admin.query(`DROP SCHEMA ${schema} CASCADE`);await admin.end();});
  const {privateKey}=generateKeyPairSync('ed25519');
- const app=await createControlPlane({pool,baseUrl:base,csrfKey:randomBytes(32).toString('base64'),serviceSigningKey:privateKey,nativeStaffEnabled:true,
+ const app=await createControlPlane({pool,baseUrl:base,csrfKey:randomBytes(32).toString('base64'),serviceSigningKey:privateKey,nativeStaffEnabled:true,trustedProxyCidrs:['127.0.0.1/32'],
   oidc:{issuer,clientId:'test',clientSecret:'synthetic-secret-never-production'},restaurants:[{id:'a',name:'A',cuisine:'saudi',baseUrl:'http://127.0.0.1:9'},{id:'b',name:'B',cuisine:'saudi',baseUrl:'http://127.0.0.1:10'}]},
   {oidcClientAdapter:{async authorizationUrl(){return issuer+'authorize';},async exchange(){throw Error('unused');}}});
  server=createServer(app.handle);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const local='http://127.0.0.1:'+server.address().port;
@@ -72,4 +72,14 @@ test('native HTTP consent, audience isolation, membership limits and own-device 
   await pool.query('UPDATE platform_memberships SET enabled=TRUE WHERE tenant_id=$1 AND principal_id=$2',['a',alice.id]);
   assert.equal((await send('/native/api/me',{token:session.access_token})).status,401);assert.equal((await send('/api/me',{who:alice})).status,200);
  });
+ await t.test('HTTP proxy rate budgets isolate clients and return bounded retry advice',async()=>{
+  const path='/.well-known/oauth-authorization-server/native';
+  for(let i=0;i<240;i++)assert.equal((await send(path,{headers:{'x-forwarded-for':'198.51.100.40'}})).status,200);
+  const limited=await send(path,{headers:{'x-forwarded-for':'203.0.113.80, 198.51.100.40'}});
+  assert.equal(limited.status,429);assert.equal(limited.data.error,'rate_limited');
+  assert.ok(Number(limited.headers['retry-after'])>=1&&Number(limited.headers['retry-after'])<=60);
+  assert.equal((await send(path,{headers:{'x-forwarded-for':'198.51.100.41'}})).status,200);
+  assert.equal((await send(path,{headers:{'x-forwarded-for':'invalid'}})).status,400);
+ });
+
 });

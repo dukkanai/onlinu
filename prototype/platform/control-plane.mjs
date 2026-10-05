@@ -1,3 +1,4 @@
+import {createRequestLimiter} from './request-limits.mjs';
 import {createStaffApi} from './staff-api.mjs';
 import {createNativeStaff} from './native-staff.mjs';
 import {createCoreMedia,publicMenuImages} from './core-media.mjs';
@@ -48,8 +49,9 @@ async function body(req,maxBytes=32768) {
   return parsed;
 }
 
-export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey, eventsEncryptionKey, nativeStaffEnabled=false }, { oidcClientAdapter, webhookFetch } = {}) {
+export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey, eventsEncryptionKey, nativeStaffEnabled=false, trustedProxyCidrs=[] }, { oidcClientAdapter, webhookFetch } = {}) {
   if(typeof nativeStaffEnabled!=='boolean')throw new Error('invalid_native_staff_configuration');
+  const rate = createRequestLimiter({trustedProxyCidrs});
   const base = new URL(baseUrl);
   if (base.protocol !== 'https:' || base.pathname !== '/' || base.username || base.password || base.search || base.hash) throw new Error('control_plane_requires_https_origin');
   const directory = createIdentityDirectory({ pool, trustedIssuers: [new URL(oidc.issuer).href] });
@@ -101,15 +103,6 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
   const staffApi=createStaffApi({directory,orderClient,body,json});
   if(nativeStaffEnabled&&!orderClient)throw new Error('native_staff_requires_core_signing');
   const nativeStaff=nativeStaffEnabled?await createNativeStaff({pool,baseUrl:base.origin,csrfKey,directory,browserAuth:auth,staffApi,body,json,htmlHeaders,redirect}):null;
-  const limits = new Map();
-  function rate(req) {
-    const now = Date.now(), key = req.socket.remoteAddress;
-    if (limits.size > 1000) for (const [key, row] of limits) if (row.until < now) limits.delete(key);
-    if (limits.size > 10000 && !limits.has(key)) throw problem(429, 'rate_limited');
-    let row = limits.get(key);
-    if (!row || row.until < now) { row = { until: now + 60000, count: 0 }; limits.set(key, row); }
-    if (++row.count > 240) throw problem(429, 'rate_limited');
-  }
   async function browser(req) {
     // Customer OAuth grants never confer staff/control-plane privileges.
     if (req.headers.authorization) throw problem(403, 'browser_session_required');
@@ -426,6 +419,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
     } catch (error) {
       if (res.headersSent) { res.end(); return; }
       const status = [400,401,403,404,409,413,415,429,503].includes(error.status) ? error.status : 500;
+      if(status===429)res.setHeader('retry-after',String(Number.isInteger(error.retryAfter)&&error.retryAfter>0?Math.min(error.retryAfter,60):1));
       const code = status === 500 || !/^[a-z_]{1,80}$/.test(error.code ?? '') ? 'request_failed' : error.code;
       const checkoutError=req.url?.startsWith('/checkout/') && req.headers.accept?.includes('text/html') ? checkoutErrorPage(code) : null;
       if(checkoutError){htmlHeaders(res,status);res.end(checkoutError);return;}

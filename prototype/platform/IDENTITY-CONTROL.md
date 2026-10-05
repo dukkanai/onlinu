@@ -49,3 +49,11 @@ add signed, audience-bound service requests and durable idempotent handoff.
 Expose staff UI/Flutter only through the same permission checks. Deployment
 requires actual HTTPS/OIDC configuration, secret handoff, and independent external
 acceptance. Code/test completion is not production activation.
+
+## Reverse-proxy request budgets
+
+The runtime defaults to trusting no forwarded headers. Deployments behind a
+verified proxy may configure `CORE_TRUSTED_PROXY_CIDRS` explicitly; see
+[REQUEST-LIMITS.md](REQUEST-LIMITS.md) for right-to-left hop validation, spoofing
+protection, Retry-After and unresolved NAT/distributed/load gates. This setting
+only selects an abuse-budget key, never an identity or staff permission.

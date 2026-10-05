@@ -235,3 +235,14 @@ Windows OS storage acceptance. New Windows CI job verifies official SDK SHA256,
 locked dependencies, analysis/tests and unsigned `.invalid`-origin smoke build;
 its first run is pending. Native app parity, signing, MFA, device acceptance,
 production and scale gates remain open. See `prototype/admin_flutter/README.md`.
+
+### Explicit trusted-proxy request budgets — 2026-10-05
+
+The earlier reverse-proxy finding is addressed in code with opt-in
+`CORE_TRUSTED_PROXY_CIDRS`, never implicit header trust. Right-to-left trusted-hop
+selection, bounded/canonical addresses, independent client budgets and Retry-After
+are covered by unit and real HTTP tests. Local platform/PostgreSQL suite190/190
+and actual Go↔Node race integration pass. Docker runtime includes the new module.
+No live proxy/network configuration has changed. NAT sharing, per-process limits,
+per-principal fairness, SSE/polling and distributed load acceptance remain open;
+see `prototype/platform/REQUEST-LIMITS.md`. Remote CI for this increment pending.
