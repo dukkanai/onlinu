@@ -171,3 +171,8 @@ writing headers. An actual Go/control-plane integration assertion checks expired
 HTML confirmation returns409 and its Arabic explanation, while JSON behavior is
 unchanged. Focused real-core regression passes locally; remote verification is
 pending. This does not alter order submission or payment state.
+
+CI37304245517 on 6ae0e8a failed at Chromium option availability selection: the
+exact label lookup included the select's option text. The option control now has
+an explicit accessible name matching its visible label. Server-side integration
+and unit cases passed; this browser correction requires a new complete CI run.

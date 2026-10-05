@@ -60,7 +60,7 @@ test('menu creation requires write permission and stable form IDs; new items sta
 test('option forms preserve stable IDs, escape text and enforce the visible limit',()=>{
  const item={id:'rice',name:'Rice',description:'',priceMinor:100,categoryId:'main',sort:0,available:true,options:[{id:'extra',name:'<Extra>',priceMinor:25,available:true}]};
  const config={tenantId:'a',menu:{version:2,item,categories:[]},membership:{permissions:['menu:update']},csrf:'test',newOptionId:'new-option'};
- const html=staffMenuItemPage(config);assert.match(html,/options\/extra/);assert.match(html,/value="new-option"/);assert.match(html,/&lt;Extra&gt;/);assert.doesNotMatch(html,/<Extra>/);
+ const html=staffMenuItemPage(config);assert.match(html,/options\/extra/);assert.match(html,/aria-label="تفعيل الإضافة"/);assert.match(html,/value="new-option"/);assert.match(html,/&lt;Extra&gt;/);assert.doesNotMatch(html,/<Extra>/);
  const full=staffMenuItemPage({...config,menu:{...config.menu,item:{...item,options:Array.from({length:50},(_,i)=>({...item.options[0],id:'o'+i}))}}});
  assert.doesNotMatch(full,/إضافة الخيار/);assert.match(full,/50 إضافة/);
  assert.doesNotMatch(staffMenuItemPage({...config,membership:{permissions:['menu:read']}}),/<form/);
