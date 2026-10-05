@@ -218,3 +218,20 @@ was used and no telemetry permission was granted.
 - Browser and native staff transports share one existing permission-checked operation router. Native access additionally requires membership in the requested restaurant and cannot inherit platform-operator bypasses or call registry lifecycle APIs.
 - Added PostgreSQL HTTP consent/isolation/revocation tests and actual Go/control-plane native order reads/menu write, plus new Chromium loopback-callback/device-revoke cases. Local platform184/184 and Go regression pass except the five known local netlink cases; remote new browser cases pending.
 - Release follow-up: fix trusted-proxy/per-principal rate limiting and load-test before scale claims. MFA policy/OS secure-storage acceptance, Windows signing, Flutter parity and mobile callbacks remain open.
+
+### Native Flutter core client — 2026-10-05 (verification in progress)
+
+Backend `24becfc44e42081be001c1da1fe9849ac934c54c` passed all jobs in
+CI `37313695046`, including Chromium native PKCE consent/callback and own-device
+revocation. Flutter now has separate `CORE_API_BASE_URL` mode: external-browser
+PKCE, origin-bound OS-secured refresh, transient access token, multi-restaurant
+selection, last100 orders/detail, optimistic status/cash operations and explicit
+confirmation. Synthetic mode remains loopback-only and unchanged.
+
+Local Flutter analyze and all38 tests pass, including final membership-removal
+and stale-snapshot regressions. No real customer/provider
+credentials are used. Secure-storage unit tests use plugin mocks and do not prove
+Windows OS storage acceptance. New Windows CI job verifies official SDK SHA256,
+locked dependencies, analysis/tests and unsigned `.invalid`-origin smoke build;
+its first run is pending. Native app parity, signing, MFA, device acceptance,
+production and scale gates remain open. See `prototype/admin_flutter/README.md`.

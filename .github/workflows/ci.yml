@@ -151,3 +151,56 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  native-windows:
+    name: native-windows
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      CI: "true"
+      BOT: "true"
+      FLUTTER_SUPPRESS_ANALYTICS: "true"
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install checksum-pinned official Flutter SDK
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'flutter-3.47.5.zip'
+          Invoke-WebRequest -Uri 'https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_3.47.5-stable.zip' -OutFile $archive -TimeoutSec 600
+          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8') { throw 'Flutter SDK checksum mismatch' }
+          $sdk = Join-Path $env:RUNNER_TEMP 'onlinu-sdk'
+          7z x $archive "-o$sdk" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'SDK extraction failed' }
+          (Join-Path $sdk 'flutter\bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Restore locked native dependencies
+        working-directory: prototype/admin_flutter
+        run: |
+          flutter --suppress-analytics --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter --suppress-analytics pub get --enforce-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --exit-code -- pubspec.lock windows/flutter/generated_plugin_registrant.cc windows/flutter/generated_plugins.cmake
+      - name: Analyze and test native client
+        working-directory: prototype/admin_flutter
+        run: |
+          dart --suppress-analytics format --output=none --set-exit-if-changed lib test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter --suppress-analytics analyze --no-pub
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter --suppress-analytics test --no-pub --reporter expanded
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build unsigned native core smoke bundle
+        working-directory: prototype/admin_flutter
+        # Reserved .invalid origin: build verification, not a deployable release.
+        run: flutter --suppress-analytics build windows --release --no-pub --dart-define=CORE_API_BASE_URL=https://control.invalid
+      - name: Retain unsigned smoke bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-windows-unsigned-smoke-${{ github.sha }}
+          path: prototype/admin_flutter/build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 7

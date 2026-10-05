@@ -4,8 +4,35 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'admin_controller.dart' as admin;
 import 'api.dart';
 import 'models.dart';
+import 'core/api.dart';
+import 'core/app.dart';
+import 'core/auth.dart';
+import 'core/controller.dart';
+import 'core/session_store.dart';
+import 'core/transport.dart';
 
 void main() {
+  const coreUrl = String.fromEnvironment('CORE_API_BASE_URL');
+  if (coreUrl.isNotEmpty) {
+    WidgetsFlutterBinding.ensureInitialized();
+    try {
+      final origin = trustedOrigin(coreUrl);
+      final auth = CoreAuth(coreUrl, store: OsCoreSessionStore(origin.origin));
+      runApp(CoreApp(controller: CoreController(CoreApi(auth))));
+    } on CoreException {
+      runApp(const MaterialApp(
+          home: Scaffold(
+              body: Center(
+                  child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+                'عنوان منصة الإدارة غير صالح. يلزم أصل HTTPS موثوق في إعداد البناء. لم يتم الاتصال بأي خدمة.')),
+      )))));
+    }
+    return;
+  }
   const baseUrl = String.fromEnvironment(
     'PROTOTYPE_API_BASE_URL',
     defaultValue: 'http://127.0.0.1:18787',

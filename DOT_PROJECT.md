@@ -229,3 +229,12 @@ Dart3.13.4/version command verified. Set `CI=true BOT=true` to bypass the SDK's
 unneeded cloud-instance autodetection (the metadata request itself is not
 permitted), plus workspace-local HOME/XDG_CONFIG_HOME/XDG_CACHE_HOME/PUB_CACHE.
 Analytics are disabled. Baseline Flutter dependency lock, analyze and all 12 tests pass. Every Flutter invocation must also pass `--suppress-analytics`; configuration opt-out alone was insufficient for the safety review.
+
+Native app increment (2026-10-05): backend24becfc / CI37313695046 passed.
+`prototype/admin_flutter` now has an explicit `CORE_API_BASE_URL` native mode
+alongside the original synthetic mode. See its README for OS-secured PKCE login,
+restaurant selection, order/cash permissions and test/build commands. CI adds
+`native-windows` using official Flutter3.47.5 with Windows SHA256
+`0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8`.
+Unsigned `.invalid`-origin artifacts are build smoke checks, not production apps;
+first Windows result and interactive OS credential acceptance remain pending.
