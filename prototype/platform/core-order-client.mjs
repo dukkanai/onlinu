@@ -1,6 +1,6 @@
 import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { z } from 'zod';
-import { coreQuoteInput, coreQuoteSchema } from './core-adapter.mjs';
+import { coreQuoteInput, coreQuoteSchema, coreCatalogSchema } from './core-adapter.mjs';
 import { problem } from './auth.mjs';
 
 const uuid = z.string().uuid();
@@ -30,12 +30,21 @@ const safeCodes = new Set(['invalid_request','invalid_quantity','invalid_option'
   'district_unavailable','delivery_minimum','delivery_unavailable','store_closed','mode_unavailable',
   'item_unavailable','out_of_stock','payment_required','payment_unavailable','price_changed','conflict',
   'invalid_order_access','platform_unauthorized','not_found','order_not_found','invalid_status','invalid_payment_method',
-  'channel_ordering_disabled','channel_ordering_unavailable','invalid_order_channel']);
+  'channel_ordering_disabled','channel_ordering_unavailable','invalid_order_channel','catalog_changed']);
 const channelId=z.enum(['web','chatgpt','whatsapp_qr','whatsapp_cloud']);
 const channelPolicy=z.object({channel:channelId,newOrdersEnabled:z.boolean(),adapterImplemented:z.boolean(),
   version:z.number().int().positive(),updatedAt:z.string().datetime({offset:true})});
 const stockItem=z.object({itemId:z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),tracked:z.boolean(),available:z.number().int().nonnegative(),
   held:z.number().int().nonnegative(),version:z.number().int().nonnegative(),updatedAt:z.string().datetime({offset:true})});
+const menuId=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/);
+const menuItemView=z.object({version:z.number().int().positive(),currency:z.literal('SAR'),categories:coreCatalogSchema.shape.categories,
+  item:coreCatalogSchema.shape.items.element});
+const menuPatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),
+  name:z.string().min(1).max(320).optional(),description:z.string().max(4000).optional(),categoryId:menuId.optional(),
+  priceMinor:z.number().int().min(0).max(100_000_000).optional(),imageUrl:z.string().max(4096).optional(),
+  available:z.boolean().optional(),sort:z.number().int().min(0).max(10000).optional(),
+  options:z.array(z.object({id:menuId,name:z.string().min(1).max(240),priceMinor:z.number().int().min(0).max(100_000_000),available:z.boolean()}).strict()).max(50).optional(),
+}).strict().refine(value=>Object.keys(value).length>1);
 
 export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchImpl = fetch, now = Date.now }) {
   const source = new URL(issuer);
@@ -84,6 +93,20 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    menu(tenantId,subject){
+      return request(tenantId,subject,'GET','/platform-api/staff/menu',undefined,'','staff:menu:read',z.object({
+        version:z.number().int().positive(),name:z.string().max(4096),currency:z.literal('SAR'),categories:coreCatalogSchema.shape.categories,
+        items:z.array(z.object({id:menuId,categoryId:menuId,name:z.string().max(4096),priceMinor:z.number().int().min(0).max(100_000_000),available:z.boolean(),sort:z.number().int()})).max(1000),
+      }),2_000_000);
+    },
+    menuItem(tenantId,subject,itemId){
+      if(!menuId.safeParse(itemId).success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'GET',`/platform-api/staff/menu/items/${itemId}`,undefined,'','staff:menu:read',menuItemView,2_000_000);
+    },
+    patchMenuItem(tenantId,subject,itemId,input){
+      const parsed=menuPatch.safeParse(input);if(!menuId.safeParse(itemId).success||!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST',`/platform-api/staff/menu/items/${itemId}`,parsed.data,'','staff:menu:update',menuItemView,2_000_000);
+    },
     stock(tenantId,subject){
       return request(tenantId,subject,'GET','/platform-api/staff/stock',undefined,'','staff:stock:read',z.object({items:z.array(stockItem).max(5000)}),2_000_000);
     },

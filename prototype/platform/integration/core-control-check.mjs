@@ -113,6 +113,15 @@ try {
   const loginPage=await send('/manage');assert.equal(loginPage.status,302);assert.equal(loginPage.headers.location,'/auth/login?returnTo=%2Fmanage');
   assert.equal((await send(loginPage.headers.location)).status,302,'OIDC accepts the bounded management return path');
   const bobMe=await send('/api/me',{cookie:bob.cookie});
+  const menuPath='/api/restaurants/restaurant-a/staff/menu';
+  const kitchenMenu=await send(menuPath,{cookie:bob.cookie});assert.equal(kitchenMenu.status,200);
+  assert.equal(kitchenMenu.data.tables,undefined);assert.equal(kitchenMenu.data.settings,undefined);
+  assert.equal(kitchenMenu.data.items[0].options,undefined,'Menu list stays bounded; full options use the item detail');
+  const menuPost=(who,input)=>send(menuPath+'/items/rice',{method:'POST',cookie:who.cookie,
+    headers:{origin:baseUrl,'x-csrf-token':who.id===alice.id?csrf:bobMe.data.csrfToken},body:input});
+  assert.equal((await menuPost(bob,{expectedVersion:kitchenMenu.data.version,priceMinor:1300})).status,403);
+  assert.equal((await send(menuPath,{token:alice.token})).status,403);
+  assert.doesNotMatch((await send('/manage/restaurant-a/menu/items/rice',{cookie:bob.cookie})).data,/حفظ الصنف/);
   const stockPath='/api/restaurants/restaurant-a/staff/stock';
   const kitchenStock=await send(stockPath,{cookie:bob.cookie});assert.equal(kitchenStock.status,200);
   assert.equal(kitchenStock.data.items[0].tracked,false);assert.equal(kitchenStock.data.items[0].version,0);
@@ -149,6 +158,15 @@ try {
   assert.equal(app.eventWorker.health.consecutiveFailures,0);
   assert.ok(app.eventWorker.health.lastSuccessAt,'Scheduled worker query and dispatch complete');
   assert.equal(callbackBodies.length,1,'Scheduled replay remains deduplicated');
+  const menuBefore=await send(menuPath+'/items/rice',{cookie:alice.cookie});assert.equal(menuBefore.status,200);
+  assert.equal(menuBefore.data.item.options.length,3);
+  assert.equal((await menuPost(alice,{expectedVersion:menuBefore.data.version,priceMinor:1300,settings:{taxEnabled:true}})).status,400);
+  const priceChange=await menuPost(alice,{expectedVersion:menuBefore.data.version,priceMinor:1300});assert.equal(priceChange.status,200);
+  assert.deepEqual(priceChange.data.item.options,menuBefore.data.item.options);
+  assert.equal((await rpc('quote_cart',cart)).structuredContent.totalMinor,3700,'New quotes use the server-edited menu price');
+  assert.equal((await rpc('get_order_status',{tenantId:'restaurant-a',orderId:order.number},alice)).structuredContent.totalMinor,3500,'Existing orders keep their historical price');
+  assert.equal((await menuPost(alice,{expectedVersion:menuBefore.data.version,priceMinor:1200})).status,409);
+  assert.equal((await menuPost(alice,{expectedVersion:priceChange.data.version,priceMinor:1200})).status,200);
   const channels=await send(channelsPath,{cookie:alice.cookie});assert.equal(channels.status,200);
   assert.equal(channels.data.channels.find(row=>row.channel==='whatsapp_qr').adapterImplemented,false);
   const setChannel=(channel,newOrdersEnabled,expectedVersion)=>send(channelsPath+'/'+channel,{method:'POST',cookie:alice.cookie,
@@ -268,6 +286,17 @@ try {
       await page.locator(`form[action$="/stock/rice"] input[name="version"][value="${stockBefore.version+1}"]`).waitFor({state:'attached'});
       const stockAfter=(await send(stockPath,{cookie:alice.cookie})).data.items.find(item=>item.itemId==='rice');
       assert.equal(stockAfter.available,stockBefore.available+3);assert.equal(stockAfter.held,stockBefore.held);
+      const menuBeforeBrowser=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
+      await page.goto(baseUrl+'/manage/restaurant-a/menu');
+      await page.getByRole('link',{name:'Rice',exact:true}).click();
+      await page.waitForURL(baseUrl+'/manage/restaurant-a/menu/items/rice');
+      await page.getByLabel('السعر بالريال السعودي').fill('12.00');
+      await page.getByLabel('الوصف').fill('Synthetic menu browser edit');
+      await page.getByRole('button',{name:'حفظ الصنف',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${menuBeforeBrowser.version+1}"]`).waitFor({state:'attached'});
+      const menuAfterBrowser=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
+      assert.equal(menuAfterBrowser.item.priceMinor,1200);assert.equal(menuAfterBrowser.item.description,'Synthetic menu browser edit');
+      assert.deepEqual(menuAfterBrowser.item.options,menuBeforeBrowser.item.options);
       const registration=await app.auth.register({redirect_uris:['https://client.example/callback'],token_endpoint_auth_method:'none',grant_types:['authorization_code'],response_types:['code']});
       const verifier=randomBytes(32).toString('base64url');
       const grant={client_id:registration.client_id,redirect_uri:'https://client.example/callback',response_type:'code',resource:baseUrl+'/mcp',
@@ -297,6 +326,7 @@ try {
   assert.equal((await send(staffPath,{cookie:alice.cookie})).status,200,'Suspension preserves existing order operations');
   assert.equal((await send(channelsPath,{cookie:alice.cookie})).status,403,'Suspension does not permit enabling new channel work');
   assert.equal((await send(stockPath,{cookie:alice.cookie})).status,403,'Stock management requires an active tenant');
+  assert.equal((await send(menuPath,{cookie:alice.cookie})).status,403,'Menu management requires an active tenant');
   const cash=await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version});
   assert.equal(cash.status,200);assert.equal(cash.data.paymentStatus,'paid');
   assert.equal((await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version})).status,409);

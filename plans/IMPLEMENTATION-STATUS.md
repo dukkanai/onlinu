@@ -110,6 +110,19 @@ and one native codec skip; 155 platform, eight tenant, 80 client and 37 packagin
 tests pass. Go vet/build and client type-check/build pass. Chromium stock recount
 is included in the next remote CI run rather than claimed from local HTTP tests.
 
+Stock commit 49a0159 passed all CI jobs in run 37295426884, including the Chromium
+recount form and preserved active holds. Current menu item-edit increment has
+589 local Go passes/five known netlink restrictions/one codec skip, 157 platform,
+eight tenant, 80 client and 37 packaging tests passing. Focused Go/PostgreSQL
+proof covers private settings/table preservation, immutable historical order
+prices, optimistic conflicts and transactional audit failure. Remote browser
+menu editing remains to be validated after publication. See `CORE-MENU.md`.
+
+Near-term gaps remain explicit: owned customer receipt/detail and option/tax
+review, full menu CRUD/media and brand/settings/delivery/refund parity, native
+staff authentication/Flutter, real WhatsApp order ingress and controlled tenant
+provisioning. Successful increments do not close these release gates.
+
 ## External acceptance still required
 
 - Actual ChatGPT account/Extensions/Events flows on an approved HTTPS origin.

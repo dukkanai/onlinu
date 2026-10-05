@@ -39,6 +39,8 @@ Delivery/contact workflows, menu/brand/settings, refunds, full channel
 account management, audit UI, pagination and native staff login still require
 integration. New-order channel policy has its separate `CORE-CHANNELS.md` guide.
 Inventory read/recount and its audit boundary are documented in `CORE-STOCK.md`.
+Menu listing/item detail and basic versioned edits are in `CORE-MENU.md`; the
+remaining menu CRUD/media/editor work is explicitly separate.
 Existing original interfaces and their authorization remain unchanged.
 
 Tests cover customer-token exclusion, foreign membership, kitchen cash denial,

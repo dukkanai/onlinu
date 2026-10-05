@@ -51,6 +51,10 @@ func newRestaurantStore(ctx context.Context, db *sql.DB) (*restaurantStore, erro
 		version BIGINT NOT NULL CHECK (version > 0),
 		document JSONB NOT NULL,
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	);
+	CREATE TABLE IF NOT EXISTS restaurant_catalog_audit (
+		version BIGINT PRIMARY KEY,actor_id TEXT NOT NULL,actor_scope TEXT NOT NULL,
+		kind TEXT NOT NULL,target_id TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 	)`); err != nil {
 		return nil, err
 	}
@@ -235,6 +239,17 @@ func (s *restaurantStore) SaveCatalog(ctx context.Context, catalog restaurantCat
 		return restaurantCatalog{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE restaurant_catalog SET version=$1, document=$2, updated_at=now() WHERE id=1`, catalog.Version, data); err != nil {
+		return restaurantCatalog{}, err
+	}
+	actorID, actorScope := "local-admin", "catalog:update"
+	if actor, ok := ctx.Value(platformStaffActorKey{}).(platformStaffActor); ok {
+		actorID, actorScope = actor.ID, actor.Scope
+	}
+	target := restaurantMenuTarget{Kind: "catalog_update"}
+	if selected, ok := ctx.Value(restaurantMenuTargetKey{}).(restaurantMenuTarget); ok {
+		target = selected
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO restaurant_catalog_audit(version,actor_id,actor_scope,kind,target_id) VALUES($1,$2,$3,$4,$5)", catalog.Version, actorID, actorScope, target.Kind, target.ID); err != nil {
 		return restaurantCatalog{}, err
 	}
 	if err := tx.Commit(); err != nil {

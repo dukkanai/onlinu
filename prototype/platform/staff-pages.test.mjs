@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage} from './staff-pages.mjs';
+import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage,staffMenuPage,staffMenuItemPage,menuPriceMinor} from './staff-pages.mjs';
 const order={number:'R2026000001',version:2,status:'accepted',paymentStatus:'unpaid',paymentMethod:'cash_on_delivery',mode:'delivery',totalMinor:3500};
 test('staff pages display only authorized actions and escape dynamic content',()=>{
   const kitchen={permissions:['orders:read','orders:update'],tenantStatus:'active'};
@@ -35,4 +35,16 @@ test('stock interface distinguishes untracked amounts and does not offer writes 
   assert.match(read,/ليس قياسًا/);assert.match(read,/&lt;Rice&gt;/);assert.doesNotMatch(read,/<form/);
   const edit=staffStockPage({...config,membership:{permissions:['stock:read','stock:update']}});
   assert.match(edit,/name="version" value="0"/);assert.match(edit,/حفظ مخزون &lt;Rice&gt;/);assert.match(edit,/لا يمسح الحجوزات القائمة/);
+});
+test('menu form prices are exact minor units without floating point parsing',()=>{
+  for(const [input,expected] of [['0',0],['0.01',1],['12.29',1229],['١٢٫٥',1250],['۱۲.۵۰',1250],['1000000.00',100000000]])assert.equal(menuPriceMinor(input),expected);
+  for(const value of ['',null,12,'-1','1e3','1,000','12.345','1000000.01','NaN','Infinity'])assert.equal(menuPriceMinor(value),null);
+});
+test('menu views escape names and do not give read-only staff editing forms',()=>{
+  const item={id:'rice',categoryId:'main',name:'<Rice>',description:'<script>text</script>',priceMinor:1200,available:true,sort:0,options:[]};
+  const menu={name:'Test',version:2,currency:'SAR',categories:[{id:'main',name:'Main',sort:0}],items:[item],item};
+  assert.match(staffMenuPage({tenantId:'a',menu}),/&lt;Rice&gt;/);
+  assert.doesNotMatch(staffMenuItemPage({tenantId:'a',menu,membership:{permissions:['menu:read']},csrf:'test'}),/<form/);
+  const editable=staffMenuItemPage({tenantId:'a',menu,membership:{permissions:['menu:read','menu:update']},csrf:'test'});
+  assert.match(editable,/value="12\.00"/);assert.match(editable,/&lt;script&gt;/);assert.doesNotMatch(editable,/<script>/);
 });

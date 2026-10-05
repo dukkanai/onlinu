@@ -25,6 +25,48 @@ type platformStaffOrderView struct {
 // control plane resolves current membership before signing each operation.
 // No restaurant master key or caller-supplied role enters this path.
 func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(string, func(http.ResponseWriter, *http.Request, []byte, string)) http.HandlerFunc) {
+	mux.HandleFunc("GET /platform-api/staff/menu", wrap("staff:menu:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
+		if r.URL.RawQuery != "" {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		menu, err := s.orders.store.StaffMenu(r.Context())
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, menu)
+	}))
+	mux.HandleFunc("GET /platform-api/staff/menu/items/{itemId}", wrap("staff:menu:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
+		if r.URL.RawQuery != "" {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		item, err := s.orders.store.StaffMenuItem(r.Context(), r.PathValue("itemId"))
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, item)
+	}))
+	mux.HandleFunc("POST /platform-api/staff/menu/items/{itemId}", wrap("staff:menu:update", func(w http.ResponseWriter, r *http.Request, body []byte, actor string) {
+		if r.URL.RawQuery != "" {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		var input restaurantMenuItemPatch
+		if !decodeRestaurantBody(w, r, &input) {
+			return
+		}
+		ctx := context.WithValue(r.Context(), platformStaffActorKey{}, platformStaffActor{actor, "staff:menu:update"})
+		item, err := s.orders.store.PatchMenuItem(ctx, r.PathValue("itemId"), input)
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, item)
+	}))
 	mux.HandleFunc("GET /platform-api/staff/stock", wrap("staff:stock:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
 		if r.URL.RawQuery != "" {
 			writeRestaurantError(w, restaurantFail(400, "invalid_request"))

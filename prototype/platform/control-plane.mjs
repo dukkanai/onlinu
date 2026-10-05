@@ -12,7 +12,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffHome, staffOrdersPage, staffChannelsPage, staffStockPage } from './staff-pages.mjs';
+import { staffHome, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -31,9 +31,9 @@ function fields(entries) {
   if (new Set(entries.map(([key]) => key)).size !== entries.length) throw problem(400, 'duplicate_parameter');
   return Object.fromEntries(entries);
 }
-async function body(req) {
+async function body(req,maxBytes=32768) {
   const chunks = []; let bytes = 0;
-  for await (const chunk of req) { bytes += chunk.length; if (bytes > 32768) throw problem(413, 'body_too_large'); chunks.push(chunk); }
+  for await (const chunk of req) { bytes += chunk.length; if (bytes > maxBytes) throw problem(413, 'body_too_large'); chunks.push(chunk); }
   const raw = Buffer.concat(chunks).toString('utf8');
   if (req.headers['content-type']?.startsWith('application/x-www-form-urlencoded')) return fields([...new URLSearchParams(raw)]);
   if (!req.headers['content-type']?.startsWith('application/json')) throw problem(415, 'json_required');
@@ -226,6 +226,26 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           return redirect(res,'/checkout/'+checkoutId,303);
         }
       }
+      const managementMenu=/^\/manage\/([a-z0-9-]{1,64})\/menu(?:\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79}))?$/.exec(url.pathname);
+      if(managementMenu&&orderClient){
+        const [,tenantId,itemId]=managementMenu;
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
+        const who=await browser(req);if(url.search)throw problem(400,'invalid_request');
+        if(req.method==='GET'){
+          const membership=await directory.authorize(who.id,tenantId,'menu:read');
+          const menu=itemId?await orderClient.menuItem(tenantId,who.id,itemId):await orderClient.menu(tenantId,who.id);
+          htmlHeaders(res);res.end(itemId?staffMenuItemPage({tenantId,membership,menu,csrf:auth.csrfToken(req)}):staffMenuPage({tenantId,menu}));return;
+        }
+        if(req.method==='POST'&&itemId){
+          const input=await body(req);auth.verifyCsrf(req,input.csrf);
+          await directory.authorize(who.id,tenantId,'menu:update');
+          const priceMinor=menuPriceMinor(input.price);
+          if(Object.keys(input).some(key=>!['csrf','expectedVersion','name','description','price','categoryId','available','sort'].includes(key))||priceMinor===null||!['true','false'].includes(input.available)||!/^\d{1,16}$/.test(input.expectedVersion??'')||!/^\d{1,5}$/.test(input.sort??''))throw problem(400,'invalid_request');
+          await orderClient.patchMenuItem(tenantId,who.id,itemId,{expectedVersion:Number(input.expectedVersion),name:input.name,description:input.description,priceMinor,
+            categoryId:input.categoryId,available:input.available==='true',sort:Number(input.sort)});
+          return redirect(res,`/manage/${tenantId}/menu/items/${itemId}`,303);
+        }
+      }
       const managementStock=/^\/manage\/([a-z0-9-]{1,64})\/stock(?:\/([A-Za-z0-9_-]{1,128}))?$/.exec(url.pathname);
       if(managementStock&&orderClient){
         const [,tenantId,itemId]=managementStock;
@@ -295,6 +315,19 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const who = await browser(req);
         if (req.method !== 'GET') auth.verifyCsrf(req);
         if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { principal: who, csrfToken: auth.csrfToken(req) });
+        const menuRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu(?:\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79}))?$/.exec(url.pathname);
+        if(menuRoute&&orderClient){
+          if(url.search)throw problem(400,'invalid_request');
+          const [,tenantId,itemId]=menuRoute;
+          if(req.method==='GET'){
+            await directory.authorize(who.id,tenantId,'menu:read');
+            return json(res,200,itemId?await orderClient.menuItem(tenantId,who.id,itemId):await orderClient.menu(tenantId,who.id));
+          }
+          if(req.method==='POST'&&itemId){
+            await directory.authorize(who.id,tenantId,'menu:update');
+            return json(res,200,await orderClient.patchMenuItem(tenantId,who.id,itemId,await body(req,128*1024)));
+          }
+        }
         const stockRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/stock(?:\/([A-Za-z0-9_-]{1,128}))?$/.exec(url.pathname);
         if(stockRoute&&orderClient){
           if(url.search)throw problem(400,'invalid_request');

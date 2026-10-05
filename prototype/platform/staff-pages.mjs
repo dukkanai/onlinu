@@ -5,8 +5,35 @@ const label=value=>escape(labels[value]??value);
 const page=(title,body)=>`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title><h1>${escape(title)}</h1>${body}</html>`;
 
 export function staffHome(principal){
-  const memberships=principal.memberships.filter(member=>['orders:read','channels:manage','stock:read'].some(permission=>member.permissions.includes(permission)));
-  return page('إدارة المطاعم',`<p>اختر المطعم. لا يظهر هنا إلا ما تسمح به عضويتك الحالية.</p><ul>${memberships.map(member=>`<li>${member.permissions.includes('orders:read')?`<a href="/manage/${escape(member.tenantId)}/orders">${escape(member.tenantId)}</a>`:escape(member.tenantId)} (${escape(member.role)}) ${member.permissions.includes('channels:manage')?`<a href="/manage/${escape(member.tenantId)}/channels">قنوات ${escape(member.tenantId)}</a>`:''} ${member.permissions.includes('stock:read')?`<a href="/manage/${escape(member.tenantId)}/stock">مخزون ${escape(member.tenantId)}</a>`:''}</li>`).join('')}</ul>${memberships.length?'':'<p>لا توجد عضوية تسمح بالإدارة.</p>'}<a href="/">الصفحة الرئيسية</a>`);
+  const sections=[['orders:read','orders',''],['menu:read','menu','منيو '],['stock:read','stock','مخزون '],['channels:manage','channels','قنوات ']];
+  const memberships=principal.memberships.filter(member=>sections.some(([permission])=>member.permissions.includes(permission)));
+  const rows=memberships.map(member=>{
+    const links=sections.filter(([permission])=>member.permissions.includes(permission)).map(([,path,prefix])=>`<a href="/manage/${escape(member.tenantId)}/${path}">${escape(prefix+member.tenantId)}</a>`).join(' · ');
+    return `<li>${links} (${escape(member.role)})</li>`;
+  }).join('');
+  return page('إدارة المطاعم',`<p>اختر المطعم. لا يظهر هنا إلا ما تسمح به عضويتك الحالية.</p><ul>${rows}</ul>${memberships.length?'':'<p>لا توجد عضوية تسمح بالإدارة.</p>'}<a href="/">الصفحة الرئيسية</a>`);
+}
+
+export function menuPriceMinor(value){
+  if(typeof value!=='string')return null;
+  const normalized=value.trim().replace(/[٠-٩]/g,char=>String(char.charCodeAt(0)-0x660)).replace(/[۰-۹]/g,char=>String(char.charCodeAt(0)-0x6f0)).replace(/٫/g,'.');
+  if(!/^\d{1,7}(?:\.\d{1,2})?$/.test(normalized))return null;
+  const [whole,fraction='']=normalized.split('.');
+  const minor=Number(whole)*100+Number(fraction.padEnd(2,'0'));
+  return minor<=100_000_000?minor:null;
+}
+
+export function staffMenuPage({tenantId,menu}){
+  const categories=new Map(menu.categories.map(category=>[category.id,category.name]));
+  const items=menu.items.map(item=>`<li><a href="/manage/${escape(tenantId)}/menu/items/${escape(item.id)}">${escape(item.name)}</a> — ${escape(categories.get(item.categoryId)??item.categoryId)} — ${escape((item.priceMinor/100).toFixed(2))} SAR — ${item.available?'مفعّل في المنيو':'غير مفعّل'}</li>`).join('');
+  return page('منيو '+menu.name,`<a href="/manage">مطاعمي</a><p>الإصدار: ${escape(menu.version)}. التغييرات الجديدة لا تعيد تسعير الطلبات السابقة.</p><ul>${items}</ul>`);
+}
+
+export function staffMenuItemPage({tenantId,membership,menu,csrf}){
+  const item=menu.item;
+  const options=(item.options??[]).map(option=>`<li>${escape(option.name)}: ${escape((option.priceMinor/100).toFixed(2))} SAR (${option.available?'مفعّل':'غير مفعّل'})</li>`).join('');
+  const form=membership.permissions.includes('menu:update')?`<form method="post" action="/manage/${escape(tenantId)}/menu/items/${escape(item.id)}"><input type="hidden" name="csrf" value="${escape(csrf)}"><input type="hidden" name="expectedVersion" value="${escape(menu.version)}"><label>اسم الصنف <input name="name" required maxlength="320" value="${escape(item.name)}"></label><label>الوصف <textarea name="description" maxlength="4000">${escape(item.description)}</textarea></label><label>السعر بالريال السعودي <input name="price" inputmode="decimal" required maxlength="16" value="${escape((item.priceMinor/100).toFixed(2))}"></label><label>القسم <select name="categoryId">${menu.categories.map(category=>`<option value="${escape(category.id)}" ${item.categoryId===category.id?'selected':''}>${escape(category.name)}</option>`).join('')}</select></label><label>التوفر اليدوي <select name="available"><option value="true" ${item.available?'selected':''}>مفعّل</option><option value="false" ${!item.available?'selected':''}>غير مفعّل</option></select></label><label>الترتيب <input type="number" name="sort" min="0" max="10000" step="1" required value="${escape(item.sort)}"></label><button>حفظ الصنف</button></form>`:'';
+  return page(item.name,`<a href="/manage/${escape(tenantId)}/menu">المنيو</a><p>السعر: ${escape((item.priceMinor/100).toFixed(2))} SAR. الإصدار: ${escape(menu.version)}</p><p>تظل قواعد المخزون وفتح المطعم سارية. هذا النموذج يحافظ على الصورة والإضافات وإعدادات المطعم والطاولات.</p>${form}<h2>الإضافات الحالية</h2><ul>${options}</ul>`);
 }
 
 export function staffStockPage({tenantId,membership,items,catalog,csrf}){
