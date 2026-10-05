@@ -58,3 +58,9 @@ and real PostgreSQL lock contention. Cross-language HTTP tests cover staff scope
 browser ownership and expired retry after reopening. Chromium CI adds form
 disable/enable round trips. These are synthetic isolated tests, not live-account
 or production acceptance. No database cleanup or outbox retention is automatic.
+
+The native Windows client now offers the same versioned new-order policy controls
+under `channels:manage`, with explicit confirmation and unsupported-adapter labels.
+It does not expose WhatsApp account/device login controls or change existing calls.
+Suspended restaurant permissions continue to allow existing-order settlement,
+matching the authoritative identity directory; channel/inventory edits remain denied.

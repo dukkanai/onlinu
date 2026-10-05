@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'controller.dart';
 import 'models.dart';
 import 'stock_pane.dart';
+import 'channels_pane.dart';
 
 class CoreApp extends StatefulWidget {
   const CoreApp({super.key, required this.controller});
@@ -175,7 +176,7 @@ class CoreScreen extends StatelessWidget {
                               .map((v) => DropdownMenuItem(
                                   value: v.tenantId,
                                   child: Text(
-                                      '${v.tenantId}${v.tenantStatus == 'suspended' ? ' • موقوف' : ''}')))
+                                      '${v.tenantName}${v.tenantName != v.tenantId ? ' • ${v.tenantId}' : ''}${v.tenantStatus == 'suspended' ? ' • موقوف' : ''}')))
                               .toList(),
                           onChanged: c.busy
                               ? null
@@ -207,6 +208,9 @@ class CoreScreen extends StatelessWidget {
                                 icon: const Icon(Icons.refresh),
                                 label: const Text('تحديث')),
                           ]),
+                      if (member?.tenantStatus == 'suspended')
+                        const Text(
+                            'المطعم موقوف للطلبات الجديدة. يمكن متابعة الطلبات المقبولة وتسويتها حسب صلاحياتك.'),
                       if (c.busy) const LinearProgressIndicator(),
                       if (c.selectedTenant == null)
                         const Padding(
@@ -234,7 +238,20 @@ class CoreScreen extends StatelessWidget {
                                         unawaited(
                                             c.selectSection(CoreSection.stock));
                                       }),
+                          if (member.can('channels:manage'))
+                            ChoiceChip(
+                                label: const Text('قنوات الطلب'),
+                                selected: c.section == CoreSection.channels,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(c.selectSection(
+                                            CoreSection.channels));
+                                      }),
                         ]),
+                      if (c.section == CoreSection.channels &&
+                          member?.can('channels:manage') == true)
+                        ChannelsPane(controller: c),
                       if (c.section == CoreSection.stock &&
                           member?.can('stock:read') == true)
                         StockPane(

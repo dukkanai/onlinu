@@ -27,6 +27,8 @@ String money(int value) =>
 class CoreMembership {
   CoreMembership(Map<String, dynamic> json)
       : tenantId = tenantKey(json['tenantId']),
+        tenantName =
+            textField(json['tenantName'] ?? json['tenantId'], max: 160),
         role = textField(json['role'], max: 40),
         tenantStatus = textField(json['tenantStatus'], max: 40),
         displayName = textField(json['displayName'] ?? '', max: 120),
@@ -35,10 +37,21 @@ class CoreMembership {
     if (json['enabled'] != true ||
         !{'active', 'suspended'}.contains(tenantStatus)) invalidResponse();
   }
-  final String tenantId, role, tenantStatus, displayName;
+  final String tenantId, tenantName, role, tenantStatus, displayName;
   final Set<String> permissions;
   bool can(String permission) =>
-      tenantStatus == 'active' && permissions.contains(permission);
+      permissions.contains(permission) &&
+      (tenantStatus == 'active' ||
+          tenantStatus == 'suspended' &&
+              const {
+                'orders:read',
+                'orders:update',
+                'delivery:read',
+                'delivery:assign',
+                'payments:read',
+                'payments:collect',
+                'refunds:manage',
+              }.contains(permission));
 }
 
 class CoreProfile {
@@ -166,4 +179,28 @@ int? stockQuantity(String raw) {
   if (!RegExp(r'^[0-9]{1,7}$').hasMatch(digits)) return null;
   final result = int.tryParse(digits);
   return result != null && result <= 1000000 ? result : null;
+}
+
+const channelLabels = {
+  'web': 'الموقع',
+  'chatgpt': 'ChatGPT',
+  'whatsapp_qr': 'واتساب QR',
+  'whatsapp_cloud': 'واتساب Cloud API'
+};
+
+class CoreChannel {
+  CoreChannel(Map<String, dynamic> json, {required this.tenantId})
+      : channel = textField(json['channel'], max: 40),
+        version = integer(json['version'], min: 1),
+        newOrdersEnabled = json['newOrdersEnabled'] is bool
+            ? json['newOrdersEnabled'] as bool
+            : invalidResponse(),
+        adapterImplemented = json['adapterImplemented'] is bool
+            ? json['adapterImplemented'] as bool
+            : invalidResponse() {
+    if (!channelLabels.containsKey(channel)) invalidResponse();
+  }
+  final String tenantId, channel;
+  final int version;
+  final bool newOrdersEnabled, adapterImplemented;
 }

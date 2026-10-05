@@ -53,7 +53,7 @@ test('native HTTP consent, audience isolation, membership limits and own-device 
  const exchanged=await send('/native/oauth/token',{method:'POST',body:tokenBody(pending)});assert.equal(exchanged.status,200);const session=exchanged.data;
  await t.test('native API uses current restaurant membership even for platform operators',async()=>{
   assert.equal((await send('/native/oauth/token',{method:'POST',body:tokenBody(pending)})).status,400);
-  const me=await send('/native/api/me',{token:session.access_token});assert.equal(me.status,200);assert.equal(me.data.principal.id,alice.id);assert.equal(me.data.csrfToken,undefined);
+  const me=await send('/native/api/me',{token:session.access_token});assert.equal(me.status,200);assert.equal(me.data.principal.id,alice.id);assert.equal(me.data.principal.memberships[0].tenantName,'A');assert.equal(me.data.csrfToken,undefined);
   assert.equal((await send('/native/api/me',{who:alice})).status,403);assert.equal((await send('/native/api/me',{token:customerToken})).status,401);
   assert.equal((await send('/api/me',{token:session.access_token})).status,403);
   assert.equal((await send('/native/api/restaurants/a/members',{token:session.access_token})).status,200);

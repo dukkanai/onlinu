@@ -35,7 +35,8 @@ function parse(schema, input) {
 function safeRow(row) {
   return { principalId: row.principal_id, tenantId: row.tenant_id, role: row.role,
     permissions: row.permissions, enabled: row.enabled, version: Number(row.version), displayName:row.display_name??'',
-    ...(row.tenant_status ? { tenantStatus: row.tenant_status } : {}) };
+    ...(row.tenant_status ? { tenantStatus: row.tenant_status } : {}),
+    ...(typeof row.tenant_name==='string'?{tenantName:row.tenant_name}:{}) };
 }
 
 export function createIdentityDirectory({ pool, trustedIssuers }) {
@@ -107,7 +108,7 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
     if (!key.safeParse(principalId).success) return null;
     const { rows } = await pool.query('SELECT id FROM platform_identities WHERE id=$1 AND enabled=TRUE', [principalId]);
     if (!rows[0]) return null;
-    const memberships = await pool.query(`SELECT m.*,t.status AS tenant_status FROM platform_memberships m
+    const memberships = await pool.query(`SELECT m.*,t.status AS tenant_status,t.name AS tenant_name FROM platform_memberships m
       JOIN platform_tenants t ON t.id=m.tenant_id WHERE m.principal_id=$1 AND m.enabled=TRUE AND t.status IN ('active','suspended')
       ORDER BY m.tenant_id`, [principalId]);
     // Staff can also be customers. Staff authority is never inferred from OAuth

@@ -5,12 +5,12 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 14:04 UTC
+## Latest verified position — 2026-10-05 14:13 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `0c1d61cbc3d4dcfbcaf0f15729d4d9d8bc2cb65e`, CI [37319998899](https://github.com/dukkanai/onlinu/actions/runs/37319998899), all jobs successful.
+- Latest published and fully verified commit: `eef4a7c874d30be543ae9538208d3dfbced7c603`, CI [37321917046](https://github.com/dukkanai/onlinu/actions/runs/37321917046), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Current locally verified increment: native inventory UI/recount, original-core product labels, and immediate order-detail dialog; 44 Flutter tests, 190 platform tests and Go stock/bridge race checks pass. Remote verification pending.
+- Published native inventory/detail increment is fully CI verified (44 Flutter tests plus actual Windows smoke/build). Current locally verified increment: native channel controls, suspension settlement parity and restaurant display names; 49 Flutter tests and190 platform/Go-bridge checks pass. Remote verification pending.
 - Native Windows PKCE client, order/cash UI, actual OS-store/rendering smoke and unsigned build are verified at the published commit above. The synthetic screenshot was inspected; no Arabic clipping observed.
 - POS integration is explicitly deferred by the owner’s voice instruction; continue current development without choosing/connecting a vendor.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
@@ -274,3 +274,16 @@ Go stock and cross-language integration race tests, Go vet/build and diff checks
 Windows OS storage/native renderer/release acceptance for the previous increment
 is fully green in CI37319998899; current increment needs its own remote run.
 Deferred POS scope is recorded in the transformation plan, not implemented.
+
+
+### Native channel controls and suspension parity — 2026-10-05
+
+Inventory commit `eef4a7c` passed all jobs in CI37321917046. The next native
+increment exposes versioned new-order channel controls with explicit confirmation,
+independent `channels:manage` access and no enable controls for unfinished
+WhatsApp shopping adapters. Existing WhatsApp calling/messaging is untouched.
+Suspended tenants retain original-core permitted existing-order settlement;
+inventory/channel changes stay blocked. Profile membership responses now include
+the current restaurant display name as an additive field; IDs still route requests.
+Local Flutter analyze/all49 tests and platform190 tests plus Go↔Node race pass.
+This is not a POS implementation or external-account acceptance claim.

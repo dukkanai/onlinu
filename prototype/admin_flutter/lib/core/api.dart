@@ -5,6 +5,9 @@ import 'transport.dart';
 abstract interface class CoreGateway {
   CoreSession get session;
   Future<CoreProfile> profile();
+  Future<List<CoreChannel>> channels(String tenant);
+  Future<CoreChannel> setChannel(
+      String tenant, CoreChannel channel, bool enabled);
   Future<List<CoreStockItem>> stock(String tenant);
   Future<CoreStockItem> setStock(String tenant, CoreStockItem item,
       {required bool tracked, required int available});
@@ -133,6 +136,41 @@ class CoreApi implements CoreGateway {
       final result = CoreStockItem(data, tenantId: tenant);
       if (result.itemId != item.itemId || result.version <= item.version)
         invalidResponse();
+      return result;
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
+  }
+
+  @override
+  Future<List<CoreChannel>> channels(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/channels');
+    _tenant(data, tenant);
+    final rows = array(data['channels'], max: 4)
+        .map((v) => CoreChannel(object(v), tenantId: tenant))
+        .toList(growable: false);
+    if (rows.length != 4 || rows.map((v) => v.channel).toSet().length != 4)
+      invalidResponse();
+    return List.unmodifiable(rows);
+  }
+
+  @override
+  Future<CoreChannel> setChannel(
+      String tenant, CoreChannel channel, bool enabled) async {
+    if (channel.tenantId != tenant || !channel.adapterImplemented)
+      throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(tenant)}/staff/channels/${channel.channel}',
+        body: {
+          'expectedVersion': channel.version,
+          'newOrdersEnabled': enabled
+        });
+    try {
+      _tenant(data, tenant);
+      final result = CoreChannel(data, tenantId: tenant);
+      if (result.channel != channel.channel ||
+          result.version <= channel.version) invalidResponse();
       return result;
     } on CoreException {
       throw const CoreException('invalid_response', uncertain: true);

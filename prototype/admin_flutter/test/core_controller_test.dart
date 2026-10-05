@@ -160,6 +160,29 @@ void main() {
     controller.setSuspended(true);
     expect(controller.writable, false);
   });
+  test(
+      'suspended restaurants retain existing-order settlement but cannot change stock',
+      () async {
+    api.currentProfile = CoreProfile({
+      'id': principalId,
+      'memberships': [
+        memberJson('demo-a', status: 'suspended', permissions: [
+          'orders:read',
+          'orders:update',
+          'payments:collect',
+          'stock:read',
+          'stock:update'
+        ])
+      ]
+    });
+    await c.start(restore: false);
+    expect(c.orders, isNotEmpty);
+    expect(c.membership!.can('stock:update'), false);
+    await c.change(c.orders.single);
+    expect(api.writes, 1);
+    await c.selectSection(CoreSection.stock);
+    expect(c.section, CoreSection.orders);
+  });
   test('cash/payment progression matches original core and money uses integers',
       () {
     expect(orderFixture(payment: 'unpaid').nextStatus, isNull);

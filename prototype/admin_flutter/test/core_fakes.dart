@@ -150,6 +150,15 @@ CoreStockItem stockFixture(
       'version': version
     }, tenantId: tenant);
 
+CoreChannel channelFixture(String channel,
+        {String tenant = 'demo-a', int version = 1, bool? enabled}) =>
+    CoreChannel({
+      'channel': channel,
+      'version': version,
+      'newOrdersEnabled': enabled ?? (channel == 'web' || channel == 'chatgpt'),
+      'adapterImplemented': channel == 'web' || channel == 'chatgpt'
+    }, tenantId: tenant);
+
 class FakeCoreGateway implements CoreGateway {
   @override
   final FakeCoreSession session = FakeCoreSession();
@@ -160,6 +169,9 @@ class FakeCoreGateway implements CoreGateway {
   Completer<CoreOrder>? detailGate, writeGate;
   int writes = 0, reads = 0, profiles = 0;
   int stockWrites = 0, stockReads = 0;
+  int channelWrites = 0;
+  List<CoreChannel> currentChannels =
+      channelLabels.keys.map((v) => channelFixture(v)).toList();
   CoreStockItem currentStock = stockFixture();
   Completer<List<CoreStockItem>>? stockGate;
   Completer<CoreStockItem>? stockWriteGate;
@@ -240,5 +252,27 @@ class FakeCoreGateway implements CoreGateway {
         available: available,
         held: item.held);
     return currentStock;
+  }
+
+  @override
+  Future<List<CoreChannel>> channels(String tenant) async {
+    if (readError != null) throw readError!;
+    return currentChannels
+        .map((v) => channelFixture(v.channel,
+            tenant: tenant, version: v.version, enabled: v.newOrdersEnabled))
+        .toList();
+  }
+
+  @override
+  Future<CoreChannel> setChannel(
+      String tenant, CoreChannel channel, bool enabled) async {
+    channelWrites++;
+    if (writeError != null) throw writeError!;
+    final result = channelFixture(channel.channel,
+        tenant: tenant, version: channel.version + 1, enabled: enabled);
+    currentChannels = currentChannels
+        .map((v) => v.channel == channel.channel ? result : v)
+        .toList();
+    return result;
   }
 }

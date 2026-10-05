@@ -5,7 +5,15 @@ import 'auth.dart';
 import 'models.dart';
 import 'transport.dart';
 
-enum CoreSection { orders, stock }
+enum CoreSection { orders, stock, channels }
+
+extension CoreSectionPermission on CoreSection {
+  String get permission => switch (this) {
+        CoreSection.orders => 'orders:read',
+        CoreSection.stock => 'stock:read',
+        CoreSection.channels => 'channels:manage'
+      };
+}
 
 class CoreController extends ChangeNotifier {
   CoreController(this.api,
@@ -17,6 +25,7 @@ class CoreController extends ChangeNotifier {
   final DateTime Function() _now;
   CoreSection section = CoreSection.orders;
   List<CoreStockItem> stock = const [];
+  List<CoreChannel> channels = const [];
   CoreProfile? profile;
   String? selectedTenant;
   List<CoreOrder> orders = const [];
@@ -49,6 +58,7 @@ class CoreController extends ChangeNotifier {
   }
 
   void _clearOrders() {
+    channels = const [];
     stock = const [];
     orders = const [];
     detail = null;
@@ -59,20 +69,20 @@ class CoreController extends ChangeNotifier {
   }
 
   void _chooseSection() {
-    if (membership?.can('orders:read') != true &&
-        membership?.can('stock:read') == true)
-      section = CoreSection.stock;
-    else if (membership?.can('stock:read') != true &&
-        membership?.can('orders:read') == true) section = CoreSection.orders;
+    if (membership?.can(section.permission) == true) return;
+    for (final value in CoreSection.values) {
+      if (membership?.can(value.permission) == true) {
+        section = value;
+        return;
+      }
+    }
   }
 
   Future<void> selectSection(CoreSection value) async {
     if (busy ||
         !signedIn ||
         value == section ||
-        membership?.can(
-                value == CoreSection.orders ? 'orders:read' : 'stock:read') !=
-            true) return;
+        membership?.can(value.permission) != true) return;
     ++_generation;
     section = value;
     message = null;
@@ -175,9 +185,7 @@ class CoreController extends ChangeNotifier {
         return;
       }
       final member = membership;
-      if (member == null ||
-          !member.can(
-              section == CoreSection.orders ? 'orders:read' : 'stock:read')) {
+      if (member == null || !member.can(section.permission)) {
         if (member == null) selectedTenant = null;
         _clearOrders();
         message = member?.tenantStatus == 'suspended'
@@ -190,10 +198,14 @@ class CoreController extends ChangeNotifier {
         final result = await api.orders(tenant);
         if (!_current(generation)) return;
         orders = result;
-      } else {
+      } else if (section == CoreSection.stock) {
         final result = await api.stock(tenant);
         if (!_current(generation)) return;
         stock = result;
+      } else {
+        final result = await api.channels(tenant);
+        if (!_current(generation)) return;
+        channels = result;
       }
       online = true;
       refreshedAt = _now();
@@ -340,6 +352,42 @@ class CoreController extends ChangeNotifier {
           tracked: tracked, available: available);
       if (_current(generation))
         message = 'حُفظ الجرد دون تغيير الكميات المحجوزة للطلبات.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
+  Future<void> changeChannel(CoreChannel expected, bool enabled) async {
+    final tenant = selectedTenant;
+    if (section != CoreSection.channels ||
+        !writable ||
+        tenant == null ||
+        expected.tenantId != tenant ||
+        !expected.adapterImplemented ||
+        membership?.can('channels:manage') != true) return;
+    if (!channels.any((v) =>
+        v.channel == expected.channel && v.version == expected.version)) {
+      message = 'تغير إعداد القناة. راجع النسخة الحالية.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.setChannel(tenant, expected, enabled);
+      if (_current(generation))
+        message = enabled
+            ? 'فُتح استقبال الطلبات الجديدة لهذه القناة.'
+            : 'أُوقف استقبال الطلبات الجديدة لهذه القناة؛ الطلبات المقبولة مستمرة.';
     } catch (error) {
       if (_current(generation)) _failure(error);
     } finally {
