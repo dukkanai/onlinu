@@ -98,6 +98,7 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     let row = await owned(who.id,checkoutId);
     if (row.state === 'confirmed') return record(row,await orderClient.status(row.tenant_id,who.id,row.order_number));
     if (row.state === 'dispatching') { const recovered = await recovery(row); if (recovered) return recovered; }
+    if (!row.live) throw problem(409,'checkout_expired');
     if (!await isTenantActive(row.tenant_id)) throw problem(409,'tenant_unavailable');
     const contact = parse(coreConfirmationInput,value);
     const input = { ...row.cart,...contact, ...(row.cart.address || contact.address ? {address:{...row.cart.address,...contact.address}} : {}),
@@ -113,7 +114,7 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     try {
       await db.query('BEGIN'); row = await owned(who.id,checkoutId,db,true);
       if (row.state !== 'confirmed') {
-        if (row.state === 'pending' && !row.live) throw problem(409,'checkout_expired');
+        if (!row.live) throw problem(409,'checkout_expired');
         if (row.confirmation_hash && row.confirmation_hash !== confirmationHash) throw problem(409,'confirmation_conflict');
         await db.query("UPDATE platform_core_checkouts SET state='dispatching',confirmation_hash=$2 WHERE id=$1",[row.id,confirmationHash]);
       }

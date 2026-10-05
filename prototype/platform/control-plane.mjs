@@ -12,7 +12,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffHome, staffOrdersPage } from './staff-pages.mjs';
+import { staffHome, staffOrdersPage, staffChannelsPage } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -226,6 +226,24 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           return redirect(res,'/checkout/'+checkoutId,303);
         }
       }
+      const managementChannels=/^\/manage\/([a-z0-9-]{1,64})\/channels(?:\/(web|chatgpt|whatsapp_qr|whatsapp_cloud))?$/.exec(url.pathname);
+      if(managementChannels&&orderClient){
+        const [,tenantId,channel]=managementChannels;
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(`/manage/${tenantId}/channels`));
+        const who=await browser(req);
+        if(url.search)throw problem(400,'invalid_request');
+        await directory.authorize(who.id,tenantId,'channels:manage');
+        if(req.method==='GET'&&!channel){
+          const {channels}=await orderClient.channels(tenantId,who.id);
+          htmlHeaders(res);res.end(staffChannelsPage({tenantId,channels,csrf:auth.csrfToken(req)}));return;
+        }
+        if(req.method==='POST'&&channel){
+          const input=await body(req);auth.verifyCsrf(req,input.csrf);
+          if(Object.keys(input).some(key=>!['csrf','newOrdersEnabled','expectedVersion'].includes(key))||!['true','false'].includes(input.newOrdersEnabled)||!/^\d{1,16}$/.test(input.expectedVersion??''))throw problem(400,'invalid_request');
+          await orderClient.setChannel(tenantId,who.id,channel,{newOrdersEnabled:input.newOrdersEnabled==='true',expectedVersion:Number(input.expectedVersion)});
+          return redirect(res,`/manage/${tenantId}/channels`,303);
+        }
+      }
       const management=/^\/manage(?:\/([a-z0-9-]{1,64})\/orders(?:\/(R[0-9]{8,20})\/(status|cash))?)?$/.exec(url.pathname);
       if(management&&orderClient){
         if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
@@ -258,6 +276,14 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const who = await browser(req);
         if (req.method !== 'GET') auth.verifyCsrf(req);
         if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { principal: who, csrfToken: auth.csrfToken(req) });
+        const channelRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/channels(?:\/(web|chatgpt|whatsapp_qr|whatsapp_cloud))?$/.exec(url.pathname);
+        if(channelRoute&&orderClient){
+          if(url.search)throw problem(400,'invalid_request');
+          const [,tenantId,channel]=channelRoute;
+          await directory.authorize(who.id,tenantId,'channels:manage');
+          if(req.method==='GET'&&!channel)return json(res,200,await orderClient.channels(tenantId,who.id));
+          if(req.method==='POST'&&channel)return json(res,200,await orderClient.setChannel(tenantId,who.id,channel,await body(req)));
+        }
         const staffRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/orders(?:\/(R[0-9]{8,20})\/(status|cash))?$/.exec(url.pathname);
         if(staffRoute&&orderClient){
           if(url.search)throw problem(400,'invalid_request');

@@ -453,6 +453,8 @@ func (s *server) registerRestaurantRoutes(mux *http.ServeMux) {
 	})
 	mux.Handle("/storefront-api/", guard(false, pub))
 	admin := http.NewServeMux()
+	admin.HandleFunc("GET /api/restaurant/order-channels", s.handleOrderChannels)
+	admin.HandleFunc("PUT /api/restaurant/order-channels/{channel}", func(w http.ResponseWriter, r *http.Request) { s.handleSetOrderChannel(w, r, "local-admin") })
 	admin.HandleFunc("GET /api/restaurant/catalog", func(w http.ResponseWriter, r *http.Request) {
 		v, err := s.restaurant.GetCatalog(r.Context(), false)
 		if err != nil {

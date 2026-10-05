@@ -137,6 +137,7 @@ type restaurantTableChange struct {
 	At   time.Time `json:"at"`
 }
 type restaurantOrder struct {
+	Channel              string                    `json:"channel,omitempty"`
 	StockExpiresAt       *time.Time                `json:"stockExpiresAt,omitempty"`
 	PreparationStartedAt *time.Time                `json:"preparationStartedAt,omitempty"`
 	Cancellation         *restaurantCancellation   `json:"cancellation,omitempty"`

@@ -203,3 +203,8 @@ the ordinary prototype start command still runs synthetic data intentionally.
 The new Docker control runtime has a separate CI image-build/import check.
 Real provider credentials, ChatGPT acceptance, complete staff/Flutter parity and
 approved production rollout are separate outstanding requirements.
+
+The payment/Events and initial staff order bridge subsequently passed full CI at
+`2b24ccd`, run `37289872901`, including isolated real-Chromium navigation tests.
+The next channel-policy increment is documented in `CORE-CHANNELS.md` beside the
+other core integration guides; it is not a WhatsApp shopping completion claim.

@@ -75,6 +75,20 @@ The correction preserves strict Origin/CSRF checks while using `same-origin`
 referrer policy only on HTML. Local focused Go and all 150 platform tests pass;
 Chromium acceptance must still be confirmed on the new remote run.
 
+Commit 2b24ccd passed all CI jobs in run 37289872901, including actual Chromium
+payment redirect/Back, staff navigation, OAuth consent/registered callback/PKCE,
+full server race tests and the non-root control image. The browser transport is
+now explicitly isolated with CDP redirect interception and a dead loopback proxy;
+no real account/payment acceptance is implied.
+
+Current uncommitted increment: original-core atomic channel-ordering policy,
+staff/native management and browser forms, plus expired-unresolved-checkout
+recovery protection. See `prototype/platform/CORE-CHANNELS.md`. Full regression
+and publication of this increment remain pending.
+Its local full regression has 585 Go passes/five known network restrictions/one
+codec skip and 152 platform passes, with the final additional HTTP policy test
+covered by a subsequent focused race run. Vet/build and 37 packaging tests pass.
+
 ## External acceptance still required
 
 - Actual ChatGPT account/Extensions/Events flows on an approved HTTPS origin.

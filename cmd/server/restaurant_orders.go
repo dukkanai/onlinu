@@ -89,6 +89,9 @@ func newRestaurantOrders(ctx context.Context, store *restaurantStore) (*restaura
 	if err = initPlatformEventSchema(ctx, store.db); err != nil {
 		return nil, err
 	}
+	if err = initRestaurantOrderChannels(ctx, store.db); err != nil {
+		return nil, err
+	}
 	if err = restaurantInitCancellationSchema(ctx, store.db); err != nil {
 		return nil, err
 	}
@@ -203,6 +206,9 @@ func (s *restaurantOrders) Create(ctx context.Context, input restaurantOrderInpu
 	if !errors.Is(err, sql.ErrNoRows) {
 		return restaurantReceipt{}, err
 	}
+	if err = restaurantRequireNewOrderChannel(ctx, tx); err != nil {
+		return restaurantReceipt{}, err
+	}
 	input, err = restaurantCanonicalDeliveryInput(ctx, tx, input, true)
 	if err != nil {
 		return restaurantReceipt{}, err
@@ -234,7 +240,7 @@ func (s *restaurantOrders) Create(ctx context.Context, input restaurantOrderInpu
 	}
 	now := time.Now().UTC()
 	order := restaurantOrder{
-		Number: fmt.Sprintf("R%08d", sequence), Version: 1, Status: "new", Mode: input.Mode,
+		Number: fmt.Sprintf("R%08d", sequence), Version: 1, Status: "new", Mode: input.Mode, Channel: restaurantOrderChannel(ctx),
 		CustomerName: input.CustomerName, Phone: input.Phone, Address: input.Address,
 		TableChanges: []restaurantTableChange{}, Notes: input.Notes, Items: quote.Items,
 		SubtotalMinor: quote.SubtotalMinor, DeliveryFeeMinor: quote.DeliveryFeeMinor,

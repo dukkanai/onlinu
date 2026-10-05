@@ -73,6 +73,14 @@ test('owned core handoffs are durable, private and idempotent across ambiguous o
     const recovered=await store.confirm(alice,checkout.checkoutId,{});
     assert.equal(creates,before);assert.equal(recovered.number,orders.get(checkout.checkoutId).number);
   });
+  await t.test('expired unresolved dispatch may recover but cannot start a new order',async()=>{
+    const checkout=await store.prepare(alice,prepare(randomUUID()));failBeforeCreate=true;
+    await assert.rejects(store.confirm(alice,checkout.checkoutId,contact),{code:'order_outcome_unknown'});failBeforeCreate=false;
+    await pool.query("UPDATE platform_core_checkouts SET expires_at=now()-interval '1 minute' WHERE id=$1",[checkout.checkoutId]);
+    const before=creates;
+    await assert.rejects(store.confirm(alice,checkout.checkoutId,contact),{code:'checkout_expired'});
+    assert.equal(creates,before);assert.equal(orders.has(checkout.checkoutId),false);
+  });
   await t.test('unknown attempt freezes payload; a changed retry cannot create another order',async()=>{
     const checkout=await store.prepare(alice,prepare(randomUUID()));failBeforeCreate=true;
     await assert.rejects(store.confirm(alice,checkout.checkoutId,contact),{code:'order_outcome_unknown'});failBeforeCreate=false;

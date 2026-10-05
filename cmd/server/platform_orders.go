@@ -174,13 +174,15 @@ func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
 		}
 	}
 	s.registerPlatformStaffOrderRoutes(mux, wrap)
+	s.registerPlatformChannelRoutes(mux, wrap)
 	mux.HandleFunc("POST /platform-api/orders", wrap("orders:write", func(w http.ResponseWriter, r *http.Request, body []byte, owner string) {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		var input restaurantOrderInput
 		if !decodeRestaurantBody(w, r, &input) {
 			return
 		}
-		receipt, err := s.orders.Create(r.Context(), input, owner, r.Header.Get("Idempotency-Key"))
+		ctx := context.WithValue(r.Context(), restaurantOrderChannelKey{}, "chatgpt")
+		receipt, err := s.orders.Create(ctx, input, owner, r.Header.Get("Idempotency-Key"))
 		if err != nil {
 			writeRestaurantError(w, err)
 			return

@@ -5,8 +5,14 @@ const label=value=>escape(labels[value]??value);
 const page=(title,body)=>`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title><h1>${escape(title)}</h1>${body}</html>`;
 
 export function staffHome(principal){
-  const memberships=principal.memberships.filter(member=>member.permissions.includes('orders:read'));
-  return page('إدارة المطاعم',`<p>اختر المطعم لإدارة الطلبات. لا يظهر هنا إلا ما تسمح به عضويتك الحالية.</p><ul>${memberships.map(member=>`<li><a href="/manage/${escape(member.tenantId)}/orders">${escape(member.tenantId)}</a> (${escape(member.role)})</li>`).join('')}</ul>${memberships.length?'':'<p>لا توجد عضوية تسمح بعرض الطلبات.</p>'}<a href="/">الصفحة الرئيسية</a>`);
+  const memberships=principal.memberships.filter(member=>member.permissions.includes('orders:read')||member.permissions.includes('channels:manage'));
+  return page('إدارة المطاعم',`<p>اختر المطعم. لا يظهر هنا إلا ما تسمح به عضويتك الحالية.</p><ul>${memberships.map(member=>`<li>${member.permissions.includes('orders:read')?`<a href="/manage/${escape(member.tenantId)}/orders">${escape(member.tenantId)}</a>`:escape(member.tenantId)} (${escape(member.role)}) ${member.permissions.includes('channels:manage')?`<a href="/manage/${escape(member.tenantId)}/channels">قنوات ${escape(member.tenantId)}</a>`:''}</li>`).join('')}</ul>${memberships.length?'':'<p>لا توجد عضوية تسمح بالإدارة.</p>'}<a href="/">الصفحة الرئيسية</a>`);
+}
+
+export function staffChannelsPage({tenantId,channels,csrf}){
+  const names={web:'الموقع',chatgpt:'ChatGPT',whatsapp_qr:'واتساب QR',whatsapp_cloud:'واتساب Cloud API'};
+  const sections=channels.map(policy=>`<section><h2>${escape(names[policy.channel]??policy.channel)}</h2><p>استقبال الطلبات الجديدة: ${policy.newOrdersEnabled?'مسموح بالإعداد':'متوقف بالإعداد'}. الإصدار: ${escape(policy.version)}</p>${policy.adapterImplemented?`<form method="post" action="/manage/${escape(tenantId)}/channels/${escape(policy.channel)}"><input type="hidden" name="csrf" value="${escape(csrf)}"><input type="hidden" name="expectedVersion" value="${escape(policy.version)}"><label>استقبال طلبات ${escape(names[policy.channel])} <select name="newOrdersEnabled"><option value="true" ${policy.newOrdersEnabled?'selected':''}>مسموح</option><option value="false" ${!policy.newOrdersEnabled?'selected':''}>متوقف</option></select></label><button>حفظ إعداد القناة</button></form>`:'<p>محول الطلبات لهذه القناة غير مكتمل. هذا لا يغيّر اتصال واتساب أو المكالمات القائمة.</p>'}</section>`).join('');
+  return page('قنوات '+tenantId,`<a href="/manage">مطاعمي</a><p>الإيقاف يمنع إنشاء طلبات جديدة فقط. تبقى الطلبات السابقة وحالاتها ومدفوعاتها قابلة للمتابعة. السماح لا يغني عن جاهزية الربط وفتح المطعم.</p>${sections}`);
 }
 
 export function staffOrdersPage({tenantId,membership,orders,csrf}){

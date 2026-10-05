@@ -29,7 +29,11 @@ const safeCodes = new Set(['invalid_request','invalid_quantity','invalid_option'
   'address_required','country_required','location_required','outside_delivery_area','invalid_district',
   'district_unavailable','delivery_minimum','delivery_unavailable','store_closed','mode_unavailable',
   'item_unavailable','out_of_stock','payment_required','payment_unavailable','price_changed','conflict',
-  'invalid_order_access','platform_unauthorized','not_found','order_not_found','invalid_status','invalid_payment_method']);
+  'invalid_order_access','platform_unauthorized','not_found','order_not_found','invalid_status','invalid_payment_method',
+  'channel_ordering_disabled','channel_ordering_unavailable','invalid_order_channel']);
+const channelId=z.enum(['web','chatgpt','whatsapp_qr','whatsapp_cloud']);
+const channelPolicy=z.object({channel:channelId,newOrdersEnabled:z.boolean(),adapterImplemented:z.boolean(),
+  version:z.number().int().positive(),updatedAt:z.string().datetime({offset:true})});
 
 export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchImpl = fetch, now = Date.now }) {
   const source = new URL(issuer);
@@ -78,6 +82,14 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    channels(tenantId,subject){
+      return request(tenantId,subject,'GET','/platform-api/staff/channels',undefined,'','staff:channels:manage',z.object({channels:z.array(channelPolicy).length(4)}));
+    },
+    setChannel(tenantId,subject,channel,input){
+      const target=channelId.safeParse(channel),change=z.object({newOrdersEnabled:z.boolean(),expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1)}).strict().safeParse(input);
+      if(!target.success||!change.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST',`/platform-api/staff/channels/${target.data}`,change.data,'','staff:channels:manage',channelPolicy);
+    },
     staffOrders(tenantId,subject) {
       return request(tenantId,subject,'GET','/platform-api/staff/orders',undefined,'','staff:orders:read',
         z.object({orders:z.array(coreOrderView).max(100),limit:z.literal(100)}));

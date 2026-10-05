@@ -107,6 +107,9 @@ try {
   const loginPage=await send('/manage');assert.equal(loginPage.status,302);assert.equal(loginPage.headers.location,'/auth/login?returnTo=%2Fmanage');
   assert.equal((await send(loginPage.headers.location)).status,302,'OIDC accepts the bounded management return path');
   const bobMe=await send('/api/me',{cookie:bob.cookie});
+  const channelsPath='/api/restaurants/restaurant-a/staff/channels';
+  assert.equal((await send(channelsPath,{cookie:bob.cookie})).status,403,'Kitchen cannot configure channels');
+  assert.equal((await send(channelsPath,{token:alice.token})).status,403,'Customer OAuth cannot configure channels');
   const staffPost=(who,path,body)=>send(staffPath+path,{method:'POST',cookie:who.cookie,headers:{origin:baseUrl,'x-csrf-token':who.id===alice.id?csrf:bobMe.data.csrfToken},body});
   assert.equal((await staffPost(bob,`/${order.number}/cash`,{version:order.version})).status,403);
   const advanced=await staffPost(bob,`/${order.number}/status`,{status:'accepted',version:order.version});
@@ -128,6 +131,22 @@ try {
   assert.equal(app.eventWorker.health.consecutiveFailures,0);
   assert.ok(app.eventWorker.health.lastSuccessAt,'Scheduled worker query and dispatch complete');
   assert.equal(callbackBodies.length,1,'Scheduled replay remains deduplicated');
+  const channels=await send(channelsPath,{cookie:alice.cookie});assert.equal(channels.status,200);
+  assert.equal(channels.data.channels.find(row=>row.channel==='whatsapp_qr').adapterImplemented,false);
+  const setChannel=(channel,newOrdersEnabled,expectedVersion)=>send(channelsPath+'/'+channel,{method:'POST',cookie:alice.cookie,
+    headers:{origin:baseUrl,'x-csrf-token':csrf},body:{newOrdersEnabled,expectedVersion}});
+  assert.equal((await setChannel('chatgpt','false',1)).status,400);
+  assert.equal((await setChannel('chatgpt',false,1)).status,200);
+  assert.equal((await setChannel('chatgpt',true,1)).status,409);
+  assert.equal((await confirm(alice)).data.order.number,order.number,'Accepted checkout remains recoverable after channel disable');
+  const disabledHandoff=await rpc('prepare_checkout',{...handoff,idempotencyKey:'disabled-channel-handoff'},alice);
+  assert.equal(disabledHandoff.isError,undefined,'Browsing and preparing do not reserve stock');
+  const disabledId=disabledHandoff.structuredContent.checkoutId;
+  const disabledConfirm=()=>send('/checkout/'+disabledId+'/confirm',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl},body:{...contact,csrf}});
+  const disabledResult=await disabledConfirm();assert.equal(disabledResult.status,409);assert.equal(disabledResult.data.error,'channel_ordering_disabled');
+  await pool.query("UPDATE platform_core_checkouts SET expires_at=now()-interval '1 minute' WHERE id=$1",[disabledId]);
+  assert.equal((await setChannel('chatgpt',true,2)).status,200);
+  assert.equal((await disabledConfirm()).data.error,'checkout_expired','Expired unresolved submission cannot create after channel reopens');
   const card=await rpc('prepare_checkout',{...cart,mode:'pickup',expectedTotalMinor:3000,idempotencyKey:'browser-card-checkout'},alice);
   assert.equal(card.isError,undefined);
   const cardPath='/checkout/'+card.structuredContent.checkoutId;
@@ -209,6 +228,16 @@ try {
       await page.getByRole('link',{name:'restaurant-a',exact:true}).click();
       await page.waitForURL(baseUrl+'/manage/restaurant-a/orders');
       assert.match(await page.locator('body').innerText(),/تحديث الحالة/);
+      await page.goto(baseUrl+'/manage/restaurant-a/channels');
+      assert.equal(await page.locator('form[action$="/channels/whatsapp_qr"]').count(),0);
+      const webForm=page.locator('form[action$="/channels/web"]');
+      await webForm.getByLabel('استقبال طلبات الموقع').selectOption('false');
+      await webForm.getByRole('button').click();
+      await page.locator('form[action$="/channels/web"] input[name="expectedVersion"][value="2"]').waitFor();
+      assert.equal(await webForm.getByLabel('استقبال طلبات الموقع').inputValue(),'false');
+      await webForm.getByLabel('استقبال طلبات الموقع').selectOption('true');
+      await webForm.getByRole('button').click();
+      await page.locator('form[action$="/channels/web"] input[name="expectedVersion"][value="3"]').waitFor();
       const registration=await app.auth.register({redirect_uris:['https://client.example/callback'],token_endpoint_auth_method:'none',grant_types:['authorization_code'],response_types:['code']});
       const verifier=randomBytes(32).toString('base64url');
       const grant={client_id:registration.client_id,redirect_uri:'https://client.example/callback',response_type:'code',resource:baseUrl+'/mcp',
@@ -236,6 +265,7 @@ try {
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_subscriptions WHERE active')).rows[0].n,0);
   await app.directory.setTenantStatus(alice.id,'restaurant-a',{status:'suspended',expectedVersion:2});
   assert.equal((await send(staffPath,{cookie:alice.cookie})).status,200,'Suspension preserves existing order operations');
+  assert.equal((await send(channelsPath,{cookie:alice.cookie})).status,403,'Suspension does not permit enabling new channel work');
   const cash=await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version});
   assert.equal(cash.status,200);assert.equal(cash.data.paymentStatus,'paid');
   assert.equal((await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version})).status,409);
