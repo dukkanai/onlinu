@@ -1,3 +1,4 @@
+import {staffProfilePage} from './staff-pages.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage,staffMenuPage,staffMenuItemPage,menuPriceMinor,staffMembersPage,staffErrorPage} from './staff-pages.mjs';
@@ -80,4 +81,11 @@ test('member editor escapes aliases and names permissions without exposing login
  assert.match(html,/معرّف حساب الموظف/);assert.match(html,/آخر مالك نشط/);assert.match(staffErrorPage('last_owner_required'),/عيّن مالكًا آخر/);assert.equal(staffErrorPage('secret'),null);
  const home=staffHome({id:'own-id',memberships:[{tenantId:'a',role:'owner',permissions:['orders:read','members:manage']}]},{coreEnabled:false});
  assert.match(home,/own-id/);assert.match(home,/\/a\/members/);assert.doesNotMatch(home,/\/a\/orders/);
+});
+
+test('public business profile escapes fields and requires reviewed publication',()=>{
+ const profile={version:3,name:'<restaurant>',description:'</textarea><script>bad</script>',address:'',phone:'',openingHours:'',pickupInstructions:''};
+ const html=staffProfilePage({tenantId:'a',profile,canUpdate:true,csrf:'<token>'});
+ assert.match(html,/&lt;restaurant&gt;/);assert.doesNotMatch(html,/<script>/);assert.match(html,/name="reviewed" value="yes" required/);assert.match(html,/name="expectedVersion" value="3"/);
+ const readOnly=staffProfilePage({tenantId:'a',profile,canUpdate:false,csrf:'x'});assert.doesNotMatch(readOnly,/<button>/);assert.match(readOnly,/readonly/);
 });

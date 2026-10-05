@@ -26,6 +26,36 @@ type platformStaffOrderView struct {
 // control plane resolves current membership before signing each operation.
 // No restaurant master key or caller-supplied role enters this path.
 func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(string, func(http.ResponseWriter, *http.Request, []byte, string)) http.HandlerFunc) {
+	mux.HandleFunc("GET /platform-api/staff/profile", wrap("staff:settings:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
+		if r.URL.RawQuery != "" {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		profile, err := s.orders.store.StaffProfile(r.Context())
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, profile)
+	}))
+	mux.HandleFunc("POST /platform-api/staff/profile", wrap("staff:settings:update", func(w http.ResponseWriter, r *http.Request, body []byte, actor string) {
+		var input restaurantProfilePatch
+		if r.URL.RawQuery != "" {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		if !decodeRestaurantBody(w, r, &input) {
+			return
+		}
+		ctx := context.WithValue(r.Context(), platformStaffActorKey{}, platformStaffActor{actor, "staff:settings:update"})
+		profile, err := s.orders.store.PatchProfile(ctx, input)
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, profile)
+	}))
 	mux.HandleFunc("POST /platform-api/staff/images", wrap("staff:media:write", func(w http.ResponseWriter, r *http.Request, raw []byte, _ string) {
 		if r.URL.RawQuery != "" || len(raw) == 0 {
 			writeRestaurantError(w, restaurantFail(400, "invalid_request"))

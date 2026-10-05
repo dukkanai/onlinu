@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:async';
 import 'package:restaurant_admin_prototype/core/api.dart';
 import 'package:restaurant_admin_prototype/core/team_models.dart';
+import 'package:restaurant_admin_prototype/core/business_profile.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
 import 'package:restaurant_admin_prototype/core/models.dart';
 import 'package:restaurant_admin_prototype/core/transport.dart';
@@ -261,6 +262,25 @@ class FakeCoreGateway implements CoreGateway {
   Completer<CoreStockItem>? stockWriteGate;
   String? writeTenant, writeStatus;
   int? writeVersion;
+  CoreBusinessProfile currentBusinessProfile = CoreBusinessProfile({
+    'version': 1,
+    'name': 'مطعم تجريبي',
+    for (final key in profileLabels.keys.where((v) => v != 'name')) key: ''
+  }, tenantId: 'demo-a');
+  int profileWrites = 0;
+  @override
+  Future<CoreBusinessProfile> businessProfile(String tenant) async =>
+      currentBusinessProfile;
+  @override
+  Future<void> patchBusinessProfile(
+      CoreBusinessProfile expected, Map<String, String> changes) async {
+    profileWrites++;
+    if (writeError != null) throw writeError!;
+    currentBusinessProfile = CoreBusinessProfile(
+        {'version': expected.version + 1, ...expected.fields, ...changes},
+        tenantId: expected.tenantId);
+  }
+
   List<CoreTeamMember> currentTeam = [];
   int teamWrites = 0;
   @override

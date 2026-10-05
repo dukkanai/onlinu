@@ -110,3 +110,15 @@ and HTTP regression tests cover this distinction; browser platform operations re
 their existing policy. The Dart TLS fixture verifies listing, versioned alias update,
 stale conflict and last-owner protection with synthetic principals. Windows rendering
 uses a synthetic gateway; real staff accounts/permissions require separate acceptance.
+
+## Public restaurant profile increment
+
+The six public business-text fields (name, description, address, phone, informational
+opening-hours text and pickup instructions) have separate settings read/update
+permissions. Browser and native forms require review before publication. They do not
+change prices, tax identifiers, payment configuration, delivery rules, appearance
+drafts or table capabilities. Opening-hours text is not an automatic ordering schedule.
+The original catalogue row-lock CAS and transactional actor audit are reused; focused
+Go tests cover preservation, stale versions, validation and rollback on audit failure.
+Real Dart HTTP tests cover the narrow update and stale conflicts. Chromium and Windows
+form acceptance runs in CI; actual merchant data remains outside these synthetic tests.

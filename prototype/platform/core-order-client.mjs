@@ -49,6 +49,10 @@ const menuPatch=z.object({expectedVersion:z.number().int().positive().max(Number
   options:z.array(z.object({id:menuId,name:z.string().min(1).max(240),priceMinor:z.number().int().min(0).max(100_000_000),available:z.boolean()}).strict()).max(50).optional(),
 }).strict().refine(value=>Object.keys(value).length>1);
 
+const profileFields={name:z.string().min(1).max(120),description:z.string().max(2000),address:z.string().max(1000),phone:z.string().max(40),openingHours:z.string().max(1000),pickupInstructions:z.string().max(2000)};
+const profileView=z.object({version:z.number().int().positive(),...profileFields});
+const profilePatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),...Object.fromEntries(Object.entries(profileFields).map(([key,value])=>[key,value.optional()]))}).strict().refine(value=>Object.keys(value).length>1);
+
 export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchImpl = fetch, now = Date.now }) {
   const source = new URL(issuer);
   if (source.protocol !== 'https:' || source.origin !== issuer) throw new Error('invalid_service_issuer');
@@ -97,6 +101,8 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    profile(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/profile',undefined,'','staff:settings:read',profileView);},
+    patchProfile(tenantId,subject,input){const parsed=profilePatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/profile',parsed.data,'','staff:settings:update',profileView);},
     uploadImage(tenantId,subject,bytes){
       if(!Buffer.isBuffer(bytes)||bytes.length<1||bytes.length>5*1024*1024)throw problem(400,'image_too_large');
       return request(tenantId,subject,'POST','/platform-api/staff/images',bytes,'','staff:media:write',z.object({url:z.string().regex(/^\/restaurant-media\/[a-f0-9]{64}\.(png|jpg)$/)}));

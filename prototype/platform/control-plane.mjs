@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -236,6 +236,19 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           if(req.headers.accept?.includes('application/json'))return json(res,200,{order});
           return redirect(res,'/checkout/'+checkoutId,303);
         }
+      }
+      const managementProfile=/^\/manage\/([a-z0-9-]{1,64})\/profile$/.exec(url.pathname);
+      if(managementProfile&&orderClient&&['GET','POST'].includes(req.method)){
+        if(req.headers.authorization||url.search)throw problem(403,'browser_session_required');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
+        const who=await browser(req),tenantId=managementProfile[1];
+        const membership=await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');
+        if(req.method==='GET'){const profile=await orderClient.profile(tenantId,who.id);htmlHeaders(res);res.end(staffProfilePage({tenantId,profile,canUpdate:membership.permissions.includes('settings:update'),csrf:auth.csrfToken(req)}));return;}
+        const input=await body(req);auth.verifyCsrf(req,input.csrf);
+        const fields=['name','description','address','phone','openingHours','pickupInstructions'];
+        if(input.reviewed!=='yes'||Object.keys(input).some(key=>!['csrf','expectedVersion','reviewed',...fields].includes(key))||fields.some(key=>typeof input[key]!=='string'))throw problem(400,'invalid_request');
+        await orderClient.patchProfile(tenantId,who.id,{expectedVersion:Number(input.expectedVersion),...Object.fromEntries(fields.map(key=>[key,input[key].trim()]))});
+        return redirect(res,url.pathname,303);
       }
       const managementMembers=/^\/manage\/([a-z0-9-]{1,64})\/members(?:\/([a-f0-9-]{36}))?$/.exec(url.pathname);
       if(managementMembers){

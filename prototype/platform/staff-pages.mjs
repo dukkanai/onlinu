@@ -6,7 +6,7 @@ const label=value=>escape(labels[value]??value);
 const page=(title,body)=>`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title><h1>${escape(title)}</h1>${body}</html>`;
 
 export function staffHome(principal,{coreEnabled=true,nativeEnabled=false}={}){
-  const sections=[['orders:read','orders',''],['menu:read','menu','منيو '],['stock:read','stock','مخزون '],['channels:manage','channels','قنوات '],['members:manage','members','فريق ']].filter(([,path])=>coreEnabled||path==='members');
+  const sections=[['orders:read','orders',''],['menu:read','menu','منيو '],['stock:read','stock','مخزون '],['channels:manage','channels','قنوات '],['members:manage','members','فريق '],['settings:read','profile','بيانات ']].filter(([,path])=>coreEnabled||path==='members');
   const memberships=principal.memberships.filter(member=>sections.some(([permission])=>member.permissions.includes(permission)));
   const rows=memberships.map(member=>{
     const links=sections.filter(([permission])=>member.permissions.includes(permission)).map(([,path,prefix])=>`<a href="/manage/${escape(member.tenantId)}/${path}">${escape(prefix+member.tenantId)}</a>`).join(' · ');
@@ -87,4 +87,10 @@ export function staffMembersPage({tenantId,members,csrf,actorId}){
 export function staffErrorPage(code){
  const messages={authentication_required:'انتهت جلسة الدخول أو لم تبدأ بعد. ارجع إلى الإدارة وسجّل الدخول قبل إعادة المحاولة.',tenant_suspended:'المطعم معلّق حاليًا ولا يسمح بهذا الإجراء.',version_conflict:'تغيّرت العضوية. افتح صفحة الفريق من جديد وراجع أحدث البيانات.',catalog_changed:'تغيّر المنيو. حدّث الصفحة قبل إعادة التعديل.',last_owner_required:'لا يمكن تعطيل أو تغيير دور آخر مالك نشط. عيّن مالكًا آخر أولًا.',invalid_owner_permissions:'يجب أن تشمل عضوية المالك جميع الصلاحيات.',forbidden:'لا تملك الصلاحية المطلوبة لهذا الإجراء.',identity_disabled:'الحساب غير متاح أو لم يسجّل الدخول بعد. تحقق من معرّفه.',invalid_request:'تحقق من الحقول المدخلة قبل إعادة المحاولة.',tenant_closed:'المطعم مغلق ولا يمكن تعديل عضوياته.',order_outcome_unknown:'تعذر تأكيد نتيجة التغيير. حدّث الصفحة وتحقق من الحالة قبل إعادة الإرسال.'};
  return messages[code]?page('تعذر إتمام التغيير',`<p>${messages[code]}</p><a href="/manage">العودة إلى الإدارة</a>`):null;
+}
+
+export function staffProfilePage({tenantId,profile,canUpdate,csrf}){
+ const fields=[['name','اسم المطعم العام',120],['description','وصف المطعم',2000],['address','عنوان المطعم',1000],['phone','هاتف المطعم',40],['openingHours','ساعات العمل (نص معلوماتي)',1000],['pickupInstructions','تعليمات الاستلام',2000]];
+ const controls=fields.map(([key,label,max])=>`<p><label>${label}<textarea name="${key}" maxlength="${max}" ${canUpdate?'':'readonly'}>${escape(profile[key])}</textarea></label></p>`).join('');
+ return page('بيانات المطعم العامة',`<p>${escape(tenantId)}</p><p>تظهر هذه المعلومات للعملاء. ساعات العمل نص معلوماتي ولا تُغلق الطلبات تلقائيًا. هذا النموذج لا يغيّر الضرائب أو الأسعار أو وسائل الدفع أو القالب.</p><form method="post" action="/manage/${escape(tenantId)}/profile"><input type="hidden" name="csrf" value="${escape(csrf)}"><input type="hidden" name="expectedVersion" value="${profile.version}">${controls}${canUpdate?'<label><input type="checkbox" name="reviewed" value="yes" required>راجعت المعلومات العامة التي ستُنشر</label><button>حفظ البيانات العامة</button>':''}</form><a href="/manage">رجوع</a>`);
 }

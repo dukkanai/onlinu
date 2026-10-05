@@ -2,11 +2,15 @@ import 'dart:typed_data';
 import 'auth.dart';
 import 'models.dart';
 import 'team_models.dart';
+import 'business_profile.dart';
 import 'transport.dart';
 
 abstract interface class CoreGateway {
   CoreSession get session;
   Future<CoreProfile> profile();
+  Future<CoreBusinessProfile> businessProfile(String tenant);
+  Future<void> patchBusinessProfile(
+      CoreBusinessProfile expected, Map<String, String> changes);
   Future<List<CoreTeamMember>> team(String tenant);
   Future<CoreTeamMember> setMember(String tenant, TeamChange change);
   Future<CoreMenu> menu(String tenant);
@@ -93,6 +97,32 @@ class CoreApi implements CoreGateway {
       '/native/api/restaurants/${tenantKey(tenant)}/staff/orders';
   void _tenant(Map<String, dynamic> data, String tenant) {
     if (data['tenantId'] != tenant) invalidResponse();
+  }
+
+  @override
+  Future<CoreBusinessProfile> businessProfile(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/profile');
+    _tenant(data, tenant);
+    return CoreBusinessProfile(data, tenantId: tenant);
+  }
+
+  @override
+  Future<void> patchBusinessProfile(
+      CoreBusinessProfile expected, Map<String, String> changes) async {
+    final clean = validatedProfileChanges(changes);
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/profile',
+        body: {'expectedVersion': expected.version, ...clean});
+    try {
+      _tenant(data, expected.tenantId);
+      final result = CoreBusinessProfile(data, tenantId: expected.tenantId);
+      if (result.version <= expected.version ||
+          clean.entries.any((v) => result.fields[v.key] != v.value))
+        invalidResponse();
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
   }
 
   @override

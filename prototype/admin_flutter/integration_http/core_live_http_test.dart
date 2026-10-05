@@ -175,6 +175,17 @@ void main() {
         throwsA(isA<CoreException>()
             .having((v) => v.code, 'last owner', 'last_owner_required')));
 
+    final business = await api.businessProfile('restaurant-a');
+    await api.patchBusinessProfile(
+        business, {'description': 'Synthetic native profile'});
+    final changedBusiness = await api.businessProfile('restaurant-a');
+    expect(changedBusiness.fields['description'], 'Synthetic native profile');
+    expect(changedBusiness.fields['name'], business.fields['name']);
+    await expectLater(
+        api.patchBusinessProfile(business, {'name': 'Stale'}),
+        throwsA(isA<CoreException>()
+            .having((v) => v.code, 'stale profile', 'catalog_changed')));
+
     final menu = await api.menu('restaurant-a'), item = menu.items.first;
     await api.patchMenu(menu, item,
         name: item.name,

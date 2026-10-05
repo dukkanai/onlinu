@@ -37,8 +37,8 @@ class _TeamPaneState extends State<TeamPane> {
       const Text('الفريق والصلاحيات', style: TextStyle(fontSize: 22)),
       const Text(
           'يجب أن يسجل الموظف الدخول بحساب موثّق أولًا، ثم يشارك معرّف حسابه. لا تُنشأ حسابات أو دعوات بريدية من هذه الشاشة.'),
-      SelectableText('معرّف حسابك: ${c.profile?.id ?? ''}',
-          textDirection: TextDirection.ltr),
+      const Text('معرّف حسابك:'),
+      SelectableText(c.profile?.id ?? '', textDirection: TextDirection.ltr),
       FilledButton.icon(
           onPressed: c.writable ? () => edit() : null,
           icon: const Icon(Icons.person_add_outlined),

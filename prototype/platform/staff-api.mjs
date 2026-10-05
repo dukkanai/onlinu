@@ -5,6 +5,12 @@ import {problem} from './auth.mjs';
 // registry endpoints are deliberately not included here.
 export function createStaffApi({directory,orderClient,body,json,uploadSlots={active:0}}){
   return async(req,res,who,url,{restaurantOnly=false}={})=>{
+        const profileRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/profile$/.exec(url.pathname);
+        if(profileRoute&&orderClient&&['GET','POST'].includes(req.method)){
+          if(url.search)throw problem(400,'invalid_request');
+          const tenantId=profileRoute[1];await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');
+          return json(res,200,req.method==='GET'?await orderClient.profile(tenantId,who.id):await orderClient.patchProfile(tenantId,who.id,await body(req)));
+        }
         const imageRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79})\/image$/.exec(url.pathname);
         if(imageRoute&&orderClient&&req.method==='POST'){
           const [,tenantId,itemId]=imageRoute,rawVersion=req.headers['x-menu-version'],version=Number(rawVersion);

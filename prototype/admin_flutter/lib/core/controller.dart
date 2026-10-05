@@ -4,9 +4,10 @@ import 'api.dart';
 import 'auth.dart';
 import 'models.dart';
 import 'team_models.dart';
+import 'business_profile.dart';
 import 'transport.dart';
 
-enum CoreSection { orders, stock, channels, menu, team }
+enum CoreSection { orders, stock, channels, menu, team, business }
 
 extension CoreSectionPermission on CoreSection {
   String get permission => switch (this) {
@@ -14,7 +15,8 @@ extension CoreSectionPermission on CoreSection {
         CoreSection.stock => 'stock:read',
         CoreSection.channels => 'channels:manage',
         CoreSection.menu => 'menu:read',
-        CoreSection.team => 'members:manage'
+        CoreSection.team => 'members:manage',
+        CoreSection.business => 'settings:read'
       };
 }
 
@@ -30,6 +32,7 @@ class CoreController extends ChangeNotifier {
   List<CoreStockItem> stock = const [];
   List<CoreChannel> channels = const [];
   CoreMenu? menu;
+  CoreBusinessProfile? business;
   List<CoreTeamMember> team = const [];
   CoreProfile? profile;
   String? selectedTenant;
@@ -64,6 +67,7 @@ class CoreController extends ChangeNotifier {
 
   void _clearData() {
     menu = null;
+    business = null;
     team = const [];
     channels = const [];
     stock = const [];
@@ -213,6 +217,10 @@ class CoreController extends ChangeNotifier {
         final result = await api.channels(tenant);
         if (!_current(generation)) return;
         channels = result;
+      } else if (section == CoreSection.business) {
+        final result = await api.businessProfile(tenant);
+        if (!_current(generation)) return;
+        business = result;
       } else if (section == CoreSection.team) {
         final result = await api.team(tenant);
         if (!_current(generation)) return;
@@ -600,6 +608,34 @@ class CoreController extends ChangeNotifier {
           description: description, options: options);
       if (_current(generation))
         message = 'حُفظ الوصف والإضافات. الطلبات السابقة لم تتغير.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
+  Future<void> patchBusiness(
+      CoreBusinessProfile expected, Map<String, String> changes) async {
+    if (!_writeGuard(
+        expected.tenantId, 'settings:update', CoreSection.business)) return;
+    if (business == null || expected.version != business!.version) {
+      message = 'تغيرت بيانات المطعم. افتح النسخة الحالية.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.patchBusinessProfile(expected, changes);
+      if (_current(generation)) message = 'حُفظت بيانات المطعم العامة.';
     } catch (error) {
       if (_current(generation)) _failure(error);
     } finally {

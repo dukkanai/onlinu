@@ -258,3 +258,13 @@ principal UUIDs only; obtain a new employee's UUID from the authenticated browse
 passes restaurant-only authority to the original directory, which retains atomic
 audit and last-owner protection. Platform-operator privileges do not expand native
 restaurant membership grants. Test accounts remain synthetic.
+
+### Public business profile
+
+`restaurant_staff_profile.go` exposes six public text fields through signed
+`staff:settings:read/update` scopes and the original catalogue CAS/audit. The central
+staff/native endpoint is `/staff/profile`; the browser form is
+`/manage/{tenant}/profile`. Both require current settings permissions; publication
+requires review in the UI. No financial/private configuration, branding draft,
+delivery fee or table capability enters this narrow interface. Opening hours remain
+informational text; changing them does not schedule automatic opening/closing.

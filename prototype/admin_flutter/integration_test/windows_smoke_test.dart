@@ -181,6 +181,40 @@ void main() {
     expect(controller.channels, isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets('Windows public business profile requires publication review',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile =
+          profileFixture(permissions: ['settings:read', 'settings:update']);
+    final c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الدخول عبر المتصفح'));
+    await tester.pumpAndSettle();
+    final edit = find.text('تعديل البيانات العامة');
+    await tester.ensureVisible(edit);
+    await tester.pumpAndSettle();
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'اسم المطعم العام'),
+        'مطعم الاختبار العام');
+    await capture(tester, boundary, 'windows-business-profile.png');
+    final review = find.widgetWithText(
+        CheckboxListTile, 'راجعت المعلومات العامة التي ستُنشر');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(review);
+    await tester.pumpAndSettle();
+    await tester.tap(review);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('حفظ البيانات العامة'));
+    await tester.pumpAndSettle();
+    expect(api.profileWrites, 1);
+    expect(api.currentBusinessProfile.fields['name'], 'مطعم الاختبار العام');
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('Windows team permission review and explicit confirmation',
       (tester) async {
     final api = FakeCoreGateway()

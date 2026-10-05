@@ -206,6 +206,14 @@ try {
   const pay=(cookie,token=csrf)=>send(cardPath+'/payment',{method:'POST',cookie,headers:{origin:baseUrl},body:{csrf:token}});
   assert.equal((await pay(alice.cookie,'bad')).status,403);
   assert.equal((await pay(bob.cookie)).status,403);
+  const profilePath='/api/restaurants/restaurant-a/staff/profile';
+  const initialProfile=await send(profilePath,{cookie:alice.cookie});assert.equal(initialProfile.status,200);
+  assert.equal(initialProfile.data.taxNumber,undefined);assert.equal(initialProfile.data.paymentMethods,undefined);
+  assert.equal((await send(profilePath,{cookie:bob.cookie})).status,403);
+  assert.equal((await send(profilePath,{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl,'x-csrf-token':csrf},body:{expectedVersion:initialProfile.data.version,taxEnabled:true}})).status,400);
+  const profileChanged=await send(profilePath,{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl,'x-csrf-token':csrf},body:{expectedVersion:initialProfile.data.version,description:'Synthetic public description'}});
+  assert.equal(profileChanged.status,200,JSON.stringify(profileChanged.data));assert.equal(profileChanged.data.name,initialProfile.data.name);
+  assert.equal((await send(profilePath,{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl,'x-csrf-token':csrf},body:{expectedVersion:initialProfile.data.version,name:'stale'}})).status,409);
   const beforeImage=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
   const imageUpload=async(who,version,{badCsrf=false,invalid=false}={})=>{
     const form=new FormData();form.set('csrf',badCsrf?'bad':who.id===alice.id?csrf:bobMe.data.csrfToken);form.set('expectedVersion',String(version));
@@ -389,6 +397,14 @@ try {
       assert.equal(renamedCategory.name,'Browser beverages');assert.equal(renamedCategory.sort,2);
 
 
+
+      const beforeProfile=(await send(profilePath,{cookie:alice.cookie})).data;
+      await page.goto(baseUrl+'/manage/restaurant-a/profile');
+      await page.getByLabel('ساعات العمل (نص معلوماتي)',{exact:true}).fill('Synthetic browser hours');
+      await page.getByLabel('راجعت المعلومات العامة التي ستُنشر',{exact:true}).check();
+      await page.getByRole('button',{name:'حفظ البيانات العامة',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${beforeProfile.version+1}"]`).waitFor({state:'attached'});
+      assert.equal((await send(profilePath,{cookie:alice.cookie})).data.openingHours,'Synthetic browser hours');
 
       await page.goto(baseUrl+'/manage/restaurant-a/members');
       const addMember=page.locator('form[action="/manage/restaurant-a/members"]');
