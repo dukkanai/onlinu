@@ -238,3 +238,13 @@ restaurant selection, order/cash permissions and test/build commands. CI adds
 `0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8`.
 Unsigned `.invalid`-origin artifacts are build smoke checks, not production apps;
 first Windows result and interactive OS credential acceptance remain pending.
+
+### Native image management
+
+`lib/core/menu_image_editor.dart` separates selection from publication. The official
+Flutter file selector reads at most 5 MiB; the native bearer route posts binary bytes
+with `x-menu-version` to the existing original-core image pipeline and catalogue CAS.
+Public previews are restricted to the central origin and content-addressed files.
+No external image URL is fetched by the native client. Browser/native uploads share
+one two-slot process budget. Real Windows picker/device acceptance is still required;
+CI rendering injects synthetic selection. See the native acceptance document.

@@ -75,3 +75,20 @@ provider-account acceptance, desktop accessibility acceptance (including NVDA),
 remaining management parity, device/printer-specific tests, load/distributed-limit
 verification and an explicitly approved production rollout. POS vendor integration
 is deferred by the owner and is not covered by these tests.
+
+## Native menu image increment (2026-10-05)
+
+The native client uses the official Flutter `file_selector` plugin, reads a single
+PNG/JPEG as a bounded stream (5 MiB), and requires an explicit upload after selection.
+The fixed native binary endpoint shares the two-upload budget with browser uploads,
+rechecks membership after reading and after normalization, and uses the original Go
+image normalizer followed by catalogue CAS. A failed assignment may leave an orphan
+blob; no old image is deleted. Only content-addressed same-origin public previews are
+fetched, without bearer/cookies, with MIME, byte, magic, digest and dimension bounds.
+
+Unit tests cover cancellation, explicit upload, stale versions, permission changes,
+late preview after logout, URL restrictions and byte limits. The actual Dart TLS
+fixture now uploads to Go, fetches the normalized preview, and rejects stale/invalid
+images. Windows rendering uses an injected synthetic picker; it does **not** prove
+the interactive OS chooser, filesystem permission handling or a merchant's device.
+Those checks remain a release acceptance requirement.

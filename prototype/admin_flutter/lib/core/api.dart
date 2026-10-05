@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'auth.dart';
 import 'models.dart';
 import 'transport.dart';
@@ -7,6 +8,9 @@ abstract interface class CoreGateway {
   Future<CoreProfile> profile();
   Future<CoreMenu> menu(String tenant);
   Future<CoreMenuDetails> menuDetails(String tenant, String id);
+  Future<CoreMenuDetails> uploadImage(
+      CoreMenuDetails expected, Uint8List bytes);
+  Future<Uint8List> image(CoreMenuDetails details);
   Future<void> patchMenuDetails(CoreMenuDetails details,
       {required String description, required List<CoreOption> options});
   Future<void> patchCategory(CoreMenu menu, CoreCategory category,
@@ -41,10 +45,15 @@ class CoreApi implements CoreGateway {
   @override
   final CoreSession session;
   Future<Map<String, dynamic>> _request(String method, String path,
-      {Map<String, dynamic>? body}) async {
+      {Map<String, dynamic>? body,
+      Uint8List? binary,
+      int? catalogVersion}) async {
     final bearer = await session.token();
-    final reply = await session.transport
-        .request(method, path, body: body, bearer: bearer);
+    final reply = await session.transport.request(method, path,
+        body: body,
+        bearer: bearer,
+        binary: binary,
+        catalogVersion: catalogVersion);
     if (reply.status == 401) {
       await session.signOut();
       throw const CoreException('authentication_required', status: 401);
@@ -60,7 +69,10 @@ class CoreApi implements CoreGateway {
         'order_not_found',
         'restaurant_unavailable',
         'order_outcome_unknown',
-        'rate_limited'
+        'rate_limited',
+        'image_invalid',
+        'image_too_large',
+        'upload_busy'
       };
       final raw = reply.data['error'];
       throw CoreException(safe.contains(raw) ? raw as String : 'request_failed',
@@ -361,6 +373,37 @@ class CoreApi implements CoreGateway {
     final detail = CoreMenuDetails(data, tenantId: tenant);
     if (detail.item.id != id) invalidResponse();
     return detail;
+  }
+
+  @override
+  Future<CoreMenuDetails> uploadImage(
+      CoreMenuDetails expected, Uint8List bytes) async {
+    if (bytes.isEmpty || bytes.length > BoundedCoreTransport.maxImageBytes)
+      throw const CoreException('image_too_large');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/menu/items/${menuKey(expected.item.id)}/image',
+        binary: bytes, catalogVersion: expected.version);
+    try {
+      _tenant(data, expected.tenantId);
+      final result = CoreMenuDetails(data, tenantId: expected.tenantId);
+      if (result.item.id != expected.item.id ||
+          result.version <= expected.version ||
+          !RegExp(r'^/restaurant-media/[a-f0-9]{64}\.(png|jpg)$')
+              .hasMatch(result.imageUrl)) invalidResponse();
+      return result;
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
+  }
+
+  @override
+  Future<Uint8List> image(CoreMenuDetails details) {
+    if (!RegExp(r'^/restaurant-media/[a-f0-9]{64}\.(png|jpg)$')
+        .hasMatch(details.imageUrl))
+      throw const CoreException('image_unavailable');
+    final file = details.imageUrl.substring('/restaurant-media/'.length);
+    return session.transport
+        .image('/restaurant-media/${tenantKey(details.tenantId)}/$file');
   }
 
   @override

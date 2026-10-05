@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -7,6 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:restaurant_admin_prototype/core/app.dart';
+import 'package:restaurant_admin_prototype/core/menu_image_editor.dart';
+import 'package:restaurant_admin_prototype/core/menu_image_io.dart';
+import 'package:restaurant_admin_prototype/core/models.dart';
 import 'package:restaurant_admin_prototype/core/controller.dart';
 import 'package:restaurant_admin_prototype/core/session_store.dart';
 import '../test/core_fakes.dart';
@@ -175,6 +180,39 @@ void main() {
     expect(controller.channels, isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets(
+      'Windows image review requires an explicit upload with a synthetic picker',
+      (tester) async {
+    final api = WindowsImageGateway()
+      ..currentProfile =
+          profileFixture(permissions: ['menu:read', 'menu:update']);
+    final c = CoreController(api, pollInterval: const Duration(hours: 1));
+    final boundary = GlobalKey();
+    await c.start(restore: false);
+    await tester.pumpWidget(RepaintBoundary(
+        key: boundary,
+        child: MaterialApp(
+            home: Directionality(
+                textDirection: TextDirection.rtl,
+                child: MenuImageEditor(
+                    controller: c,
+                    tenant: 'demo-a',
+                    id: 'meal',
+                    picker: () async =>
+                        SelectedMenuImage('synthetic.png', windowsImage))))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('اختيار صورة'));
+    await tester.pumpAndSettle();
+    expect(api.uploads, 0);
+    await capture(tester, boundary, 'windows-image-review.png');
+    await tester.tap(find.text('رفع الصورة للصنف'));
+    await tester.pumpAndSettle();
+    expect(api.uploads, 1);
+    expect(find.byType(Image), findsOneWidget);
+    await capture(tester, boundary, 'windows-image-saved.png');
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+  });
 }
 
 Future<void> capture(
@@ -191,4 +229,36 @@ Future<void> capture(
   final file = File('${File(root).parent.path}${Platform.pathSeparator}$name');
   await file.parent.create(recursive: true);
   await file.writeAsBytes(bytes.buffer.asUint8List());
+}
+
+// Renderer/flow fixture only. The production OS file chooser is not automated.
+final windowsImage = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nGPQyFtFU8QwasGoBaMWjFowasGoBaMWjFowasGoBaMWDBULAMrBAEz/bT+vAAAAAElFTkSuQmCC');
+
+class WindowsImageGateway extends FakeCoreGateway {
+  int uploads = 0;
+  @override
+  Future<CoreMenuDetails> menuDetails(String tenant, String id) async =>
+      CoreMenuDetails({
+        'version': currentMenu.version,
+        'currency': 'SAR',
+        'item': {
+          ...object(menuJson()['items'][0]),
+          'description': '',
+          'options': [],
+          'imageUrl': uploads > 0 ? '/restaurant-media/${'a' * 64}.png' : ''
+        }
+      }, tenantId: tenant);
+  @override
+  Future<CoreMenuDetails> uploadImage(
+      CoreMenuDetails expected, Uint8List bytes) async {
+    uploads++;
+    currentMenu = CoreMenu(
+        {...menuDocument(currentMenu), 'version': expected.version + 1},
+        tenantId: expected.tenantId);
+    return menuDetails(expected.tenantId, expected.item.id);
+  }
+
+  @override
+  Future<Uint8List> image(CoreMenuDetails details) async => windowsImage;
 }

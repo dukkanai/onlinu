@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -48,12 +49,18 @@ class FakeTransport implements CoreTransport {
   final calls = <Map<String, dynamic>>[];
   @override
   Future<CoreReply> request(String method, String path,
-      {Map<String, dynamic>? body, String? bearer}) async {
+      {Map<String, dynamic>? body,
+      String? bearer,
+      Uint8List? binary,
+      int? catalogVersion}) async {
     calls.add({'method': method, 'path': path, 'body': body, 'bearer': bearer});
     if (path.endsWith('/revoke')) return const CoreReply(200, {});
     return handler?.call(path, body) ?? Future.value(tokens('a'));
   }
 
+  @override
+  Future<Uint8List> image(String path) async =>
+      throw const CoreException('image_unavailable');
   @override
   void close() {}
 }

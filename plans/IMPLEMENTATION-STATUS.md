@@ -5,12 +5,12 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 15:44 UTC
+## Latest verified position — 2026-10-05 16:19 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `26df6346f090c70fc3db992d75874738d8a28cda`, CI [37332186092](https://github.com/dukkanai/onlinu/actions/runs/37332186092), all jobs successful.
+- Latest published and fully verified commit: `c8d491b6eb2b934505a9fd609415fe2d64639f8f`, CI [37337215342](https://github.com/dukkanai/onlinu/actions/runs/37337215342), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Published native category/options editing and feedback passed all CI jobs (69 Flutter tests and actual Windows forms/store/build). Current locally verified increment: actual Dart HTTP/TLS/PKCE and typed reads/writes against the Node broker and original Go/PostgreSQL core, including refresh replay/cache clearing. Its remote CI result is pending.
+- Published native category/options editing and feedback passed all CI jobs (69 Flutter tests and actual Windows forms/store/build). Current locally verified increment: actual Dart HTTP/TLS/PKCE and typed reads/writes against the Node broker and original Go/PostgreSQL core, including refresh replay/cache clearing. Its remote CI also passed. The current native image increment passed the local real Dart/Node/Go upload and preview test; its Windows/remote verification is pending.
 - Native Windows PKCE client, order/cash UI, actual OS-store/rendering smoke and unsigned build are verified at the published commit above. The synthetic screenshot was inspected; no Arabic clipping observed.
 - POS integration is explicitly deferred by the owner’s voice instruction; continue current development without choosing/connecting a vendor.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.

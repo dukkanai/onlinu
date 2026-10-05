@@ -516,7 +516,7 @@ try {
   assert.equal(refresh.status,303);assert.equal(refresh.headers.location,cardPath);
   assert.match((await send(cardPath,{cookie:alice.cookie})).data,/حالة الدفع: paid/);
   if(process.env.CORE_FLUTTER_TEST_BIN){
-    await checkNativeDart({app,browserCookie:alice.cookie,principalId:alice.id,orderNumber:order.number});
+    await checkNativeDart({app,browserCookie:alice.cookie,principalId:alice.id,orderNumber:order.number,imageBase64:fixture.imageBase64});
     const nativeAdvanced=await send(staffPath+'/'+order.number,{cookie:alice.cookie});
     assert.equal(nativeAdvanced.status,200);assert.equal(nativeAdvanced.data.status,'preparing');
     assert.equal(nativeAdvanced.data.version,advanced.data.version+1);settlementVersion=nativeAdvanced.data.version;

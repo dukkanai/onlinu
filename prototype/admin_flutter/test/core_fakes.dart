@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:async';
 import 'package:restaurant_admin_prototype/core/api.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
@@ -82,11 +83,24 @@ class StubTransport implements CoreTransport {
   Future<CoreReply> Function(String, String, Map<String, dynamic>?)? handler;
   @override
   Future<CoreReply> request(String method, String path,
-      {Map<String, dynamic>? body, String? bearer}) async {
-    calls.add({'method': method, 'path': path, 'body': body, 'bearer': bearer});
+      {Map<String, dynamic>? body,
+      String? bearer,
+      Uint8List? binary,
+      int? catalogVersion}) async {
+    calls.add({
+      'method': method,
+      'path': path,
+      'body': body,
+      'bearer': bearer,
+      'binary': binary,
+      'catalogVersion': catalogVersion
+    });
     return handler?.call(method, path, body) ?? const CoreReply(200, {});
   }
 
+  @override
+  Future<Uint8List> image(String path) async =>
+      throw const CoreException('image_unavailable');
   @override
   void close() {}
 }
@@ -444,6 +458,17 @@ class FakeCoreGateway implements CoreGateway {
             ...extra
           }
         }, tenantId: tenant);
+  }
+
+  @override
+  Future<CoreMenuDetails> uploadImage(
+      CoreMenuDetails expected, Uint8List bytes) async {
+    throw const CoreException('image_unavailable');
+  }
+
+  @override
+  Future<Uint8List> image(CoreMenuDetails details) async {
+    throw const CoreException('image_unavailable');
   }
 
   @override

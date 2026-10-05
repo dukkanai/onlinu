@@ -4,6 +4,7 @@ import 'controller.dart';
 import 'models.dart';
 import 'category_editor.dart';
 import 'menu_details_editor.dart';
+import 'menu_image_editor.dart';
 
 typedef MenuEdit = ({
   String name,
@@ -177,6 +178,14 @@ class _MenuPaneState extends State<MenuPane> {
                             unawaited(_details(menu, item));
                           },
                           child: const Text('الوصف والإضافات')),
+                      OutlinedButton(
+                          onPressed: () => showDialog<void>(
+                              context: context,
+                              builder: (_) => MenuImageEditor(
+                                  controller: c,
+                                  tenant: menu.tenantId,
+                                  id: item.id)),
+                          child: const Text('صورة الصنف')),
                       if (c.membership?.can('menu:update') == true)
                         OutlinedButton.icon(
                             onPressed: c.writable
@@ -398,6 +407,7 @@ class _CreateMenuDialogState extends State<_CreateMenuDialog> {
                       const Text(
                           'يُنشأ الصنف غير متاح للطلب، دون صورة أو إضافات. راجعه ثم فعّله من التعديل.'),
                     ],
+                    const SizedBox(height: 12),
                     TextField(
                         controller: sort,
                         keyboardType: TextInputType.number,

@@ -315,6 +315,7 @@ class CoreMenuDetails {
       : version = integer(json['version'], min: 1),
         item = CoreMenuItem(object(json['item'])),
         description = textField(object(json['item'])['description'], max: 4096),
+        imageUrl = textField(object(json['item'])['imageUrl'] ?? '', max: 2048),
         options = List.unmodifiable(
             array(object(json['item'])['options'] ?? [], max: 100)
                 .map((v) => CoreOption(object(v)))) {
@@ -322,7 +323,7 @@ class CoreMenuDetails {
         options.map((v) => v.id).toSet().length != options.length)
       invalidResponse();
   }
-  final String tenantId, description;
+  final String tenantId, description, imageUrl;
   final int version;
   final CoreMenuItem item;
   final List<CoreOption> options;

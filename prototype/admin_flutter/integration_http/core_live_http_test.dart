@@ -154,6 +154,21 @@ void main() {
     final detail = await api.menuDetails('restaurant-a', item.id);
     await api.patchMenuDetails(detail,
         description: detail.description, options: detail.options);
+    final beforeImage = await api.menuDetails('restaurant-a', item.id);
+    final imageBytes = base64Decode(Platform.environment['CORE_NATIVE_IMAGE']!);
+    final uploaded = await api.uploadImage(beforeImage, imageBytes);
+    expect(uploaded.version > beforeImage.version, true);
+    expect(uploaded.description, beforeImage.description);
+    expect(uploaded.options.map((v) => v.toJson()).toList(),
+        beforeImage.options.map((v) => v.toJson()).toList());
+    final image = await api.image(uploaded);
+    expect(image.take(8), [137, 80, 78, 71, 13, 10, 26, 10]);
+    await expectLater(
+        api.uploadImage(beforeImage, imageBytes),
+        throwsA(isA<CoreException>()
+            .having((v) => v.code, 'stale', 'catalog_changed')));
+    await expectLater(api.uploadImage(uploaded, base64Decode('PHN2Zy8+')),
+        throwsA(isA<CoreException>()));
     final current = await api.menu('restaurant-a'),
         category = current.categories.first;
     await api.patchCategory(current, category,

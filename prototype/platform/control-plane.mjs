@@ -65,7 +65,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
     identityResolver: directory.verifiedIdentity, clientAdapter: oidcClientAdapter });
   await login.init();
   const core = createCoreAdapter({ restaurants });
-  const media=createCoreMedia({restaurants});let uploads=0;
+  const media=createCoreMedia({restaurants}),uploads={active:0};
   const publicCore = {
     async listRestaurants(args) {
       const configured = core.listRestaurants(args);
@@ -100,7 +100,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
     eventWorker=createCoreEventWorker({pool,orderClient,events,resolvePrincipal:directory.resolve});await eventWorker.init();
   }
   const mcp = createMcpHandler({ baseUrl: base.origin, authenticate: req => auth.authenticate(req, { bearerOnly: true }), coreAdapter: publicCore, coreCheckouts: checkouts,events });
-  const staffApi=createStaffApi({directory,orderClient,body,json});
+  const staffApi=createStaffApi({directory,orderClient,body,json,uploadSlots:uploads});
   if(nativeStaffEnabled&&!orderClient)throw new Error('native_staff_requires_core_signing');
   const nativeStaff=nativeStaffEnabled?await createNativeStaff({pool,baseUrl:base.origin,csrfKey,directory,browserAuth:auth,staffApi,body,json,htmlHeaders,redirect}):null;
   async function browser(req) {
@@ -279,7 +279,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const who=await browser(req),[,tenantId,itemId]=menuImage;
         if(url.search||!req.headers['content-type']?.startsWith('multipart/form-data;'))throw problem(400,'invalid_request');
         await directory.authorize(who.id,tenantId,'menu:update');
-        if(uploads>=2)throw problem(429,'rate_limited');uploads++;
+        if(uploads.active>=2)throw problem(429,'rate_limited');uploads.active++;
         try{
           const chunks=[];let size=0;
           for await(const chunk of req){size+=chunk.length;if(size>5*1024*1024+65536)throw problem(413,'image_too_large');chunks.push(chunk);}
@@ -293,7 +293,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           const uploaded=await orderClient.uploadImage(tenantId,who.id,Buffer.from(await file.arrayBuffer()));
           await orderClient.patchMenuItem(tenantId,who.id,itemId,{expectedVersion:current.version,imageUrl:uploaded.url});
           return redirect(res,`/manage/${tenantId}/menu/items/${itemId}`,303);
-        }finally{uploads--;}
+        }finally{uploads.active--;}
       }
       const menuCategory=/^\/manage\/([a-z0-9-]{1,64})\/menu\/categories\/([A-Za-z0-9][A-Za-z0-9_-]{0,79})$/.exec(url.pathname);
       if(menuCategory&&orderClient&&req.method==='POST'){

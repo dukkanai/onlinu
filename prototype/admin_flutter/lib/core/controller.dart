@@ -603,6 +603,55 @@ class CoreController extends ChangeNotifier {
     }
   }
 
+  Future<Uint8List> menuImage(CoreMenuDetails details) async {
+    final generation = _generation;
+    bool allowed() =>
+        signedIn &&
+        selectedTenant == details.tenantId &&
+        membership?.can('menu:read') == true;
+    if (!allowed()) throw const CoreException('forbidden');
+    final bytes = await api.image(details);
+    if (!_current(generation) || !allowed())
+      throw const CoreException('cancelled');
+    return bytes;
+  }
+
+  Future<CoreMenuDetails?> uploadMenuImage(
+      CoreMenuDetails expected, Uint8List bytes) async {
+    if (!_writeGuard(expected.tenantId, 'menu:update', CoreSection.menu))
+      return null;
+    if (menu == null || expected.version < menu!.version) {
+      message = 'تغير الصنف. افتح نسخته الحالية قبل رفع الصورة.';
+      _emit();
+      return null;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    CoreMenuDetails? saved;
+    try {
+      final result = await api.uploadImage(expected, bytes);
+      if (_current(generation)) {
+        saved = result;
+        message = 'حُفظت صورة الصنف في القائمة العامة.';
+      }
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+    if (!signedIn ||
+        selectedTenant != expected.tenantId ||
+        membership?.can('menu:read') != true) return null;
+    return saved;
+  }
+
   void setSuspended(bool value) {
     if (_disposed || suspended == value) return;
     suspended = value;
@@ -636,6 +685,9 @@ String errorMessage(Object error) {
     'invalid_saved_session' =>
       'انتهت الجلسة. سجّل الدخول من جديد.',
     'cancelled' => 'أُلغيت العملية.',
+    'image_too_large' => 'اختر صورة غير فارغة لا تتجاوز 5 ميغابايت.',
+    'image_invalid' => 'الصورة غير صالحة. اختر ملف PNG أو JPEG صالحًا.',
+    'image_unavailable' => 'تعذر تحميل الصورة الحالية من خادم المطعم.',
     'access_denied' => 'أُلغي تسجيل الدخول.',
     'secure_storage_unavailable' =>
       'تعذر الوصول إلى مخزن النظام الآمن. لن تُحفظ الجلسة في ملف عادي.',
