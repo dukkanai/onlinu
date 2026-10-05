@@ -92,3 +92,16 @@ test('owned financial detail is separately scoped and drops contacts and receipt
  assert.deepEqual(await client.details('restaurant-a',randomUUID(),view.number),{tenantId:'restaurant-a',...details});
  assert.throws(()=>client.details('restaurant-a',randomUUID(),'../admin'),{code:'invalid_request'});
 });
+
+test('menu creation signs a bounded staff operation and rejects settings injection',async()=>{
+ const category={id:'drinks',name:'Drinks',sort:0};
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{
+  assert.equal(url,'http://127.0.0.1:3001/platform-api/staff/menu/categories');
+  const claims=JSON.parse(Buffer.from(options.headers.authorization.slice(9).split('.')[0],'base64url'));
+  assert.equal(claims.scope,'staff:menu:update');assert.equal(claims.method,'POST');
+  assert.deepEqual(JSON.parse(options.body),{expectedVersion:2,category});return json({version:3,category},201);
+ }});
+ assert.equal((await client.createMenuCategory('restaurant-a',randomUUID(),{expectedVersion:2,category})).version,3);
+ assert.throws(()=>client.createMenuCategory('restaurant-a',randomUUID(),{expectedVersion:2,category,settings:{}}),{code:'invalid_request'});
+ assert.throws(()=>client.createMenuItem('restaurant-a',randomUUID(),{expectedVersion:2,item:{...input,id:'../unsafe'}}),{code:'invalid_request'});
+});

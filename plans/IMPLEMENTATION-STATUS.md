@@ -5,6 +5,15 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
+## Latest verified position — 2026-10-05 11:28 UTC
+
+- Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
+- Latest published and fully verified commit: `96684ba2ad48272048dac6224bdaef64eb41b2b7`, CI [37302577893](https://github.com/dukkanai/onlinu/actions/runs/37302577893), all jobs successful.
+- Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
+- Current unpublished increment: category/item creation with staff browser forms, disabled initial items, version/audit checks and tests.
+- Still incomplete: broader management and Flutter parity, category editing/options/media UI, WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
+- Historical verification entries below describe their exact commits; they are not a claim that the entire SaaS is complete.
+
 ## Acceptance order
 
 1. Repeatable isolated database tests, CI coverage and baseline fixes.
@@ -33,7 +42,7 @@ Existing production/security and external-account approval boundaries remain.
 - CI definition now prepares PostgreSQL 16, exercises DB cases and client tests.
   Local PostgreSQL 17 success is not proof of CI's PostgreSQL 16 outcome.
 
-## Current increment
+## First core integration milestone
 
 Original core adapter, contact-free cart preview and read-only core MCP mode
 are pushed in e8af8cc. Cross-language parity uses real Go HTTP/PostgreSQL and
@@ -134,10 +143,16 @@ provisioning. Successful increments do not close these release gates.
 - Security/licensing and geographic-data gates in SAAS-LAUNCH-GATES.ar.md remain
   distinct from a successful source-data restoration.
 
-### Customer review and immutable financial summary (in progress, 2026-10-05)
+### Customer review and immutable financial summary (verified, 2026-10-05)
 
 - Menu increment e501fd2 verified: CI 37299568106 succeeded in server, client and control-image, including actual Chromium browser flow.
 - Added option/subtotal/delivery/inclusive-tax review and owned original-order financial detail. Minimal MCP/event DTOs remain unchanged; contacts and receipt capabilities remain excluded.
 - Added optional backward-compatible core quote binding. Central confirmations always bind the reviewed snapshot; Go rechecks inside Create transaction to reject same-total detail/tax changes. Accepted idempotent recovery remains first.
-- Added cross-language golden vectors, changed-tax regression, owner-isolation/detail tests and escaped-summary tests. Local verification: 591 Go passes, five known sandbox netlink failures and one codec skip; 162 platform, eight tenant, 80 client and 37 deployment tests pass. Go vet/build and client TypeScript/build pass. Final focused Go ownership/quote/real Node-control integration rerun passes. Remote Chromium/server/image checks pending for this increment.
+- Added cross-language golden vectors, changed-tax regression, owner-isolation/detail tests and escaped-summary tests. Local verification: 591 Go passes, five known sandbox netlink failures and one codec skip; 162 platform, eight tenant, 80 client and 37 deployment tests pass. Go vet/build and client TypeScript/build pass. Final focused Go ownership/quote/real Node-control integration rerun passes. Published as 96684ba; CI37302577893 passed all server, client and control-image jobs, including actual Chromium checkout/staff/OAuth regression.
 - Full project remains open: menu/category creation and options/media UI, remaining management/Flutter parity, WhatsApp ordering, provisioning/billing, external provider/OIDC/ChatGPT acceptance and production gates are not complete.
+
+### Scoped category/item creation (in progress, 2026-10-05)
+
+- Added narrow versioned original-core category/item creation, same-transaction actor audit and catalog validation. No entire-settings write or historical-order mutation is exposed.
+- Added staff-only APIs and browser forms with stable generated IDs and CSRF. Browser-created items begin disabled for explicit review/activation; kitchen/customer OAuth cannot create them.
+- Added atomic-audit/duplicate/stale/unchanged-settings tests and actual control-plane/browser creation coverage. Local aggregate: 592 Go passes, five known sandbox netlink failures and one codec skip; 164 platform, eight tenant, 80 client and 37 deployment tests pass. Go vet/build and client type-check/build pass. Remote Chromium acceptance pending for this increment.

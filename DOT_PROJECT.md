@@ -11,7 +11,7 @@ Updated: 2026-10-05 UTC. Initial inspected upstream: `main` at
   authorization. All 565 tracked files were reconciled byte-for-byte against
   the inspected snapshot, including the two Windows DLLs; full `.git` history
   is now present. `git pull --ff-only` reports already up to date.
-- Initial tracked working tree is clean; this reference is the only new file.
+- The initial baseline was clean. Development now lives on `feat/saas-core-integration`; use `git status` for current local state and `plans/IMPLEMENTATION-STATUS.md` for verified milestones and remaining scope.
 - GitHub is the durable source of truth. The cloud filesystem is not the only
   copy. Credentials are outside this repository; no secrets are in this file.
 - Shell credential helper uses the approved GitHub CLI connection. Global Git
@@ -209,7 +209,9 @@ The payment/Events and initial staff order bridge subsequently passed full CI at
 The next channel-policy increment is documented in `CORE-CHANNELS.md` beside the
 other core integration guides; it is not a WhatsApp shopping completion claim.
 
-Customer review changes (2026-10-05, under verification):
+Customer review changes (2026-10-05, 96684ba; CI37302577893 passed):
 - Central checkout shows selected options and original gross-inclusive tax breakdown.
 - Confirmed summary uses owned `/platform-api/order-details/{number}` instead of reusing the prepared quote.
 - `expectedQuoteHash` binds central confirmations to reviewed details, with a second check inside original Create. Legacy native callers remain compatible when omitted. See `prototype/platform/CORE-ORDERS.md`.
+
+Menu creation (2026-10-05, under verification): versioned staff category/item creation reuses original SaveCatalog and audit transaction. `/manage/{tenant}/menu` has scoped creation forms; new browser items start disabled for review. See `prototype/platform/CORE-MENU.md`.

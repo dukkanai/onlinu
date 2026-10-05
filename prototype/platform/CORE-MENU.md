@@ -51,3 +51,25 @@ prices with unchanged historical orders, stale-version rejection and audit
 rollback. Cross-language tests cover role/scope exclusions, rejected unrelated
 fields and live original-core quote/status results. Chromium CI adds the real
 basic item-edit form round trip. Real merchant data and production are untouched.
+
+## Creating categories and items
+
+Scoped staff POSTs to `/platform-api/staff/menu/categories` and
+`/platform-api/staff/menu/items` accept an expected catalog version and a bounded
+category/item, not an entire settings document. Both merge through the original
+SaveCatalog lock, validation and transaction; creation audit and catalog commit
+succeed together. Duplicate IDs and stale versions are conflicts.
+
+The browser menu presents creation forms only to members with `menu:update`.
+Form IDs are generated before submission and kept in hidden inputs, so repeating
+a stale form cannot silently append another object. Categories must exist before
+adding items. Browser-created items are disabled drafts; staff review details and
+explicitly enable availability using the existing item form. API callers may
+choose availability explicitly. The original inventory and opening rules still
+apply. No existing orders, settings, table QR codes or brand configuration are
+rewritten by these narrow operations.
+
+An ambiguous create is not retried automatically: reload the menu and inspect the
+stable submitted ID before deciding whether another edit is needed. Category
+rename/reorder, options/media UI and deletion/archive workflows remain separate
+work; native React management remains available.

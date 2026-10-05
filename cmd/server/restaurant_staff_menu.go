@@ -120,3 +120,70 @@ func (s *restaurantStore) PatchMenuItem(ctx context.Context, id string, patch re
 	}
 	return restaurantStaffMenuItemView(saved, id)
 }
+
+type restaurantMenuItemCreate struct {
+	ExpectedVersion int64          `json:"expectedVersion"`
+	Item            restaurantItem `json:"item"`
+}
+type restaurantMenuCategoryCreate struct {
+	ExpectedVersion int64              `json:"expectedVersion"`
+	Category        restaurantCategory `json:"category"`
+}
+type restaurantStaffMenuCategory struct {
+	Version  int64              `json:"version"`
+	Category restaurantCategory `json:"category"`
+}
+
+func (s *restaurantStore) CreateMenuItem(ctx context.Context, input restaurantMenuItemCreate) (restaurantStaffMenuItem, error) {
+	catalog, err := s.GetCatalog(ctx, false)
+	if err != nil {
+		return restaurantStaffMenuItem{}, err
+	}
+	if input.ExpectedVersion < 1 {
+		return restaurantStaffMenuItem{}, restaurantFail(400, "invalid_request")
+	}
+	if catalog.Version != input.ExpectedVersion {
+		return restaurantStaffMenuItem{}, restaurantFail(409, "catalog_changed")
+	}
+	for _, item := range catalog.Items {
+		if item.ID == input.Item.ID {
+			return restaurantStaffMenuItem{}, restaurantFail(409, "conflict")
+		}
+	}
+	catalog.Items = append(catalog.Items, input.Item)
+	ctx = context.WithValue(ctx, restaurantMenuTargetKey{}, restaurantMenuTarget{"item_create", input.Item.ID})
+	saved, err := s.SaveCatalog(ctx, catalog)
+	if err != nil {
+		return restaurantStaffMenuItem{}, err
+	}
+	return restaurantStaffMenuItemView(saved, input.Item.ID)
+}
+func (s *restaurantStore) CreateMenuCategory(ctx context.Context, input restaurantMenuCategoryCreate) (restaurantStaffMenuCategory, error) {
+	catalog, err := s.GetCatalog(ctx, false)
+	if err != nil {
+		return restaurantStaffMenuCategory{}, err
+	}
+	if input.ExpectedVersion < 1 {
+		return restaurantStaffMenuCategory{}, restaurantFail(400, "invalid_request")
+	}
+	if catalog.Version != input.ExpectedVersion {
+		return restaurantStaffMenuCategory{}, restaurantFail(409, "catalog_changed")
+	}
+	for _, category := range catalog.Categories {
+		if category.ID == input.Category.ID {
+			return restaurantStaffMenuCategory{}, restaurantFail(409, "conflict")
+		}
+	}
+	catalog.Categories = append(catalog.Categories, input.Category)
+	ctx = context.WithValue(ctx, restaurantMenuTargetKey{}, restaurantMenuTarget{"category_create", input.Category.ID})
+	saved, err := s.SaveCatalog(ctx, catalog)
+	if err != nil {
+		return restaurantStaffMenuCategory{}, err
+	}
+	for _, category := range saved.Categories {
+		if category.ID == input.Category.ID {
+			return restaurantStaffMenuCategory{saved.Version, category}, nil
+		}
+	}
+	return restaurantStaffMenuCategory{}, restaurantFail(409, "catalog_changed")
+}

@@ -110,6 +110,20 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
       const parsed=menuPatch.safeParse(input);if(!menuId.safeParse(itemId).success||!parsed.success)throw problem(400,'invalid_request');
       return request(tenantId,subject,'POST',`/platform-api/staff/menu/items/${itemId}`,parsed.data,'','staff:menu:update',menuItemView,2_000_000);
     },
+    createMenuItem(tenantId,subject,input){
+      const schema=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),item:z.object({
+        id:menuId,categoryId:menuId,name:z.string().min(1).max(320),description:z.string().max(4000),priceMinor:z.number().int().min(0).max(100_000_000),
+        imageUrl:z.string().max(4096),available:z.boolean(),sort:z.number().int().min(0).max(10000),options:coreCatalogSchema.shape.items.element.shape.options,
+      }).strict()}).strict();
+      const parsed=schema.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST','/platform-api/staff/menu/items',parsed.data,'','staff:menu:update',menuItemView,2_000_000);
+    },
+    createMenuCategory(tenantId,subject,input){
+      const category=z.object({id:menuId,name:z.string().min(1).max(240),sort:z.number().int().min(0).max(10000)}).strict();
+      const schema=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),category}).strict();
+      const parsed=schema.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST','/platform-api/staff/menu/categories',parsed.data,'','staff:menu:update',z.object({version:z.number().int().positive(),category}));
+    },
     stock(tenantId,subject){
       return request(tenantId,subject,'GET','/platform-api/staff/stock',undefined,'','staff:stock:read',z.object({items:z.array(stockItem).max(5000)}),2_000_000);
     },

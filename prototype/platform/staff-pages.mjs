@@ -23,10 +23,12 @@ export function menuPriceMinor(value){
   return minor<=100_000_000?minor:null;
 }
 
-export function staffMenuPage({tenantId,menu}){
+export function staffMenuPage({tenantId,menu,membership,csrf,newItemId,newCategoryId}){
   const categories=new Map(menu.categories.map(category=>[category.id,category.name]));
   const items=menu.items.map(item=>`<li><a href="/manage/${escape(tenantId)}/menu/items/${escape(item.id)}">${escape(item.name)}</a> — ${escape(categories.get(item.categoryId)??item.categoryId)} — ${escape((item.priceMinor/100).toFixed(2))} SAR — ${item.available?'مفعّل في المنيو':'غير مفعّل'}</li>`).join('');
-  return page('منيو '+menu.name,`<a href="/manage">مطاعمي</a><p>الإصدار: ${escape(menu.version)}. التغييرات الجديدة لا تعيد تسعير الطلبات السابقة.</p><ul>${items}</ul>`);
+  const hidden=(id)=>`<input type="hidden" name="csrf" value="${escape(csrf)}"><input type="hidden" name="expectedVersion" value="${escape(menu.version)}"><input type="hidden" name="id" value="${escape(id)}">`;
+  const create=membership?.permissions.includes('menu:update')?`<section><h2>إضافة قسم</h2><form method="post" action="/manage/${escape(tenantId)}/menu/new-category">${hidden(newCategoryId)}<label>اسم القسم الجديد <input name="name" required maxlength="120"></label><input type="hidden" name="sort" value="0"><button>إضافة القسم</button></form></section>${menu.categories.length?`<section><h2>إضافة صنف</h2><form method="post" action="/manage/${escape(tenantId)}/menu/new-item">${hidden(newItemId)}<label>اسم الصنف الجديد <input name="name" required maxlength="160"></label><label>القسم للصنف الجديد <select name="categoryId">${menu.categories.map(category=>`<option value="${escape(category.id)}">${escape(category.name)}</option>`).join('')}</select></label><label>سعر الصنف الجديد <input name="price" inputmode="decimal" required maxlength="16"></label><button>إضافة الصنف للمراجعة</button></form><p>يُضاف الصنف غير مفعّل حتى تراجع تفاصيله وتفعّله.</p></section>`:'<p>أضف قسمًا أولًا لإضافة الأصناف.</p>'}`:'';
+  return page('منيو '+menu.name,`<a href="/manage">مطاعمي</a><p>الإصدار: ${escape(menu.version)}. التغييرات الجديدة لا تعيد تسعير الطلبات السابقة.</p><ul>${items}</ul>${create}`);
 }
 
 export function staffMenuItemPage({tenantId,membership,menu,csrf}){

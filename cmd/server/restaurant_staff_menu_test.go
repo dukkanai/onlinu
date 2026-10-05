@@ -79,3 +79,54 @@ func TestRestaurantStaffMenuPatchPreservesPrivateSettingsAndOrderSnapshots(t *te
 		t.Fatal("failed menu audit did not roll back", err)
 	}
 }
+
+func TestRestaurantStaffMenuCreatePreservesSettingsAndAudits(t *testing.T) {
+	orders, store, db := restaurantOrdersFixtureDB(t)
+	ctx := context.WithValue(context.Background(), platformStaffActorKey{}, platformStaffActor{"platform:synthetic-menu", "staff:menu:update"})
+	before, err := store.GetCatalog(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	category, err := store.CreateMenuCategory(ctx, restaurantMenuCategoryCreate{ExpectedVersion: before.Version, Category: restaurantCategory{ID: "drinks", Name: "Drinks"}})
+	if err != nil || category.Version != before.Version+1 {
+		t.Fatal(category, err)
+	}
+	_, err = store.CreateMenuCategory(ctx, restaurantMenuCategoryCreate{ExpectedVersion: before.Version, Category: restaurantCategory{ID: "stale", Name: "Stale"}})
+	restaurantOrdersRequireError(t, err, "catalog_changed")
+	item := restaurantItem{ID: "water", CategoryID: "drinks", Name: "Water", PriceMinor: 500, Available: false, Options: []restaurantOption{}}
+	created, err := store.CreateMenuItem(ctx, restaurantMenuItemCreate{ExpectedVersion: category.Version, Item: item})
+	if err != nil || created.Item.Available {
+		t.Fatal(created, err)
+	}
+	input := restaurantOrderFixtureInput("pickup")
+	input.Items = []restaurantOrderLineInput{{ItemID: "water", Quantity: 1}}
+	input.ExpectedTotalMinor = 500
+	_, err = orders.Quote(ctx, input)
+	restaurantOrdersRequireError(t, err, "item_unavailable")
+	_, err = store.CreateMenuItem(ctx, restaurantMenuItemCreate{ExpectedVersion: created.Version, Item: item})
+	restaurantOrdersRequireError(t, err, "conflict")
+	after, err := store.GetCatalog(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before.Settings, after.Settings) || !reflect.DeepEqual(before.Tables, after.Tables) || !reflect.DeepEqual(before.Items[0], after.Items[0]) {
+		t.Fatal("creation overwrote unrelated catalog data")
+	}
+	var count int
+	if err = db.QueryRow("SELECT count(*) FROM restaurant_catalog_audit WHERE kind IN ('item_create','category_create') AND actor_id='platform:synthetic-menu'").Scan(&count); err != nil || count != 2 {
+		t.Fatal("missing creation audit", count, err)
+	}
+	_, err = db.Exec(`CREATE FUNCTION reject_creation_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit failure';END $$;
+ CREATE TRIGGER reject_creation_audit BEFORE INSERT ON restaurant_catalog_audit FOR EACH ROW EXECUTE FUNCTION reject_creation_audit()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item.ID = "not-saved"
+	if _, err = store.CreateMenuItem(ctx, restaurantMenuItemCreate{ExpectedVersion: created.Version, Item: item}); err == nil {
+		t.Fatal("ignored failed creation audit")
+	}
+	after, err = store.GetCatalog(ctx, false)
+	if err != nil || after.Version != created.Version || len(after.Items) != 2 {
+		t.Fatal("failed create did not roll back", err)
+	}
+}

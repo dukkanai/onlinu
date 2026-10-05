@@ -302,6 +302,23 @@ try {
       const menuAfterBrowser=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
       assert.equal(menuAfterBrowser.item.priceMinor,1200);assert.equal(menuAfterBrowser.item.description,'Synthetic menu browser edit');
       assert.deepEqual(menuAfterBrowser.item.options,menuBeforeBrowser.item.options);
+      await page.goto(baseUrl+'/manage/restaurant-a/menu');
+      const categoryForm=page.locator('form[action$="/menu/new-category"]');
+      await categoryForm.getByLabel('اسم القسم الجديد').fill('Browser drinks');
+      await categoryForm.getByRole('button',{name:'إضافة القسم',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${menuAfterBrowser.version+1}"]`).first().waitFor({state:'attached'});
+      const itemForm=page.locator('form[action$="/menu/new-item"]');
+      await itemForm.getByLabel('اسم الصنف الجديد').fill('Browser water');
+      await itemForm.getByLabel('القسم للصنف الجديد').selectOption({label:'Browser drinks'});
+      await itemForm.getByLabel('سعر الصنف الجديد').fill('٢٫٥٠');
+      await itemForm.getByRole('button',{name:'إضافة الصنف للمراجعة',exact:true}).click();
+      await page.waitForURL(/\/manage\/restaurant-a\/menu\/items\/[a-f0-9-]{36}$/);
+      assert.equal(await page.getByLabel('اسم الصنف',{exact:true}).inputValue(),'Browser water');
+      assert.equal(await page.getByLabel('التوفر اليدوي').inputValue(),'false');
+      const createdMenu=(await send(menuPath,{cookie:alice.cookie})).data;
+      const browserItem=createdMenu.items.find(item=>item.name==='Browser water');
+      assert.ok(browserItem);assert.equal(browserItem.priceMinor,250);assert.equal(browserItem.available,false);
+
       const registration=await app.auth.register({redirect_uris:['https://client.example/callback'],token_endpoint_auth_method:'none',grant_types:['authorization_code'],response_types:['code']});
       const verifier=randomBytes(32).toString('base64url');
       const grant={client_id:registration.client_id,redirect_uri:'https://client.example/callback',response_type:'code',resource:baseUrl+'/mcp',
@@ -319,6 +336,19 @@ try {
       console.log('Verified authenticated staff navigation and real browser OAuth consent -> registered callback -> PKCE exchange using synthetic identities');
     }finally{await browser.close();}
   }
+  const createMenu=(who,kind,body)=>send(menuPath+'/'+kind,{method:'POST',cookie:who.cookie,headers:{origin:baseUrl,'x-csrf-token':who.id===alice.id?csrf:bobMe.data.csrfToken},body});
+  const latestMenu=(await send(menuPath,{cookie:alice.cookie})).data;
+  const categoryInput={expectedVersion:latestMenu.version,category:{id:'api-drinks',name:'API drinks',sort:0}};
+  assert.equal((await createMenu(bob,'categories',categoryInput)).status,403);
+  assert.equal((await send(menuPath+'/categories',{method:'POST',token:alice.token,body:categoryInput})).status,403);
+  const newCategory=await createMenu(alice,'categories',categoryInput);assert.equal(newCategory.status,201,JSON.stringify(newCategory.data));
+  assert.equal((await createMenu(alice,'categories',categoryInput)).status,409,'A repeated stale creation cannot duplicate a category');
+  const itemInput={expectedVersion:newCategory.data.version,item:{id:'api-water',categoryId:'api-drinks',name:'API water',description:'',priceMinor:250,imageUrl:'',available:false,sort:0,options:[]}};
+  assert.equal((await createMenu(bob,'items',itemInput)).status,403);
+  const newItem=await createMenu(alice,'items',itemInput);assert.equal(newItem.status,201,JSON.stringify(newItem.data));
+  assert.equal(newItem.data.item.available,false);
+  assert.equal((await createMenu(alice,'items',itemInput)).status,409);
+  assert.equal((await rpc('quote_cart',{...cart,items:[{itemId:'api-water',quantity:1}]})).isError,true,'New draft item cannot be ordered');
   const payment=await pay(alice.cookie);assert.equal(payment.status,303);
   assert.match(payment.headers.location,/^https:\/\/checkout\.stripe\.com\//);
   assert.equal((await pay(alice.cookie)).headers.location,payment.headers.location);

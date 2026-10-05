@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { checkoutSummary, checkoutErrorPage } from './checkout-pages.mjs';
 /** Real subject-based identity and staff control API, separate from demo routes.
  * Deployment still needs approved HTTPS/OIDC configuration. No public bootstrap,
@@ -227,6 +228,23 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           return redirect(res,'/checkout/'+checkoutId,303);
         }
       }
+      const createMenu=/^\/manage\/([a-z0-9-]{1,64})\/menu\/new-(item|category)$/.exec(url.pathname);
+      if(createMenu&&orderClient&&req.method==='POST'){
+        const who=await browser(req),[,tenantId,kind]=createMenu;
+        if(url.search)throw problem(400,'invalid_request');
+        const input=await body(req);auth.verifyCsrf(req,input.csrf);await directory.authorize(who.id,tenantId,'menu:update');
+        const allowed=kind==='item'?['csrf','expectedVersion','id','name','categoryId','price']:['csrf','expectedVersion','id','name','sort'];
+        if(Object.keys(input).some(key=>!allowed.includes(key))||!/^\d{1,16}$/.test(input.expectedVersion??''))throw problem(400,'invalid_request');
+        if(kind==='item'){
+          const priceMinor=menuPriceMinor(input.price);if(priceMinor===null)throw problem(400,'invalid_request');
+          const created=await orderClient.createMenuItem(tenantId,who.id,{expectedVersion:Number(input.expectedVersion),
+            item:{id:input.id,name:input.name,categoryId:input.categoryId,priceMinor,description:'',imageUrl:'',available:false,sort:0,options:[]}});
+          return redirect(res,`/manage/${tenantId}/menu/items/${created.item.id}`,303);
+        }
+        if(!/^\d{1,5}$/.test(input.sort??''))throw problem(400,'invalid_request');
+        await orderClient.createMenuCategory(tenantId,who.id,{expectedVersion:Number(input.expectedVersion),category:{id:input.id,name:input.name,sort:Number(input.sort)}});
+        return redirect(res,`/manage/${tenantId}/menu`,303);
+      }
       const managementMenu=/^\/manage\/([a-z0-9-]{1,64})\/menu(?:\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79}))?$/.exec(url.pathname);
       if(managementMenu&&orderClient){
         const [,tenantId,itemId]=managementMenu;
@@ -235,7 +253,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         if(req.method==='GET'){
           const membership=await directory.authorize(who.id,tenantId,'menu:read');
           const menu=itemId?await orderClient.menuItem(tenantId,who.id,itemId):await orderClient.menu(tenantId,who.id);
-          htmlHeaders(res);res.end(itemId?staffMenuItemPage({tenantId,membership,menu,csrf:auth.csrfToken(req)}):staffMenuPage({tenantId,menu}));return;
+          htmlHeaders(res);res.end(itemId?staffMenuItemPage({tenantId,membership,menu,csrf:auth.csrfToken(req)}):staffMenuPage({tenantId,menu,membership,csrf:auth.csrfToken(req),newItemId:randomUUID(),newCategoryId:randomUUID()}));return;
         }
         if(req.method==='POST'&&itemId){
           const input=await body(req);auth.verifyCsrf(req,input.csrf);
@@ -316,6 +334,13 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const who = await browser(req);
         if (req.method !== 'GET') auth.verifyCsrf(req);
         if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { principal: who, csrfToken: auth.csrfToken(req) });
+        const menuCreateRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu\/(items|categories)$/.exec(url.pathname);
+        if(menuCreateRoute&&orderClient&&req.method==='POST'){
+          if(url.search)throw problem(400,'invalid_request');
+          const [,tenantId,kind]=menuCreateRoute;await directory.authorize(who.id,tenantId,'menu:update');
+          const input=await body(req,128*1024);
+          return json(res,201,await orderClient[kind==='items'?'createMenuItem':'createMenuCategory'](tenantId,who.id,input));
+        }
         const menuRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu(?:\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79}))?$/.exec(url.pathname);
         if(menuRoute&&orderClient){
           if(url.search)throw problem(400,'invalid_request');

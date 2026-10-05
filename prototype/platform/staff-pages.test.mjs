@@ -48,3 +48,11 @@ test('menu views escape names and do not give read-only staff editing forms',()=
   const editable=staffMenuItemPage({tenantId:'a',menu,membership:{permissions:['menu:read','menu:update']},csrf:'test'});
   assert.match(editable,/value="12\.00"/);assert.match(editable,/&lt;script&gt;/);assert.doesNotMatch(editable,/<script>/);
 });
+
+test('menu creation requires write permission and stable form IDs; new items start disabled',()=>{
+ const menu={version:4,name:'Test',categories:[{id:'main',name:'Main'}],items:[]};
+ const html=staffMenuPage({tenantId:'a',menu,membership:{permissions:['menu:read','menu:update']},csrf:'token',newItemId:'item-id',newCategoryId:'category-id'});
+ assert.match(html,/new-category/);assert.match(html,/new-item/);assert.match(html,/value="item-id"/);assert.match(html,/غير مفعّل/);
+ assert.doesNotMatch(staffMenuPage({tenantId:'a',menu,membership:{permissions:['menu:read']}}),/<form/);
+ assert.doesNotMatch(staffMenuPage({tenantId:'a',menu:{...menu,categories:[]},membership:{permissions:['menu:update']},csrf:'token',newCategoryId:'id'}),/action="[^"]*new-item/);
+});

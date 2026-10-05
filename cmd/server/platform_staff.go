@@ -37,6 +37,39 @@ func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(
 		}
 		writeJSON(w, 200, menu)
 	}))
+	for _, kind := range []string{"items", "categories"} {
+		mux.HandleFunc("POST /platform-api/staff/menu/"+kind, wrap("staff:menu:update", func(w http.ResponseWriter, r *http.Request, body []byte, actor string) {
+			if r.URL.RawQuery != "" {
+				writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			ctx := context.WithValue(r.Context(), platformStaffActorKey{}, platformStaffActor{actor, "staff:menu:update"})
+			if kind == "items" {
+				var input restaurantMenuItemCreate
+				if !decodeRestaurantBody(w, r, &input) {
+					return
+				}
+				item, err := s.orders.store.CreateMenuItem(ctx, input)
+				if err != nil {
+					writeRestaurantError(w, err)
+					return
+				}
+				writeJSON(w, 201, item)
+			} else {
+				var input restaurantMenuCategoryCreate
+				if !decodeRestaurantBody(w, r, &input) {
+					return
+				}
+				category, err := s.orders.store.CreateMenuCategory(ctx, input)
+				if err != nil {
+					writeRestaurantError(w, err)
+					return
+				}
+				writeJSON(w, 201, category)
+			}
+		}))
+	}
 	mux.HandleFunc("GET /platform-api/staff/menu/items/{itemId}", wrap("staff:menu:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
 		if r.URL.RawQuery != "" {
 			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
