@@ -221,3 +221,11 @@ Option/category editing is verified by db9ae2b / CI37304792692: Arabic staff for
 Image bridge (3183508 / CI37306155756 verified): original tenant media storage/normalization, staff upload, versioned item assignment and bounded own-origin public delivery. See `prototype/platform/CORE-MEDIA.md` for limits, backups, orphan files and native browser-upload test boundary.
 
 Staff membership UI is under verification at `/manage/{tenant}/members`; see `prototype/platform/CORE-MEMBERS.md` for verified-ID onboarding, roles, aliases, transactional permission audit and migration/rollback boundaries.
+
+Flutter setup in this cloud workspace (2026-10-05): official pinned3.47.5 archive
+matches SHA-256 `2132e990f236f8d22e7c6314b29a191a95b10d7cbcfec9b4e2e303d996652cbb`
+from the official release manifest; SDK is outside Git at `../.tools/flutter`.
+Dart3.13.4/version command verified. Set `CI=true BOT=true` to bypass the SDK's
+unneeded cloud-instance autodetection (the metadata request itself is not
+permitted), plus workspace-local HOME/XDG_CONFIG_HOME/XDG_CACHE_HOME/PUB_CACHE.
+Analytics are disabled. Baseline Flutter dependency/test verification is pending.

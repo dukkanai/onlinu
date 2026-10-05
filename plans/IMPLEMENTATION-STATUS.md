@@ -5,12 +5,12 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 12:08 UTC
+## Latest verified position — 2026-10-05 12:33 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `3183508d9bd93c1b9aabff1e96f08a46d0a0b5cf`, CI [37306155756](https://github.com/dukkanai/onlinu/actions/runs/37306155756), all jobs successful.
+- Latest published and fully verified commit: `caf7d5d0361c445eb849c3f90aa315d4967449f2`, CI [37307753202](https://github.com/dukkanai/onlinu/actions/runs/37307753202), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Current unpublished increment: staff membership browser UI, granular permission/enable controls, aliases and transactional permission-history audit.
+- Current unpublished increment: isolated native-app authorization broker foundation; HTTP/Flutter wiring follows.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
 - Historical verification entries below describe their exact commits; they are not a claim that the entire SaaS is complete.
 
@@ -191,8 +191,18 @@ Media3183508 passed all CI37306155756 jobs, including native Chromium file
 selection/multipart upload through the loopback-only test ingress and image
 preview. Existing HTTPS browser identity/origin tests also passed.
 
-### Staff membership UI (in progress, 2026-10-05)
+### Staff membership UI (verified, 2026-10-05)
 
 - Added verified-account-ID onboarding, display aliases, role presets/custom permissions, enable/disable forms and friendly browser errors over existing directory authority/version/last-owner protections. No email linking or invitations.
 - Added backward-compatible central columns for aliases and before/after permission audit snapshots, committed with membership changes. Historical rows remain empty rather than fabricated; audit does not copy alias text.
 - Local final platform suite172/172 and focused actual Go/control-plane integration pass after correcting bearer HTML access to refuse before login redirect. Baseline Go594 passes/5known localnetlink failures/1codec skip, tenant8/client80/deployment37 and builds remain passing at their tested boundaries. New remote membership browser flow pending.
+
+Staff membership caf7d5d passed all CI37307753202 jobs, including Chromium
+creation/enable/granular-read/disable and last-owner guard. Native work is next.
+
+### Native authorization broker foundation (in progress, 2026-10-05)
+
+- Selected system-browser PKCE for Windows, consistent with the existing plan and RFC8252; device-code flow was evaluated but not selected for browser-capable native clients.
+- Shared broker gains a fixed native public-client profile with a separate issuer/resource/scope, bounded loopback redirects,15minute access/8hour refresh family, customer/native revocation isolation and own-device grant management primitives. No HTTP native routes are exposed yet.
+- Final local platform179/179 and focused real Go/control-plane regression pass. Native UI/HTTP/API/Flutter wiring and remote regression pending.
+- Pinned official Flutter3.47.5 SDK checksum/version verified outside Git. Its cloud autodetection was blocked; source inspection identified the official CI/BOT short-circuit, which avoids the metadata request entirely. Workspace-local config and disabled analytics work. Flutter dependency/baseline tests are still running.
