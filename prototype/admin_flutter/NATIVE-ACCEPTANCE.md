@@ -92,3 +92,21 @@ fixture now uploads to Go, fetches the normalized preview, and rejects stale/inv
 images. Windows rendering uses an injected synthetic picker; it does **not** prove
 the interactive OS chooser, filesystem permission handling or a merchant's device.
 Those checks remain a release acceptance requirement.
+
+## Native team management increment
+
+The team section lists current membership records and supports adding an already
+verified principal UUID, assigning a role/defaults or granular permissions, changing
+a restaurant-local display name, and disabling/re-enabling membership. Every change
+has a review step, version CAS and explicit confirmation. The original transactional
+directory still enforces audit insertion, grant limits and last-owner protection.
+No email matching, account creation, invitations or platform-operator promotion is
+performed. New users obtain their UUID after verified browser login at `/manage`.
+
+Native membership operations now explicitly use restaurant-only directory authority:
+a platform operator's separate privileges cannot elevate a limited restaurant role.
+Suspended restaurants cannot change membership through this native path. Directory
+and HTTP regression tests cover this distinction; browser platform operations retain
+their existing policy. The Dart TLS fixture verifies listing, versioned alias update,
+stale conflict and last-owner protection with synthetic principals. Windows rendering
+uses a synthetic gateway; real staff accounts/permissions require separate acceptance.

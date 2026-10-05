@@ -60,6 +60,12 @@ test('native HTTP consent, audience isolation, membership limits and own-device 
   assert.equal((await send('/native/api/restaurants/b/members',{token:session.access_token})).status,403);
   assert.equal((await send('/native/api/platform/restaurants',{method:'POST',token:session.access_token,body:{}})).status,403);
   const limitedSession=await login(limited);assert.equal((await send('/native/api/restaurants/a/members',{token:limitedSession.access_token})).status,403,'Native membership cannot inherit unrelated platform-admin authority');
+  await app.directory.setMembership(alice.id,'a',limited.id,{role:'manager',permissions:['members:manage','orders:read'],enabled:true,expectedVersion:1});
+  const target='/native/api/restaurants/a/members/'+outsider.id;
+  assert.equal((await send(target,{method:'PUT',token:limitedSession.access_token,body:{role:'owner',enabled:true,expectedVersion:null}})).status,403,'Operator status cannot escalate a limited native membership');
+  assert.equal((await send(target,{method:'PUT',token:limitedSession.access_token,body:{role:'manager',permissions:['refunds:manage'],enabled:true,expectedVersion:null}})).status,403);
+  assert.equal((await send(target,{method:'PUT',token:limitedSession.access_token,body:{role:'kitchen',permissions:['orders:read'],enabled:true,expectedVersion:null}})).status,200);
+
  });
  await t.test('browser can revoke only its own native grants, including after staff access is removed',async()=>{
   const listed=await send('/native/sessions',{who:alice});assert.equal(listed.status,200);assert.equal(listed.data.includes(session.access_token),false);

@@ -12,6 +12,7 @@ import 'package:restaurant_admin_prototype/core/app.dart';
 import 'package:restaurant_admin_prototype/core/menu_image_editor.dart';
 import 'package:restaurant_admin_prototype/core/menu_image_io.dart';
 import 'package:restaurant_admin_prototype/core/models.dart';
+import 'package:restaurant_admin_prototype/core/team_models.dart';
 import 'package:restaurant_admin_prototype/core/controller.dart';
 import 'package:restaurant_admin_prototype/core/session_store.dart';
 import '../test/core_fakes.dart';
@@ -178,6 +179,50 @@ void main() {
     expect(controller.menu, isNull);
     expect(controller.stock, isEmpty);
     expect(controller.channels, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('Windows team permission review and explicit confirmation',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile = profileFixture(permissions: ['members:manage'])
+      ..currentTeam = [
+        CoreTeamMember({
+          'tenantId': 'demo-a',
+          'principalId': '12345678-1234-4234-8234-123456789def',
+          'role': 'kitchen',
+          'permissions': rolePermissions('kitchen').toList(),
+          'version': 1,
+          'enabled': true,
+          'displayName': 'موظف المطبخ'
+        })
+      ];
+    final c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الدخول عبر المتصفح'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تعديل العضوية'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'اسم العرض داخل المطعم'),
+        'المطبخ المسائي');
+    final enabled = find.widgetWithText(SwitchListTile, 'العضوية مفعّلة');
+    await tester.ensureVisible(enabled);
+    await tester.pumpAndSettle();
+    await tester.tap(enabled);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('مراجعة التغيير'));
+    await tester.pumpAndSettle();
+    expect(api.teamWrites, 0);
+    await capture(tester, boundary, 'windows-team-review.png');
+    await tester.tap(find.text('تأكيد حفظ العضوية'));
+    await tester.pumpAndSettle();
+    expect(api.teamWrites, 1);
+    expect(api.currentTeam.single.enabled, false);
+    expect(api.currentTeam.single.displayName, 'المطبخ المسائي');
+    await capture(tester, boundary, 'windows-team.png');
     await tester.pumpWidget(const SizedBox());
   });
   testWidgets(

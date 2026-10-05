@@ -35,7 +35,7 @@ export async function createNativeStaff({pool,baseUrl,csrfKey,directory,browserA
    if(!tenant||!member)throw problem(403,'forbidden');
    if(/^\/native\/api\/restaurants\/[^/]+\/members(?:\/|$)/.test(path)&&!member.permissions.includes('members:manage'))throw problem(403,'forbidden');
    const target=new URL('/api'+path.slice('/native/api'.length),baseUrl);
-   return staffApi(req,res,who,target);
+   return staffApi(req,res,who,target,{restaurantOnly:true});
   }
   if(req.method==='POST'&&['/native/oauth/token','/native/oauth/revoke'].includes(path)){
    if(req.headers.cookie||req.headers.authorization||req.headers.origin)throw problem(403,'native_client_required');

@@ -79,6 +79,19 @@ test('persistent tenant identity, roles, concurrency and OAuth revocation', {
     await assert.rejects(directory.setMembership(worker.id, 'a', ownerA.id, { ...request, expectedVersion: 1 }), { code: 'forbidden' });
   });
 
+  await t.test('native restaurant-only membership authority never inherits operator escalation', async () => {
+    const nativeOperator=await make('native-limited-operator'),target=await make('native-target');
+    await pool.query('UPDATE platform_identities SET platform_admin=TRUE WHERE id=$1',[nativeOperator.id]);
+    const restricted={allowPlatformAdmin:false};
+    await assert.rejects(directory.members(nativeOperator.id,'a',restricted),{code:'forbidden'});
+    await directory.setMembership(ownerA.id,'a',nativeOperator.id,{role:'manager',permissions:['members:manage','orders:read'],enabled:true,expectedVersion:null});
+    await directory.setMembership(nativeOperator.id,'a',target.id,{role:'kitchen',permissions:['orders:read'],enabled:true,expectedVersion:null},restricted);
+    await assert.rejects(directory.setMembership(nativeOperator.id,'a',target.id,{role:'owner',enabled:true,expectedVersion:1},restricted),{code:'forbidden'});
+    await assert.rejects(directory.setMembership(nativeOperator.id,'a',target.id,{role:'manager',permissions:['refunds:manage'],enabled:true,expectedVersion:1},restricted),{code:'forbidden'});
+    await assert.rejects(directory.setMembership(nativeOperator.id,'a',ownerA.id,{role:'kitchen',enabled:true,expectedVersion:1},restricted),{code:'forbidden'});
+
+  });
+
   await t.test('last owner cannot be removed, including concurrent owner removals', async () => {
     await assert.rejects(directory.setMembership(root.id, 'a', ownerA.id, { role: 'owner', enabled: false, expectedVersion: 1 }), { code: 'last_owner_required' });
     await assert.rejects(directory.setMembership(ownerA.id, 'a', ownerA.id, { role: 'owner', permissions: ['orders:read'], enabled: true, expectedVersion: 1 }), { code: 'invalid_owner_permissions' });
@@ -101,6 +114,7 @@ test('persistent tenant identity, roles, concurrency and OAuth revocation', {
 
   await t.test('suspension retains settlement access without reopening business settings', async () => {
     await directory.setTenantStatus(root.id, 'b', { status: 'suspended', expectedVersion: 2 });
+    await assert.rejects(directory.members(ownerB.id,'b',{allowPlatformAdmin:false}),{code:'tenant_suspended'});
     await directory.authorize(ownerB.id, 'b', 'refunds:manage');
     await assert.rejects(directory.authorize(ownerB.id, 'b', 'channels:manage'), { code: 'tenant_suspended' });
     assert.equal((await directory.resolve(ownerB.id)).memberships[0].tenantStatus, 'suspended');

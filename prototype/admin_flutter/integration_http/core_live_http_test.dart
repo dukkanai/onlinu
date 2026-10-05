@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:restaurant_admin_prototype/core/api.dart';
+import 'package:restaurant_admin_prototype/core/team_models.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
 import 'package:restaurant_admin_prototype/core/controller.dart';
 import 'package:restaurant_admin_prototype/core/session_store.dart';
@@ -144,6 +145,35 @@ void main() {
     await controller.change(existing);
     expect(controller.orders.firstWhere((v) => v.number == number).status,
         'preparing');
+
+    final team = await api.team('restaurant-a');
+    final self = team.singleWhere(
+        (v) => v.principalId == Platform.environment['CORE_NATIVE_PRINCIPAL']);
+    final change = TeamChange(
+        principalId: self.principalId,
+        role: self.role,
+        permissions: self.permissions,
+        enabled: self.enabled,
+        displayName: 'Synthetic native owner',
+        expectedVersion: self.version);
+    final updatedMember = await api.setMember('restaurant-a', change);
+    expect(updatedMember.version, self.version + 1);
+    await expectLater(
+        api.setMember('restaurant-a', change),
+        throwsA(isA<CoreException>()
+            .having((v) => v.code, 'stale member', 'version_conflict')));
+    await expectLater(
+        api.setMember(
+            'restaurant-a',
+            TeamChange(
+                principalId: self.principalId,
+                role: self.role,
+                permissions: self.permissions,
+                enabled: false,
+                displayName: updatedMember.displayName,
+                expectedVersion: updatedMember.version)),
+        throwsA(isA<CoreException>()
+            .having((v) => v.code, 'last owner', 'last_owner_required')));
 
     final menu = await api.menu('restaurant-a'), item = menu.items.first;
     await api.patchMenu(menu, item,

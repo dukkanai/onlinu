@@ -3,16 +3,18 @@ import 'package:flutter/foundation.dart';
 import 'api.dart';
 import 'auth.dart';
 import 'models.dart';
+import 'team_models.dart';
 import 'transport.dart';
 
-enum CoreSection { orders, stock, channels, menu }
+enum CoreSection { orders, stock, channels, menu, team }
 
 extension CoreSectionPermission on CoreSection {
   String get permission => switch (this) {
         CoreSection.orders => 'orders:read',
         CoreSection.stock => 'stock:read',
         CoreSection.channels => 'channels:manage',
-        CoreSection.menu => 'menu:read'
+        CoreSection.menu => 'menu:read',
+        CoreSection.team => 'members:manage'
       };
 }
 
@@ -28,6 +30,7 @@ class CoreController extends ChangeNotifier {
   List<CoreStockItem> stock = const [];
   List<CoreChannel> channels = const [];
   CoreMenu? menu;
+  List<CoreTeamMember> team = const [];
   CoreProfile? profile;
   String? selectedTenant;
   List<CoreOrder> orders = const [];
@@ -61,6 +64,7 @@ class CoreController extends ChangeNotifier {
 
   void _clearData() {
     menu = null;
+    team = const [];
     channels = const [];
     stock = const [];
     orders = const [];
@@ -209,6 +213,10 @@ class CoreController extends ChangeNotifier {
         final result = await api.channels(tenant);
         if (!_current(generation)) return;
         channels = result;
+      } else if (section == CoreSection.team) {
+        final result = await api.team(tenant);
+        if (!_current(generation)) return;
+        team = result;
       } else {
         final result = await api.menu(tenant);
         if (!_current(generation)) return;
@@ -603,6 +611,45 @@ class CoreController extends ChangeNotifier {
     }
   }
 
+  Future<void> setMember(String tenant, TeamChange change) async {
+    if (!_writeGuard(tenant, 'members:manage', CoreSection.team)) return;
+    CoreTeamMember? old;
+    for (final value in team) {
+      if (value.principalId == change.principalId) old = value;
+    }
+    if (old?.version != change.expectedVersion) {
+      message = 'تغيرت عضوية الموظف. حدّث الفريق وأعد مراجعة التعديل.';
+      _emit();
+      return;
+    }
+    final member = membership!;
+    if (member.role != 'owner' &&
+        (old?.role == 'owner' ||
+            change.role == 'owner' ||
+            !member.permissions.containsAll(change.permissions))) {
+      message = 'لا يمكنك منح صلاحيات لا تملكها أو تعديل مالك المطعم.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.setMember(tenant, change);
+      if (_current(generation)) message = 'حُفظت عضوية الموظف وصلاحياته.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
   Future<Uint8List> menuImage(CoreMenuDetails details) async {
     final generation = _generation;
     bool allowed() =>
@@ -691,6 +738,11 @@ String errorMessage(Object error) {
     'access_denied' => 'أُلغي تسجيل الدخول.',
     'secure_storage_unavailable' =>
       'تعذر الوصول إلى مخزن النظام الآمن. لن تُحفظ الجلسة في ملف عادي.',
+    'identity_disabled' =>
+      'يجب أن يسجل الموظف الدخول بحساب موثّق أولًا وأن يكون حسابه مفعّلًا.',
+    'last_owner_required' => 'لا يمكن تعطيل أو إزالة آخر مالك مفعّل للمطعم.',
+    'invalid_owner_permissions' => 'يجب أن يحتفظ المالك بجميع صلاحيات المطعم.',
+    'version_conflict' ||
     'conflict' ||
     'catalog_changed' =>
       'تغيرت البيانات على جهاز آخر. جرى طلب نسخة محدثة.',

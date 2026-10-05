@@ -5,12 +5,13 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 16:19 UTC
+## Latest verified position — 2026-10-05 16:33 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `c8d491b6eb2b934505a9fd609415fe2d64639f8f`, CI [37337215342](https://github.com/dukkanai/onlinu/actions/runs/37337215342), all jobs successful.
+- Latest published and fully verified commit: `1e2c169b83cb61c062fdf2504d7fd365aa7199eb`, CI [37340174900](https://github.com/dukkanai/onlinu/actions/runs/37340174900), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Published native category/options editing and feedback passed all CI jobs (69 Flutter tests and actual Windows forms/store/build). Current locally verified increment: actual Dart HTTP/TLS/PKCE and typed reads/writes against the Node broker and original Go/PostgreSQL core, including refresh replay/cache clearing. Its remote CI also passed. The current native image increment passed the local real Dart/Node/Go upload and preview test; its Windows/remote verification is pending.
+- Native category/options/image editing, strict Dart TLS/PKCE integration, rotating refresh and actual Windows forms/store/build passed remote CI (73 Flutter unit/widget tests in the published image commit). Image-review and create-item screenshots were inspected; Arabic layout and corrected form spacing are readable. OS picker selection remains a synthetic injection in rendering tests.
+- Current locally verified increment: native team roles, granular permissions, alias/enable edits and explicit review/confirmation; 78 Flutter tests, 196 platform tests and real Dart/Node/Go membership read/update/stale/last-owner checks pass. Native membership authority cannot inherit separate platform-operator privileges. Remote team CI is pending.
 - Native Windows PKCE client, order/cash UI, actual OS-store/rendering smoke and unsigned build are verified at the published commit above. The synthetic screenshot was inspected; no Arabic clipping observed.
 - POS integration is explicitly deferred by the owner’s voice instruction; continue current development without choosing/connecting a vendor.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.

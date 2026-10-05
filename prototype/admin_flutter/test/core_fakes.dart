@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:restaurant_admin_prototype/core/api.dart';
+import 'package:restaurant_admin_prototype/core/team_models.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
 import 'package:restaurant_admin_prototype/core/models.dart';
 import 'package:restaurant_admin_prototype/core/transport.dart';
@@ -260,6 +261,27 @@ class FakeCoreGateway implements CoreGateway {
   Completer<CoreStockItem>? stockWriteGate;
   String? writeTenant, writeStatus;
   int? writeVersion;
+  List<CoreTeamMember> currentTeam = [];
+  int teamWrites = 0;
+  @override
+  Future<List<CoreTeamMember>> team(String tenant) async => currentTeam;
+  @override
+  Future<CoreTeamMember> setMember(String tenant, TeamChange change) async {
+    teamWrites++;
+    if (writeError != null) throw writeError!;
+    final result = CoreTeamMember({
+      ...change.toJson(),
+      'tenantId': tenant,
+      'principalId': change.principalId,
+      'version': (change.expectedVersion ?? 0) + 1
+    });
+    currentTeam = [
+      ...currentTeam.where((v) => v.principalId != change.principalId),
+      result
+    ];
+    return result;
+  }
+
   @override
   Future<CoreProfile> profile() async {
     profiles++;

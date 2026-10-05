@@ -248,3 +248,13 @@ Public previews are restricted to the central origin and content-addressed files
 No external image URL is fetched by the native client. Browser/native uploads share
 one two-slot process budget. Real Windows picker/device acceptance is still required;
 CI rendering injects synthetic selection. See the native acceptance document.
+
+### Native team management
+
+`team_models.dart` / `team_pane.dart` expose membership roles and 15 granular
+permissions with a review/confirmation step and version checks. Existing verified
+principal UUIDs only; obtain a new employee's UUID from the authenticated browser
+`/manage` page. No email invitations or identity linking. The native staff router
+passes restaurant-only authority to the original directory, which retains atomic
+audit and last-owner protection. Platform-operator privileges do not expand native
+restaurant membership grants. Test accounts remain synthetic.

@@ -4,7 +4,7 @@ import {problem} from './auth.mjs';
 // transports. Authentication/CSRF belongs to the caller; platform-admin
 // registry endpoints are deliberately not included here.
 export function createStaffApi({directory,orderClient,body,json,uploadSlots={active:0}}){
-  return async(req,res,who,url)=>{
+  return async(req,res,who,url,{restaurantOnly=false}={})=>{
         const imageRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79})\/image$/.exec(url.pathname);
         if(imageRoute&&orderClient&&req.method==='POST'){
           const [,tenantId,itemId]=imageRoute,rawVersion=req.headers['x-menu-version'],version=Number(rawVersion);
@@ -82,8 +82,8 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
           }
         }
         const match = /^\/api\/restaurants\/([a-z0-9-]{1,64})\/members(?:\/([a-f0-9-]{36}))?$/.exec(url.pathname);
-        if (match && req.method === 'GET' && !match[2]) return json(res, 200, { members: await directory.members(who.id, match[1]) });
-        if (match && req.method === 'PUT' && match[2]) return json(res, 200, await directory.setMembership(who.id, match[1], match[2], await body(req)));
+        if (match && req.method === 'GET' && !match[2]) return json(res, 200, { members: await directory.members(who.id, match[1],{allowPlatformAdmin:!restaurantOnly}) });
+        if (match && req.method === 'PUT' && match[2]) return json(res, 200, await directory.setMembership(who.id, match[1], match[2], await body(req),{allowPlatformAdmin:!restaurantOnly}));
     throw problem(404,'not_found');
   };
 }

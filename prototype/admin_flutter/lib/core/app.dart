@@ -6,6 +6,7 @@ import 'models.dart';
 import 'stock_pane.dart';
 import 'channels_pane.dart';
 import 'menu_pane.dart';
+import 'team_pane.dart';
 
 class CoreApp extends StatefulWidget {
   const CoreApp({super.key, required this.controller});
@@ -257,6 +258,16 @@ class CoreScreen extends StatelessWidget {
                                         unawaited(
                                             c.selectSection(CoreSection.menu));
                                       }),
+                          if (member.can('members:manage'))
+                            ChoiceChip(
+                                label: const Text('الفريق'),
+                                selected: c.section == CoreSection.team,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(
+                                            c.selectSection(CoreSection.team));
+                                      }),
                           if (member.can('channels:manage'))
                             ChoiceChip(
                                 label: const Text('قنوات الطلب'),
@@ -268,6 +279,11 @@ class CoreScreen extends StatelessWidget {
                                             CoreSection.channels));
                                       }),
                         ]),
+                      if (c.section == CoreSection.team &&
+                          member?.can('members:manage') == true)
+                        TeamPane(
+                            key: ValueKey('team-${c.selectedTenant}'),
+                            controller: c),
                       if (c.section == CoreSection.menu &&
                           member?.can('menu:read') == true)
                         MenuPane(

@@ -1,11 +1,14 @@
 import 'dart:typed_data';
 import 'auth.dart';
 import 'models.dart';
+import 'team_models.dart';
 import 'transport.dart';
 
 abstract interface class CoreGateway {
   CoreSession get session;
   Future<CoreProfile> profile();
+  Future<List<CoreTeamMember>> team(String tenant);
+  Future<CoreTeamMember> setMember(String tenant, TeamChange change);
   Future<CoreMenu> menu(String tenant);
   Future<CoreMenuDetails> menuDetails(String tenant, String id);
   Future<CoreMenuDetails> uploadImage(
@@ -72,7 +75,11 @@ class CoreApi implements CoreGateway {
         'rate_limited',
         'image_invalid',
         'image_too_large',
-        'upload_busy'
+        'upload_busy',
+        'version_conflict',
+        'last_owner_required',
+        'invalid_owner_permissions',
+        'identity_disabled'
       };
       final raw = reply.data['error'];
       throw CoreException(safe.contains(raw) ? raw as String : 'request_failed',
@@ -86,6 +93,42 @@ class CoreApi implements CoreGateway {
       '/native/api/restaurants/${tenantKey(tenant)}/staff/orders';
   void _tenant(Map<String, dynamic> data, String tenant) {
     if (data['tenantId'] != tenant) invalidResponse();
+  }
+
+  @override
+  Future<List<CoreTeamMember>> team(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/members');
+    final rows = array(data['members'], max: 5000)
+        .map((v) => CoreTeamMember(object(v)))
+        .toList();
+    if (rows.any((v) => v.tenantId != tenant) ||
+        rows.map((v) => v.principalId).toSet().length != rows.length)
+      invalidResponse();
+    return List.unmodifiable(rows);
+  }
+
+  @override
+  Future<CoreTeamMember> setMember(String tenant, TeamChange change) async {
+    final body = change.toJson();
+    final data = await _request('PUT',
+        '/native/api/restaurants/${tenantKey(tenant)}/members/${principalKey(change.principalId)}',
+        body: body);
+    try {
+      final result = CoreTeamMember(data);
+      if (result.tenantId != tenant ||
+          result.principalId != change.principalId ||
+          result.version != (change.expectedVersion ?? 0) + 1 ||
+          result.role != change.role ||
+          result.enabled != change.enabled ||
+          result.displayName != change.displayName.trim() ||
+          result.permissions.length != change.permissions.length ||
+          !result.permissions.containsAll(change.permissions))
+        invalidResponse();
+      return result;
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
   }
 
   @override

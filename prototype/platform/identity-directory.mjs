@@ -143,24 +143,25 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
       return { id: tenantId, status: change.status, version: change.expectedVersion + 1 };
     });
   }
-  async function membershipAuthority(db, actorId, tenantId) {
+  async function membershipAuthority(db, actorId, tenantId, {allowPlatformAdmin=true}={}) {
     const identity = await enabledIdentity(db, actorId);
     const tenant = await db.query('SELECT status FROM platform_tenants WHERE id=$1 FOR UPDATE', [tenantId]);
     if (!tenant.rows[0]) throw problem(404, 'tenant_not_found');
     if (tenant.rows[0].status === 'closed') throw problem(409, 'tenant_closed');
-    if (identity.platform_admin) return { role: 'owner', permissions: RESTAURANT_PERMISSIONS };
+    if (allowPlatformAdmin && identity.platform_admin) return { role: 'owner', permissions: RESTAURANT_PERMISSIONS };
+    if (!allowPlatformAdmin && tenant.rows[0].status !== 'active') throw problem(403, 'tenant_suspended');
     const member = await db.query(`SELECT role,permissions FROM platform_memberships WHERE tenant_id=$1 AND principal_id=$2 AND enabled=TRUE`, [tenantId, actorId]);
     if (!member.rows[0]?.permissions.includes('members:manage')) throw problem(403, 'forbidden');
     return member.rows[0];
   }
-  async function setMembership(actorId, tenantId, principalId, input) {
+  async function setMembership(actorId, tenantId, principalId, input, options={}) {
     parse(tenantIdSchema, tenantId); parse(key, principalId);
     const change = parse(memberInput, input);
     const permissions = [...new Set(change.permissions ?? roles[change.role])].sort();
     if (change.role === 'owner' && (permissions.length !== roles.owner.length || !roles.owner.every(p => permissions.includes(p)))) throw problem(400, 'invalid_owner_permissions');
     return transaction(async db => {
       // Serializing on the tenant also prevents concurrent removal of its last owner.
-      const authority = await membershipAuthority(db, actorId, tenantId);
+      const authority = await membershipAuthority(db, actorId, tenantId, options);
       await enabledIdentity(db, principalId);
       const current = await db.query('SELECT * FROM platform_memberships WHERE tenant_id=$1 AND principal_id=$2', [tenantId, principalId]);
       const row = current.rows[0];
@@ -199,10 +200,10 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
     const { rows } = await pool.query("SELECT id,name FROM platform_tenants WHERE id=ANY($1::text[]) AND status='active' ORDER BY id", [validated]);
     return rows;
   }
-  async function members(actorId, tenantId) {
+  async function members(actorId, tenantId, options={}) {
     parse(tenantIdSchema, tenantId);
     return transaction(async db => {
-      await membershipAuthority(db, actorId, tenantId);
+      await membershipAuthority(db, actorId, tenantId, options);
       const { rows } = await db.query('SELECT * FROM platform_memberships WHERE tenant_id=$1 ORDER BY principal_id', [tenantId]);
       return rows.map(safeRow);
     });
