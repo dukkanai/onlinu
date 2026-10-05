@@ -110,3 +110,5 @@ test('service intake form uses explicit booleans, version and review without unr
  const html=staffServicePage({...args,canUpdate:true});assert.match(html,/&lt;a&gt;/);assert.match(html,/name="expectedVersion" value="4"/);assert.match(html,/name="reviewed"/);assert.match(html,/aria-label="استقبال الطلبات الجديدة"/);assert.match(html,/name="tableEnabled"/);assert.doesNotMatch(html,/name="taxNumber"|name="paymentMethods"/);
  assert.doesNotMatch(staffServicePage({...args,canUpdate:false}),/<button>/);
 });
+
+test('service validation error gives a useful Arabic browser explanation',()=>{assert.match(staffErrorPage('invalid_service_modes'),/طريقة خدمة واحدة/);});

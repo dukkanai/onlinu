@@ -213,3 +213,9 @@ quote denial pass. Actual Dart closes/reopens through Node and Go and rejects a
 stale version; dedicated HTTP checks reject courier access, CSRF failures and
 unrelated fields. The additional Chromium and Windows form checks remain pending
 until this increment's remote CI completes. No live shop was closed or reopened.
+
+The first service CI (`37362384371`) caught missing legacy React translations for
+`invalid_service_modes`. Arabic/English messages and the central browser error
+page were added. All 80 React tests and TypeScript/Vite build pass locally; the
+platform Arabic-error regression also passes. This correction needs its own full
+remote CI result; do not treat the original failed aggregate as release success.

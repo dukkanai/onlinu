@@ -1,4 +1,5 @@
 export const iterationDeliveryEnglish = {
+  "errors.invalid_service_modes": "Enable at least one fulfillment method before accepting new orders.",
   "errors.invalid_delivery_zones": "Delivery district settings are invalid. Review the directory and fees.",
   "errors.district_required": "Choose a supported delivery district.",
   "errors.invalid_district": "The selected delivery district is invalid. Choose it again.",
@@ -55,6 +56,7 @@ export const iterationDeliveryEnglish = {
 } as const;
 
 export const iterationDeliveryArabic: Record<keyof typeof iterationDeliveryEnglish, string> = {
+  "errors.invalid_service_modes": "فعّل طريقة خدمة واحدة على الأقل قبل استقبال الطلبات الجديدة.",
   "errors.invalid_delivery_zones": "إعدادات أحياء التوصيل غير صحيحة. راجع الدليل والرسوم.",
   "errors.district_required": "اختر حيًا مدعومًا للتوصيل.",
   "errors.invalid_district": "حي التوصيل المحدد غير صالح. اختره مجددًا.",

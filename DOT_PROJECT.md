@@ -323,3 +323,11 @@ native courier identities or expose live location/customer contact data.
 - Regression: `TestRestaurantStaffService*`, `core_service_test.dart`, original
   actual Dart/Node/Go fixture and browser/Windows smoke. Remote acceptance is
   separate from local tests; see the completion ledger before release.
+
+### Cross-client validation rule
+
+Adding a backend `restaurantFail` code also changes the React translation contract,
+even if no React component was edited. Run all client tests and the TypeScript/Vite
+build for new codes, and add both Arabic and English messages. In restricted cloud
+shells the supported `node --import tsx --test tests/*.test.ts` test-loader invocation
+avoids the tsx CLI's optional Unix IPC listener; it runs the same complete test files.
