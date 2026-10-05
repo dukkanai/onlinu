@@ -178,7 +178,8 @@ try {
         }
         if(url.origin==='https://checkout.stripe.com'){
           assert.equal(headers.cookie,undefined,'Provider must not receive the platform cookie');
-          assert.equal(headers.referer,undefined,'Provider must not receive private checkout URLs');
+          if(event.resourceType==='Document')assert.equal(headers.referer,undefined,'Provider navigation must not receive private checkout URLs');
+          else assert.ok(!headers.referer||new URL(headers.referer).origin===url.origin,'Provider subresources may refer only to their own origin');
           if(event.resourceType==='Document')providerVisits++;
           await fulfill(200,'<!doctype html><title>Synthetic provider</title><h1>Mock payment page</h1>');return;
         }
