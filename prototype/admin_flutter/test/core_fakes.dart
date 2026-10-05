@@ -159,6 +159,46 @@ CoreChannel channelFixture(String channel,
       'adapterImplemented': channel == 'web' || channel == 'chatgpt'
     }, tenantId: tenant);
 
+Map<String, dynamic> menuJson(
+        {int version = 1,
+        String name = 'وجبة',
+        int price = 1250,
+        bool available = true,
+        String category = 'main'}) =>
+    {
+      'version': version,
+      'name': 'مطعم تجريبي',
+      'currency': 'SAR',
+      'categories': [
+        {'id': 'main', 'name': 'الأطباق'},
+        {'id': 'side', 'name': 'إضافات'}
+      ],
+      'items': [
+        {
+          'id': 'meal',
+          'categoryId': category,
+          'name': name,
+          'priceMinor': price,
+          'available': available
+        }
+      ]
+    };
+CoreMenu menuFixture(
+        {String tenant = 'demo-a',
+        int version = 1,
+        String name = 'وجبة',
+        int price = 1250,
+        bool available = true,
+        String category = 'main'}) =>
+    CoreMenu(
+        menuJson(
+            version: version,
+            name: name,
+            price: price,
+            available: available,
+            category: category),
+        tenantId: tenant);
+
 class FakeCoreGateway implements CoreGateway {
   @override
   final FakeCoreSession session = FakeCoreSession();
@@ -170,6 +210,9 @@ class FakeCoreGateway implements CoreGateway {
   int writes = 0, reads = 0, profiles = 0;
   int stockWrites = 0, stockReads = 0;
   int channelWrites = 0;
+  int menuWrites = 0;
+  CoreMenu currentMenu = menuFixture();
+  Completer<CoreMenu>? menuGate;
   List<CoreChannel> currentChannels =
       channelLabels.keys.map((v) => channelFixture(v)).toList();
   CoreStockItem currentStock = stockFixture();
@@ -274,5 +317,36 @@ class FakeCoreGateway implements CoreGateway {
         .map((v) => v.channel == channel.channel ? result : v)
         .toList();
     return result;
+  }
+
+  @override
+  Future<CoreMenu> menu(String tenant) async {
+    if (readError != null) throw readError!;
+    return menuGate?.future ??
+        CoreMenu(
+            menuJson(
+                version: currentMenu.version,
+                name: currentMenu.items.single.name,
+                price: currentMenu.items.single.priceMinor,
+                available: currentMenu.items.single.available,
+                category: currentMenu.items.single.categoryId),
+            tenantId: tenant);
+  }
+
+  @override
+  Future<void> patchMenu(CoreMenu menu, CoreMenuItem item,
+      {required String name,
+      required String categoryId,
+      required int price,
+      required bool available}) async {
+    menuWrites++;
+    if (writeError != null) throw writeError!;
+    currentMenu = menuFixture(
+        tenant: menu.tenantId,
+        version: menu.version + 1,
+        name: name,
+        price: price,
+        available: available,
+        category: categoryId);
   }
 }

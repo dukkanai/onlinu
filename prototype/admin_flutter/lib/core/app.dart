@@ -5,6 +5,7 @@ import 'controller.dart';
 import 'models.dart';
 import 'stock_pane.dart';
 import 'channels_pane.dart';
+import 'menu_pane.dart';
 
 class CoreApp extends StatefulWidget {
   const CoreApp({super.key, required this.controller});
@@ -238,6 +239,16 @@ class CoreScreen extends StatelessWidget {
                                         unawaited(
                                             c.selectSection(CoreSection.stock));
                                       }),
+                          if (member.can('menu:read'))
+                            ChoiceChip(
+                                label: const Text('الأصناف'),
+                                selected: c.section == CoreSection.menu,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(
+                                            c.selectSection(CoreSection.menu));
+                                      }),
                           if (member.can('channels:manage'))
                             ChoiceChip(
                                 label: const Text('قنوات الطلب'),
@@ -249,6 +260,11 @@ class CoreScreen extends StatelessWidget {
                                             CoreSection.channels));
                                       }),
                         ]),
+                      if (c.section == CoreSection.menu &&
+                          member?.can('menu:read') == true)
+                        MenuPane(
+                            key: ValueKey('menu-${c.selectedTenant}'),
+                            controller: c),
                       if (c.section == CoreSection.channels &&
                           member?.can('channels:manage') == true)
                         ChannelsPane(controller: c),

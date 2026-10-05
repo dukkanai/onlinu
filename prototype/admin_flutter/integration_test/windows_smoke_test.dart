@@ -26,7 +26,7 @@ void main() {
     final first = OsCoreSessionStore(origin),
         second = OsCoreSessionStore('https://other-$nonce.invalid');
     try {
-      // Never enumerate, read or delete an existing credential. These random
+      // Never enumerate or target pre-existing app/user credentials. These random
       // .invalid origin keys contain synthetic values and grant no access.
       expect(await first.read(), isNull);
       await first.write('synthetic-native-smoke-$nonce');
@@ -61,16 +61,7 @@ void main() {
     await tester.tap(find.text('تفاصيل الطلب'));
     await tester.pumpAndSettle();
     expect(find.textContaining('بدون ملح'), findsOneWidget);
-    final render =
-        boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-    final picture = await render.toImage(pixelRatio: 1);
-    final bytes = await picture.toByteData(format: ui.ImageByteFormat.png);
-    picture.dispose();
-    final path = Platform.environment['ONLINU_SMOKE_SCREENSHOT'];
-    if (path != null && bytes != null) {
-      await File(path).parent.create(recursive: true);
-      await File(path).writeAsBytes(bytes.buffer.asUint8List());
-    }
+    await capture(boundary, 'windows-orders.png');
     await tester.tap(find.byTooltip('إغلاق التفاصيل'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('تسجيل الخروج'));
@@ -79,4 +70,76 @@ void main() {
     expect(find.text('الدخول عبر المتصفح'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets(
+      'Windows menu, inventory and channel forms use isolated original-core contracts',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile = profileFixture(permissions: [
+        'orders:read',
+        'menu:read',
+        'menu:update',
+        'stock:read',
+        'stock:update',
+        'channels:manage'
+      ]);
+    final controller =
+            CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: controller)));
+    await tester.pumpAndSettle();
+    Future<void> tap(Finder target) async {
+      await tester.ensureVisible(target);
+      await tester.pumpAndSettle();
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
+
+    await tap(find.text('الدخول عبر المتصفح'));
+    await tap(find.widgetWithText(ChoiceChip, 'الأصناف'));
+    await tap(find.text('تعديل الصنف'));
+    await tester.enterText(
+        find.widgetWithText(TextField, 'اسم الصنف'), 'وجبة الاختبار');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'السعر بالريال السعودي'), '١٢٫٣٠');
+    await tap(find.text('حفظ التعديلات'));
+    expect(api.menuWrites, 1);
+    expect(controller.menu!.items.single.priceMinor, 1230);
+    await capture(boundary, 'windows-menu.png');
+    await tap(find.widgetWithText(ChoiceChip, 'المخزون'));
+    await tap(find.text('تعديل الجرد'));
+    await tester.enterText(
+        find.widgetWithText(TextField, 'الكمية المتاحة للبيع خارج الحجوزات'),
+        '٢٨');
+    await tap(find.text('تأكيد الجرد'));
+    expect(controller.stock.single.available, 28);
+    expect(controller.stock.single.held, 3);
+    await capture(boundary, 'windows-stock.png');
+    await tap(find.widgetWithText(ChoiceChip, 'قنوات الطلب'));
+    await tap(find.text('إيقاف الطلبات الجديدة').first);
+    await tap(find.text('تأكيد'));
+    expect(api.channelWrites, 1);
+    expect(controller.channels.first.newOrdersEnabled, false);
+    expect(controller.channels.last.adapterImplemented, false);
+    await capture(boundary, 'windows-channels.png');
+    await tap(find.text('تسجيل الخروج'));
+    expect(controller.menu, isNull);
+    expect(controller.stock, isEmpty);
+    expect(controller.channels, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+}
+
+Future<void> capture(GlobalKey boundary, String name) async {
+  final root = Platform.environment['ONLINU_SMOKE_SCREENSHOT'];
+  if (root == null) return;
+  final render =
+      boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  final picture = await render.toImage(pixelRatio: 1);
+  final bytes = await picture.toByteData(format: ui.ImageByteFormat.png);
+  picture.dispose();
+  if (bytes == null) return;
+  final file = File('${File(root).parent.path}${Platform.pathSeparator}$name');
+  await file.parent.create(recursive: true);
+  await file.writeAsBytes(bytes.buffer.asUint8List());
 }

@@ -204,3 +204,72 @@ class CoreChannel {
   final int version;
   final bool newOrdersEnabled, adapterImplemented;
 }
+
+String menuKey(Object? value) {
+  final result = textField(value, max: 80);
+  if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$').hasMatch(result))
+    invalidResponse();
+  return result;
+}
+
+class CoreCategory {
+  CoreCategory(Map<String, dynamic> json)
+      : id = menuKey(json['id']),
+        name = textField(json['name']);
+  final String id, name;
+}
+
+class CoreMenuItem {
+  CoreMenuItem(Map<String, dynamic> json)
+      : id = menuKey(json['id']),
+        categoryId = menuKey(json['categoryId']),
+        name = textField(json['name']),
+        priceMinor = integer(json['priceMinor'], max: 100000000),
+        available = json['available'] is bool
+            ? json['available'] as bool
+            : invalidResponse();
+  final String id, categoryId, name;
+  final int priceMinor;
+  final bool available;
+}
+
+class CoreMenu {
+  CoreMenu(Map<String, dynamic> json, {required this.tenantId})
+      : version = integer(json['version'], min: 1),
+        name = textField(json['name']),
+        categories = List.unmodifiable(array(json['categories'], max: 1000)
+            .map((v) => CoreCategory(object(v)))),
+        items = List.unmodifiable(array(json['items'], max: 1000)
+            .map((v) => CoreMenuItem(object(v)))) {
+    if (json['currency'] != 'SAR' ||
+        categories.map((v) => v.id).toSet().length != categories.length ||
+        items.map((v) => v.id).toSet().length != items.length ||
+        items.any((v) => !categories.any((c) => c.id == v.categoryId)))
+      invalidResponse();
+  }
+  final String tenantId, name;
+  final int version;
+  final List<CoreCategory> categories;
+  final List<CoreMenuItem> items;
+}
+
+String priceInput(int minor) =>
+    '${minor ~/ 100}.${(minor % 100).toString().padLeft(2, '0')}';
+int? priceMinor(String raw) {
+  final text = raw.trim().split('').map((v) {
+    final a = '٠١٢٣٤٥٦٧٨٩'.indexOf(v), p = '۰۱۲۳۴۵۶۷۸۹'.indexOf(v);
+    return a >= 0
+        ? '$a'
+        : p >= 0
+            ? '$p'
+            : v == '٫'
+                ? '.'
+                : v;
+  }).join();
+  if (!RegExp(r'^[0-9]{1,7}(\.[0-9]{1,2})?$').hasMatch(text)) return null;
+  final pieces = text.split('.'),
+      whole = int.parse(pieces[0]),
+      fraction = pieces.length == 1 ? 0 : int.parse(pieces[1].padRight(2, '0'));
+  final total = whole * 100 + fraction;
+  return total <= 100000000 ? total : null;
+}

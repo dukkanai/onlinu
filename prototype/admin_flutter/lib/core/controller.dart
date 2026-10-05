@@ -5,13 +5,14 @@ import 'auth.dart';
 import 'models.dart';
 import 'transport.dart';
 
-enum CoreSection { orders, stock, channels }
+enum CoreSection { orders, stock, channels, menu }
 
 extension CoreSectionPermission on CoreSection {
   String get permission => switch (this) {
         CoreSection.orders => 'orders:read',
         CoreSection.stock => 'stock:read',
-        CoreSection.channels => 'channels:manage'
+        CoreSection.channels => 'channels:manage',
+        CoreSection.menu => 'menu:read'
       };
 }
 
@@ -26,6 +27,7 @@ class CoreController extends ChangeNotifier {
   CoreSection section = CoreSection.orders;
   List<CoreStockItem> stock = const [];
   List<CoreChannel> channels = const [];
+  CoreMenu? menu;
   CoreProfile? profile;
   String? selectedTenant;
   List<CoreOrder> orders = const [];
@@ -57,7 +59,8 @@ class CoreController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  void _clearOrders() {
+  void _clearData() {
+    menu = null;
     channels = const [];
     stock = const [];
     orders = const [];
@@ -86,7 +89,7 @@ class CoreController extends ChangeNotifier {
     ++_generation;
     section = value;
     message = null;
-    _clearOrders();
+    _clearData();
     _emit();
     await refresh();
   }
@@ -106,7 +109,7 @@ class CoreController extends ChangeNotifier {
     message = null;
     profile = null;
     selectedTenant = null;
-    _clearOrders();
+    _clearData();
     _emit();
     try {
       final ready = restore
@@ -137,7 +140,7 @@ class CoreController extends ChangeNotifier {
     busy = false;
     profile = null;
     selectedTenant = null;
-    _clearOrders();
+    _clearData();
     message = null;
     _emit();
     final generation = _generation;
@@ -163,7 +166,7 @@ class CoreController extends ChangeNotifier {
     _chooseSection();
     busy = false;
     message = null;
-    _clearOrders();
+    _clearData();
     _emit();
     await refresh();
   }
@@ -187,7 +190,7 @@ class CoreController extends ChangeNotifier {
       final member = membership;
       if (member == null || !member.can(section.permission)) {
         if (member == null) selectedTenant = null;
-        _clearOrders();
+        _clearData();
         message = member?.tenantStatus == 'suspended'
             ? 'المطعم موقوف مؤقتًا.'
             : 'لا توجد صلاحية لعرض هذا القسم في المطعم.';
@@ -202,10 +205,14 @@ class CoreController extends ChangeNotifier {
         final result = await api.stock(tenant);
         if (!_current(generation)) return;
         stock = result;
-      } else {
+      } else if (section == CoreSection.channels) {
         final result = await api.channels(tenant);
         if (!_current(generation)) return;
         channels = result;
+      } else {
+        final result = await api.menu(tenant);
+        if (!_current(generation)) return;
+        menu = result;
       }
       online = true;
       refreshedAt = _now();
@@ -233,10 +240,10 @@ class CoreController extends ChangeNotifier {
         error is CoreException && error.status == 401) {
       profile = null;
       selectedTenant = null;
-      _clearOrders();
+      _clearData();
       _timer?.cancel();
     } else if (error is CoreException && error.status == 403) {
-      _clearOrders();
+      _clearData();
       profile = null;
       _timer?.cancel();
     }
@@ -399,6 +406,45 @@ class CoreController extends ChangeNotifier {
     }
   }
 
+  Future<void> patchMenu(CoreMenu expected, CoreMenuItem item,
+      {required String name,
+      required String categoryId,
+      required int price,
+      required bool available}) async {
+    if (section != CoreSection.menu ||
+        !writable ||
+        expected.tenantId != selectedTenant ||
+        membership?.can('menu:update') != true) return;
+    if (menu?.version != expected.version ||
+        !menu!.items.any((v) => v.id == item.id)) {
+      message = 'تغيرت قائمة الأصناف أثناء التعديل. افتح النسخة الحالية.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.patchMenu(expected, item,
+          name: name,
+          categoryId: categoryId,
+          price: price,
+          available: available);
+      if (_current(generation))
+        message = 'حُفظ الصنف دون تغيير الطلبات السابقة أو إعدادات المطعم.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
   void setSuspended(bool value) {
     if (_disposed || suspended == value) return;
     suspended = value;
@@ -434,7 +480,9 @@ String errorMessage(Object error) {
     'cancelled' || 'access_denied' => 'أُلغي تسجيل الدخول.',
     'secure_storage_unavailable' =>
       'تعذر الوصول إلى مخزن النظام الآمن. لن تُحفظ الجلسة في ملف عادي.',
-    'conflict' => 'تغيرت البيانات على جهاز آخر. جرى طلب نسخة محدثة.',
+    'conflict' ||
+    'catalog_changed' =>
+      'تغيرت البيانات على جهاز آخر. جرى طلب نسخة محدثة.',
     'payment_required' => 'يجب تأكيد الدفع قبل هذه الخطوة.',
     'invalid_status' =>
       'لا يسمح الخادم بهذه الخطوة الآن؛ راجع الطلب أو طلب إلغائه.',

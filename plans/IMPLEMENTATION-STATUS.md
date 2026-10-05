@@ -5,12 +5,12 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 14:13 UTC
+## Latest verified position — 2026-10-05 14:25 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `eef4a7c874d30be543ae9538208d3dfbced7c603`, CI [37321917046](https://github.com/dukkanai/onlinu/actions/runs/37321917046), all jobs successful.
+- Latest published and fully verified commit: `d7c1c3ee4fcb085fc41ff07e317649eb3b5e9c3b`, CI [37323385900](https://github.com/dukkanai/onlinu/actions/runs/37323385900), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Published native inventory/detail increment is fully CI verified (44 Flutter tests plus actual Windows smoke/build). Current locally verified increment: native channel controls, suspension settlement parity and restaurant display names; 49 Flutter tests and190 platform/Go-bridge checks pass. Remote verification pending.
+- Published native inventory, channels, suspension settlement and restaurant labels are fully CI verified (49 Flutter tests plus actual Windows smoke/build). Current locally verified increment: native catalogue read/basic item editing and strict successful-mutation checks; 55 Flutter tests pass. Expanded Windows form smoke is pending remote execution.
 - Native Windows PKCE client, order/cash UI, actual OS-store/rendering smoke and unsigned build are verified at the published commit above. The synthetic screenshot was inspected; no Arabic clipping observed.
 - POS integration is explicitly deferred by the owner’s voice instruction; continue current development without choosing/connecting a vendor.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
@@ -287,3 +287,18 @@ inventory/channel changes stay blocked. Profile membership responses now include
 the current restaurant display name as an additive field; IDs still route requests.
 Local Flutter analyze/all49 tests and platform190 tests plus Go↔Node race pass.
 This is not a POS implementation or external-account acceptance claim.
+
+
+### Native catalogue read/basic edit — 2026-10-05
+
+`d7c1c3e` passed all jobs in CI37323385900. Next increment: permission-scoped menu
+section with name/category search, bounded pages and explicit edits of item name,
+category, exact minor-unit price and availability. Narrow patches preserve
+images/options/descriptions/settings and historical orders. Catalogue version is
+captured when opening the form; stale or cross-tenant forms cannot write. Response
+validation now checks mutation values, not just IDs/versions, before claiming
+success. Local analyze/all55 tests pass, including Arabic/Persian decimal parsing,
+read-only roles, cancellation, stale forms and unexpected success bodies.
+The Windows native smoke now also exercises menu/stock/channel forms with
+synthetic gateways and captures separate screenshots. Its new run remains pending;
+this does not replace real HTTP/OIDC/MFA or merchant-device acceptance.

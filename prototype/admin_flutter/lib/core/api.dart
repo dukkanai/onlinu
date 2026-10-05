@@ -5,6 +5,12 @@ import 'transport.dart';
 abstract interface class CoreGateway {
   CoreSession get session;
   Future<CoreProfile> profile();
+  Future<CoreMenu> menu(String tenant);
+  Future<void> patchMenu(CoreMenu menu, CoreMenuItem item,
+      {required String name,
+      required String categoryId,
+      required int price,
+      required bool available});
   Future<List<CoreChannel>> channels(String tenant);
   Future<CoreChannel> setChannel(
       String tenant, CoreChannel channel, bool enabled);
@@ -34,6 +40,7 @@ class CoreApi implements CoreGateway {
       const safe = {
         'forbidden',
         'conflict',
+        'catalog_changed',
         'payment_required',
         'invalid_status',
         'invalid_payment_method',
@@ -95,7 +102,9 @@ class CoreApi implements CoreGateway {
     try {
       _tenant(data, tenant);
       final result = CoreOrder(data, tenantId: tenant);
-      if (result.number != order.number || result.version <= order.version)
+      if (result.number != order.number ||
+          result.version <= order.version ||
+          (cash ? result.paymentStatus != 'paid' : result.status != status))
         invalidResponse();
       return result;
     } on CoreException {
@@ -134,8 +143,10 @@ class CoreApi implements CoreGateway {
     try {
       _tenant(data, tenant);
       final result = CoreStockItem(data, tenantId: tenant);
-      if (result.itemId != item.itemId || result.version <= item.version)
-        invalidResponse();
+      if (result.itemId != item.itemId ||
+          result.version <= item.version ||
+          result.tracked != tracked ||
+          result.available != available) invalidResponse();
       return result;
     } on CoreException {
       throw const CoreException('invalid_response', uncertain: true);
@@ -170,8 +181,55 @@ class CoreApi implements CoreGateway {
       _tenant(data, tenant);
       final result = CoreChannel(data, tenantId: tenant);
       if (result.channel != channel.channel ||
-          result.version <= channel.version) invalidResponse();
+          result.version <= channel.version ||
+          result.newOrdersEnabled != enabled) invalidResponse();
       return result;
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
+  }
+
+  @override
+  Future<CoreMenu> menu(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/menu');
+    _tenant(data, tenant);
+    return CoreMenu(data, tenantId: tenant);
+  }
+
+  @override
+  Future<void> patchMenu(CoreMenu menu, CoreMenuItem item,
+      {required String name,
+      required String categoryId,
+      required int price,
+      required bool available}) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty ||
+        trimmed.length > 320 ||
+        price < 0 ||
+        price > 100000000 ||
+        !menu.items.any((v) => v.id == item.id) ||
+        !menu.categories.any((v) => v.id == categoryId))
+      throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(menu.tenantId)}/staff/menu/items/${menuKey(item.id)}',
+        body: {
+          'expectedVersion': menu.version,
+          'name': trimmed,
+          'categoryId': menuKey(categoryId),
+          'priceMinor': price,
+          'available': available
+        });
+    try {
+      _tenant(data, menu.tenantId);
+      final changed = CoreMenuItem(object(data['item']));
+      if (integer(data['version'], min: 1) <= menu.version ||
+          data['currency'] != 'SAR' ||
+          changed.id != item.id ||
+          changed.name != trimmed ||
+          changed.categoryId != categoryId ||
+          changed.priceMinor != price ||
+          changed.available != available) invalidResponse();
     } on CoreException {
       throw const CoreException('invalid_response', uncertain: true);
     }
