@@ -435,6 +435,18 @@ try {
       await deliveryPricing.getByRole('button',{name:'حفظ تسعير التوصيل',exact:true}).click();
       await page.locator(`input[name="expectedVersion"][value="${zoneState.version+1}"]`).first().waitFor({state:'attached'});
 
+      await page.goto(baseUrl+'/manage/restaurant-a/service');
+      const serviceVersion=Number(await page.locator('input[name="expectedVersion"]').inputValue());
+      await page.getByLabel('استقبال الطلبات الجديدة',{exact:true}).selectOption('false');
+      await page.getByLabel('راجعت أثر التغيير على الطلبات الجديدة',{exact:true}).check();
+      await page.getByRole('button',{name:'حفظ سياسة الاستقبال',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${serviceVersion+1}"]`).waitFor({state:'attached'});
+      assert.equal(await page.getByLabel('استقبال الطلبات الجديدة',{exact:true}).inputValue(),'false');
+      await page.getByLabel('استقبال الطلبات الجديدة',{exact:true}).selectOption('true');
+      await page.getByLabel('راجعت أثر التغيير على الطلبات الجديدة',{exact:true}).check();
+      await page.getByRole('button',{name:'حفظ سياسة الاستقبال',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${serviceVersion+2}"]`).waitFor({state:'attached'});
+
       const beforeProfile=(await send(profilePath,{cookie:alice.cookie})).data;
       await page.goto(baseUrl+'/manage/restaurant-a/profile');
       await page.getByLabel('ساعات العمل (نص معلوماتي)',{exact:true}).fill('Synthetic browser hours');

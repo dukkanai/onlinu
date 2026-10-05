@@ -30,7 +30,7 @@ export function allowedPaymentURL(provider, raw) {
 const paymentView=z.object({attemptId:z.string().max(128),status:z.string().max(40),provider:z.string().max(40),mode:z.enum(['','test','live']),
   url:z.string().url().optional(),widget:z.object({checkoutId:z.string().max(512),scriptUrl:z.string().url(),brands:z.array(z.string().max(40)),returnUrl:z.string().url()}).optional(),
 });
-const safeCodes = new Set(['forbidden','unauthorized','invalid_request','invalid_delivery_zones','invalid_geography','invalid_quantity','invalid_option','phone_required',
+const safeCodes = new Set(['invalid_service_modes','forbidden','unauthorized','invalid_request','invalid_delivery_zones','invalid_geography','invalid_quantity','invalid_option','phone_required',
   'address_required','country_required','location_required','outside_delivery_area','invalid_district',
   'district_unavailable','delivery_minimum','delivery_unavailable','store_closed','mode_unavailable',
   'item_unavailable','out_of_stock','payment_required','payment_unavailable','price_changed','conflict',
@@ -51,6 +51,9 @@ const menuPatch=z.object({expectedVersion:z.number().int().positive().max(Number
   options:z.array(z.object({id:menuId,name:z.string().min(1).max(240),priceMinor:z.number().int().min(0).max(100_000_000),available:z.boolean()}).strict()).max(50).optional(),
 }).strict().refine(value=>Object.keys(value).length>1);
 
+const serviceFields={acceptingOrders:z.boolean(),deliveryEnabled:z.boolean(),pickupEnabled:z.boolean(),tableEnabled:z.boolean()};
+const serviceView=z.object({version:z.number().int().positive(),...serviceFields});
+const servicePatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),...Object.fromEntries(Object.entries(serviceFields).map(([key,value])=>[key,value.optional()]))}).strict().refine(v=>Object.keys(v).length>1);
 const profileFields={name:z.string().min(1).max(120),description:z.string().max(2000),address:z.string().max(1000),phone:z.string().max(40),openingHours:z.string().max(1000),pickupInstructions:z.string().max(2000)};
 const profileView=z.object({version:z.number().int().positive(),...profileFields});
 const profilePatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),...Object.fromEntries(Object.entries(profileFields).map(([key,value])=>[key,value.optional()]))}).strict().refine(value=>Object.keys(value).length>1);
@@ -113,6 +116,8 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    service(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/service',undefined,'','staff:settings:read',serviceView);},
+    patchService(tenantId,subject,input){const parsed=servicePatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/service',parsed.data,'','staff:settings:update',serviceView);},
     principalRef(tenantId,subject){if(!routes.has(tenantId)||!uuid.safeParse(subject).success)throw problem(400,'invalid_request');return 'platform:'+createHash('sha256').update(issuer+'\0'+tenantId+'\0'+subject).digest('hex');},
     courierLinks(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/courier-links',undefined,'','staff:couriers:link',z.object({links:z.array(courierLink).max(500),limit:z.literal(500)}),2_000_000);},
     setCourierLink(tenantId,subject,id,input){const parsed=z.object({expectedVersion:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1),ownerRef:z.union([z.string().regex(/^platform:[a-f0-9]{64}$/),z.literal('')])}).strict().safeParse(input);if(!courierId.safeParse(id).success||!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/courier-links/'+id,parsed.data,'','staff:couriers:link',courierLink);},

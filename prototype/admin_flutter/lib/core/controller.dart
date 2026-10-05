@@ -7,6 +7,7 @@ import 'team_models.dart';
 import 'business_profile.dart';
 import 'delivery_models.dart';
 import 'courier_models.dart';
+import 'service_policy.dart';
 import 'transport.dart';
 
 enum CoreSection {
@@ -18,7 +19,8 @@ enum CoreSection {
   business,
   coverage,
   courier,
-  courierLinks
+  courierLinks,
+  service
 }
 
 extension CoreSectionPermission on CoreSection {
@@ -31,7 +33,8 @@ extension CoreSectionPermission on CoreSection {
         CoreSection.business => 'settings:read',
         CoreSection.coverage => 'settings:read',
         CoreSection.courier => 'courier:read',
-        CoreSection.courierLinks => 'couriers:link'
+        CoreSection.courierLinks => 'couriers:link',
+        CoreSection.service => 'settings:read'
       };
 }
 
@@ -49,6 +52,7 @@ class CoreController extends ChangeNotifier {
   CoreMenu? menu;
   CoreBusinessProfile? business;
   CoreDelivery? coverage;
+  CoreServicePolicy? service;
   CoreCourierLinks? courierLinks;
   CoreCourierWork? courierWork;
   CoreCourierDetail? courierDetail;
@@ -88,6 +92,7 @@ class CoreController extends ChangeNotifier {
     menu = null;
     business = null;
     coverage = null;
+    service = null;
     courierLinks = null;
     courierWork = null;
     courierDetail = null;
@@ -228,7 +233,11 @@ class CoreController extends ChangeNotifier {
         _emit();
         return;
       }
-      if (section == CoreSection.courierLinks) {
+      if (section == CoreSection.service) {
+        final result = await api.service(tenant);
+        if (!_current(generation)) return;
+        service = result;
+      } else if (section == CoreSection.courierLinks) {
         final result = await api.courierLinks(tenant);
         if (!_current(generation)) return;
         courierLinks = result;
@@ -353,6 +362,35 @@ class CoreController extends ChangeNotifier {
       return false;
     }
     return true;
+  }
+
+  Future<void> patchService(
+      CoreServicePolicy expected, Map<String, bool> changes) async {
+    if (!_writeGuard(expected.tenantId, 'settings:update', CoreSection.service))
+      return;
+    if (service?.version != expected.version) {
+      message = 'تغيرت سياسة الاستقبال. حدّث البيانات وأعد المراجعة.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.patchService(expected, changes);
+      if (_current(generation))
+        message = 'حُفظت سياسة استقبال الطلبات الجديدة.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
   }
 
   Future<void> showCourierDetail(CoreOrder order) async {
@@ -1048,6 +1086,8 @@ String errorMessage(Object error) {
     'access_denied' => 'أُلغي تسجيل الدخول.',
     'secure_storage_unavailable' =>
       'تعذر الوصول إلى مخزن النظام الآمن. لن تُحفظ الجلسة في ملف عادي.',
+    'invalid_service_modes' =>
+      'فعّل طريقة خدمة واحدة على الأقل قبل فتح استقبال الطلبات.',
     'invalid_delivery_zones' =>
       'تحقق من أن الحي متاح وأن له رسم توصيل محددًا. الصفر يعني توصيلًا مجانيًا.',
     'invalid_geography' =>

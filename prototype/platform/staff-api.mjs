@@ -27,6 +27,11 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
           if(url.search)throw problem(400,'invalid_request');const [,tenantId,kind,parent]=geoRoute;await directory.authorize(who.id,tenantId,'settings:read');
           return json(res,200,await orderClient.geography(tenantId,who.id,kind,parent));
         }
+        const serviceRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/service$/.exec(url.pathname);
+        if(serviceRoute&&orderClient&&['GET','POST'].includes(req.method)){
+          if(url.search)throw problem(400,'invalid_request');const tenantId=serviceRoute[1];await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');
+          return json(res,200,req.method==='GET'?await orderClient.service(tenantId,who.id):await orderClient.patchService(tenantId,who.id,await body(req)));
+        }
         const profileRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/profile$/.exec(url.pathname);
         if(profileRoute&&orderClient&&['GET','POST'].includes(req.method)){
           if(url.search)throw problem(400,'invalid_request');

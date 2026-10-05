@@ -5,6 +5,7 @@ import 'package:restaurant_admin_prototype/core/team_models.dart';
 import 'package:restaurant_admin_prototype/core/business_profile.dart';
 import 'package:restaurant_admin_prototype/core/delivery_models.dart';
 import 'package:restaurant_admin_prototype/core/courier_models.dart';
+import 'package:restaurant_admin_prototype/core/service_policy.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
 import 'package:restaurant_admin_prototype/core/models.dart';
 import 'package:restaurant_admin_prototype/core/transport.dart';
@@ -243,6 +244,24 @@ Map<String, dynamic> menuDocument(CoreMenu menu) => {
     };
 
 class FakeCoreGateway implements CoreGateway {
+  Map<String, dynamic> serviceData = {
+    'version': 1,
+    'acceptingOrders': true,
+    'deliveryEnabled': true,
+    'pickupEnabled': true,
+    'tableEnabled': false
+  };
+  int serviceWrites = 0;
+  @override
+  Future<CoreServicePolicy> service(String tenant) async =>
+      CoreServicePolicy(serviceData, tenantId: tenant);
+  @override
+  Future<void> patchService(
+      CoreServicePolicy expected, Map<String, bool> changes) async {
+    serviceWrites++;
+    serviceData = {...serviceData, ...changes, 'version': expected.version + 1};
+  }
+
   CoreCourierLinks? linksValue;
   CoreCourierWork? workValue;
   CoreCourierDetail? ownDetail;

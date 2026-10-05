@@ -11,6 +11,7 @@ import 'business_pane.dart';
 import 'delivery_pane.dart';
 import 'dispatch_editor.dart';
 import 'courier_pane.dart';
+import 'service_pane.dart';
 
 class CoreApp extends StatefulWidget {
   const CoreApp({super.key, required this.controller});
@@ -242,6 +243,16 @@ class CoreScreen extends StatelessWidget {
                             child: Text('اختر المطعم الذي تريد إدارته.')),
                       if (member != null)
                         Wrap(spacing: 12, children: [
+                          if (member.can('settings:read'))
+                            ChoiceChip(
+                                label: const Text('استقبال الطلبات'),
+                                selected: c.section == CoreSection.service,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(c.selectSection(
+                                            CoreSection.service));
+                                      }),
                           if (member.can('courier:read'))
                             ChoiceChip(
                                 label: const Text('مهامي كمندوب'),
@@ -333,6 +344,11 @@ class CoreScreen extends StatelessWidget {
                                             CoreSection.channels));
                                       }),
                         ]),
+                      if (c.section == CoreSection.service &&
+                          member?.can('settings:read') == true)
+                        ServicePane(
+                            key: ValueKey('service-${c.selectedTenant}'),
+                            controller: c),
                       if (c.section == CoreSection.courier &&
                           member?.can('courier:read') == true)
                         CourierPane(

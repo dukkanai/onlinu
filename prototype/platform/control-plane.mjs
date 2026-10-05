@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -283,6 +283,16 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           await orderClient.patchDelivery(tenantId,who.id,action,{expectedVersion:Number(input.expectedVersion),zone:{districtId:input.districtId,enabled:input.enabled==='true',feeMinor:fee}});
         }
         return redirect(res,'/manage/'+tenantId+'/delivery'+(action==='zone'?'?filter='+encodeURIComponent(input.districtId):''),303);
+      }
+      const managementService=/^\/manage\/([a-z0-9-]{1,64})\/service$/.exec(url.pathname);
+      if(managementService&&orderClient&&['GET','POST'].includes(req.method)){
+        if(req.headers.authorization||url.search)throw problem(403,'browser_session_required');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
+        const who=await browser(req),tenantId=managementService[1],membership=await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');
+        if(req.method==='GET'){const data=await orderClient.service(tenantId,who.id);htmlHeaders(res);res.end(staffServicePage({tenantId,data,canUpdate:membership.permissions.includes('settings:update'),csrf:auth.csrfToken(req)}));return;}
+        const input=await body(req);auth.verifyCsrf(req,input.csrf);const fields=['acceptingOrders','deliveryEnabled','pickupEnabled','tableEnabled'];
+        if(input.reviewed!=='yes'||Object.keys(input).some(key=>!['csrf','expectedVersion','reviewed',...fields].includes(key))||fields.some(key=>!['true','false'].includes(input[key])))throw problem(400,'invalid_request');
+        await orderClient.patchService(tenantId,who.id,{expectedVersion:Number(input.expectedVersion),...Object.fromEntries(fields.map(key=>[key,input[key]==='true']))});return redirect(res,url.pathname,303);
       }
       const managementProfile=/^\/manage\/([a-z0-9-]{1,64})\/profile$/.exec(url.pathname);
       if(managementProfile&&orderClient&&['GET','POST'].includes(req.method)){

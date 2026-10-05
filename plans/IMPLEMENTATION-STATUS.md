@@ -5,7 +5,7 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 18:48 UTC
+## Latest verified position — 2026-10-05 19:12 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
 - Latest published and fully verified commit: `7fc5be05c04475b4e85d19fb28e24cbfd9305763`, CI [37352655371](https://github.com/dukkanai/onlinu/actions/runs/37352655371), all jobs successful.
@@ -15,7 +15,8 @@ Existing production/security and external-account approval boundaries remain.
 - Six-field public business profile passed all remote CI jobs (81 Flutter/197 platform tests, Go audit/preservation, actual Chromium and Windows forms); screenshot inspected. This is not broad settings parity.
 - Original delivery pricing/geographic district coverage passed all remote CI jobs: 86 Flutter/198 platform tests, actual Dart TLS and Go historical-fee/audit/omitted-field checks, Chromium and Windows forms. Browser selectors gained explicit accessible names. Long functional client suites use distinct loopback peers without relaxing production limits; shared-NAT/load fairness remains a release gate. Per-kilometre pricing and service/location editing remain outside this increment.
 - Reviewed dispatcher assignment to existing original-core couriers passed all CI jobs: 91 Flutter/199 platform tests, actual Dart/Go assignment/unassignment, Chromium and Windows review forms, audit rollback and reassignment isolation. Windows review screenshot inspected.
-- Current local increment: explicit versioned courier-principal bindings and owned native delivery tasks, separate cash/update permissions, selected contact/address detail and own availability. 97 Flutter/203 platform tests, Go transaction/privacy/queued-revocation checks, vet/build and dedicated actual Dart→Node→Go delivery/cash/availability flow pass locally. Remote verification remains pending. See `prototype/platform/NATIVE-COURIER.md`. No real accounts were linked, and GPS/account creation remain outside this increment.
+- Courier identities/owned work are published in `77a688f`: separate cash/update permissions, selected contact/address detail, own availability, explicit versioned bindings and queued-revocation/audit checks. 97 Flutter/203 platform tests and actual Dart→Node→Go pass. CI37359055274 server/client/Windows all passed; an omitted Docker COPY entry was corrected in `faa7c44`, with runtime-import regression coverage. Replacement CI37360485687 has passed server/client/control-image; Windows rerun remains pending at this entry. See `prototype/platform/NATIVE-COURIER.md`; no real accounts or GPS were enabled.
+- Next service-intake increment adds reviewed global acceptance and delivery/pickup/table switches, preserving existing orders, prices, tax and table capabilities. 101 Flutter/206 platform tests, Go audit/preservation/closed-quote guards and real Dart close/reopen/stale checks pass locally. New Chromium/Windows form verification is pending.
 - Native Windows PKCE client, order/cash UI, actual OS-store/rendering smoke and unsigned build are verified at the published commit above. The synthetic screenshot was inspected; no Arabic clipping observed.
 - POS integration is explicitly deferred by the owner’s voice instruction; continue current development without choosing/connecting a vendor.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.

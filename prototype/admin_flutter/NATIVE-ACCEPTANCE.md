@@ -197,3 +197,19 @@ pinned synthetic TLS endpoint to Node and Go, with seeded browser identity and
 explicit PKCE consent. The Windows smoke includes owned cash and link review
 screenshots. Remote results must be recorded before calling this verified on
 Windows. No device GPS, real employee binding or production migration is covered.
+
+## Reviewed service intake switches
+
+The native `استقبال الطلبات` section and `/manage/{tenant}/service` expose four
+booleans only: global acceptance, delivery, pickup and table ordering. Writes need
+`settings:update`, the reviewed catalog version and explicit review. Omitted
+fields are preserved, malformed boolean values are rejected, and an open shop
+must have at least one enabled method. Existing order settlement is not disabled;
+prices/tax/payment configuration and table capability codes are unchanged.
+
+101 Flutter tests/analyzer and 206 platform tests pass locally with the service
+increment. Go audit rollback, preserved documents/order history and closed-intake
+quote denial pass. Actual Dart closes/reopens through Node and Go and rejects a
+stale version; dedicated HTTP checks reject courier access, CSRF failures and
+unrelated fields. The additional Chromium and Windows form checks remain pending
+until this increment's remote CI completes. No live shop was closed or reopened.

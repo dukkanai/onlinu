@@ -19,6 +19,14 @@ try {
  const send=(path,{method='GET',who,token,body,csrf=true}={})=>new Promise((resolve,reject)=>{const req=httpRequest(local+path,{method,headers:{host:'platform.example',accept:'application/json',...(who?{cookie:who.cookie}:{}),...(token?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{}),...(method==='POST'&&who?{origin:base,'x-csrf-token':csrf?who.csrf:'bad'}:{})}},res=>{const chunks=[];res.on('data',v=>chunks.push(v));res.on('end',()=>{const raw=Buffer.concat(chunks).toString();let data;try{data=JSON.parse(raw);}catch{data=raw;}resolve({status:res.statusCode,data,headers:res.headers});});});req.on('error',reject);req.end(body?JSON.stringify(body):undefined);});
  const login=async who=>{const verifier=randomBytes(32).toString('base64url'),grant={client_id:NATIVE_CLIENT_ID,redirect_uri:'http://127.0.0.1:43123/oauth/callback',resource:base+'/native/api',response_type:'code',scope:NATIVE_SCOPE,state:randomBytes(24).toString('base64url'),code_challenge_method:'S256',code_challenge:pkceChallenge(verifier)};const approval=await send('/native/oauth/authorize',{method:'POST',who,body:{...grant,csrf:who.csrf,approve:'yes'}});assert.equal(approval.status,303);const exchanged=await send('/native/oauth/token',{method:'POST',body:{grant_type:'authorization_code',client_id:NATIVE_CLIENT_ID,redirect_uri:grant.redirect_uri,resource:grant.resource,code:new URL(approval.headers.location).searchParams.get('code'),code_verifier:verifier}});assert.equal(exchanged.status,200);return exchanged.data.access_token;};
  const token=await login(a),prefix='/api/restaurants/restaurant-a',native='/native/api/restaurants/restaurant-a';
+ const policyPath=prefix+'/staff/service',policy=await send(policyPath,{who:owner});assert.equal(policy.status,200);
+ assert.equal((await send(native+'/staff/service',{token})).status,403);
+ assert.equal((await send(policyPath,{method:'POST',who:owner,csrf:false,body:{expectedVersion:policy.data.version,acceptingOrders:false}})).status,403);
+ assert.equal((await send(policyPath,{method:'POST',who:owner,body:{expectedVersion:policy.data.version,taxEnabled:true}})).status,400);
+ const closed=await send(policyPath,{method:'POST',who:owner,body:{expectedVersion:policy.data.version,acceptingOrders:false}});assert.equal(closed.status,200);assert.equal(closed.data.acceptingOrders,false);
+ assert.equal((await send(policyPath,{method:'POST',who:owner,body:{expectedVersion:policy.data.version,acceptingOrders:true}})).status,409);
+ const reopened=await send(policyPath,{method:'POST',who:owner,body:{expectedVersion:closed.data.version,acceptingOrders:true}});assert.equal(reopened.status,200);assert.equal(reopened.data.acceptingOrders,policy.data.acceptingOrders);
+
  assert.deepEqual((await send(native+'/courier-work',{token})).data.orders,[]);
  assert.equal((await send(native+'/staff/orders',{token})).status,403);
  assert.equal((await send(prefix+'/courier-links',{who:a})).status,403);

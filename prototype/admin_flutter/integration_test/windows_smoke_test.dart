@@ -183,6 +183,45 @@ void main() {
     expect(controller.channels, isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets('Windows service intake review preserves existing work',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile =
+          profileFixture(permissions: ['settings:read', 'settings:update']);
+    final c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الدخول عبر المتصفح'));
+    await tester.pumpAndSettle();
+    final tab = find.widgetWithText(ChoiceChip, 'استقبال الطلبات');
+    await tester.ensureVisible(tab);
+    await tester.pumpAndSettle();
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    final edit = find.text('مراجعة طرق الخدمة');
+    await tester.ensureVisible(edit);
+    await tester.pumpAndSettle();
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.widgetWithText(SwitchListTile, 'استقبال الطلبات الجديدة'));
+    await tester.pumpAndSettle();
+    final reviewed = find.byType(CheckboxListTile);
+    await tester.ensureVisible(reviewed);
+    await tester.pumpAndSettle();
+    await tester.tap(reviewed);
+    await tester.pumpAndSettle();
+    expect(api.serviceWrites, 0);
+    await capture(tester, boundary, 'windows-service-review.png');
+    await tester.tap(find.text('حفظ سياسة الاستقبال'));
+    await tester.pumpAndSettle();
+    expect(api.serviceWrites, 1);
+    expect(c.service!.flags['acceptingOrders'], false);
+    await capture(tester, boundary, 'windows-service-closed.png');
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('Windows owned courier cash review and explicit identity binding',
       (tester) async {
     final api = FakeCoreGateway()

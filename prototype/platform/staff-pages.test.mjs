@@ -1,4 +1,4 @@
-import {staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
+import {staffServicePage,staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage,staffMenuPage,staffMenuItemPage,menuPriceMinor,staffMembersPage,staffErrorPage} from './staff-pages.mjs';
@@ -103,4 +103,10 @@ test('dispatch view requires an explicit courier choice, escapes names and omits
  assert.match(html,/aria-label="المندوب المطلوب" required/);assert.match(html,/value="__remove__"/);assert.match(html,/&lt;driver&gt;/);assert.doesNotMatch(html,/private-phone|private-login/);assert.match(html,/name="reviewed" value="yes" required/);
  assert.doesNotMatch(staffOrdersPage({tenantId:'a',membership:{permissions:['orders:read']},orders:[{...order,mode:'delivery'}],csrf:'x'}),/إسناد مندوب/);
  assert.match(staffOrdersPage({tenantId:'a',membership:{permissions:['orders:read','delivery:assign']},orders:[{...order,mode:'delivery'}],csrf:'x'}),/إسناد مندوب/);
+});
+
+test('service intake form uses explicit booleans, version and review without unrelated settings',()=>{
+ const args={tenantId:'<a>',data:{version:4,acceptingOrders:true,deliveryEnabled:true,pickupEnabled:true,tableEnabled:false},csrf:'<token>'};
+ const html=staffServicePage({...args,canUpdate:true});assert.match(html,/&lt;a&gt;/);assert.match(html,/name="expectedVersion" value="4"/);assert.match(html,/name="reviewed"/);assert.match(html,/aria-label="استقبال الطلبات الجديدة"/);assert.match(html,/name="tableEnabled"/);assert.doesNotMatch(html,/name="taxNumber"|name="paymentMethods"/);
+ assert.doesNotMatch(staffServicePage({...args,canUpdate:false}),/<button>/);
 });

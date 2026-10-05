@@ -311,3 +311,15 @@ native courier identities or expose live location/customer contact data.
   targeted coverage; the latter is driven by the isolated Go/Node fixture.
 - Full design and release boundaries: `prototype/platform/NATIVE-COURIER.md`.
   This entry records implementation scope, not production acceptance.
+
+## Service intake controls (local increment)
+
+- Narrow `GET/POST /platform-api/staff/service` plus permission-checked central
+  `/api/restaurants/{tenant}/staff/service` and native equivalents share the
+  original catalog CAS/audit. Four booleans only: acceptingOrders,
+  deliveryEnabled, pickupEnabled, tableEnabled.
+- Browser `/manage/{tenant}/service` and native service editor both require review;
+  no settings document replacement, price/tax edits or order cancellations.
+- Regression: `TestRestaurantStaffService*`, `core_service_test.dart`, original
+  actual Dart/Node/Go fixture and browser/Windows smoke. Remote acceptance is
+  separate from local tests; see the completion ledger before release.

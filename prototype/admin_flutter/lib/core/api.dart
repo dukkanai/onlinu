@@ -5,6 +5,7 @@ import 'team_models.dart';
 import 'business_profile.dart';
 import 'delivery_models.dart';
 import 'courier_models.dart';
+import 'service_policy.dart';
 import 'transport.dart';
 
 abstract interface class CoreGateway {
@@ -19,6 +20,9 @@ abstract interface class CoreGateway {
       {bool cash = false});
   Future<void> courierAvailability(
       CoreCourierWork expected, String availability);
+  Future<CoreServicePolicy> service(String tenant);
+  Future<void> patchService(
+      CoreServicePolicy expected, Map<String, bool> changes);
   Future<CoreProfile> profile();
   Future<CoreDelivery> delivery(String tenant);
   Future<void> setDeliveryPricing(CoreDelivery expected,
@@ -88,6 +92,7 @@ class CoreApi implements CoreGateway {
     }
     if (reply.status < 200 || reply.status >= 300) {
       const safe = {
+        'invalid_service_modes',
         'forbidden',
         'not_found',
         'mode_unavailable',
@@ -122,6 +127,29 @@ class CoreApi implements CoreGateway {
       '/native/api/restaurants/${tenantKey(tenant)}/staff/orders';
   void _tenant(Map<String, dynamic> data, String tenant) {
     if (data['tenantId'] != tenant) invalidResponse();
+  }
+
+  @override
+  Future<CoreServicePolicy> service(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/service');
+    _tenant(data, tenant);
+    return CoreServicePolicy(data, tenantId: tenant);
+  }
+
+  @override
+  Future<void> patchService(
+      CoreServicePolicy expected, Map<String, bool> changes) async {
+    expected.validate(changes);
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/service',
+        body: {'expectedVersion': expected.version, ...changes});
+    _tenant(data, expected.tenantId);
+    final saved = CoreServicePolicy(data, tenantId: expected.tenantId);
+    if (saved.version != expected.version + 1 ||
+        serviceLabels.keys
+            .any((k) => saved.flags[k] != (changes[k] ?? expected.flags[k])))
+      throw const CoreException('order_outcome_unknown', uncertain: true);
   }
 
   @override

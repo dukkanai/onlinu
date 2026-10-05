@@ -159,6 +159,20 @@ void main() {
     expect(unassigned.courierId, '');
     expect(unassigned.version, assigned.version + 1);
 
+    final intake = await api.service('restaurant-a');
+    expect(intake.flags['acceptingOrders'], true);
+    await api.patchService(intake, {'acceptingOrders': false});
+    final paused = await api.service('restaurant-a');
+    expect(paused.flags['acceptingOrders'], false);
+    expect(
+        (await api.detail('restaurant-a', number)).version, unassigned.version);
+    await expectLater(
+        api.patchService(intake, {'acceptingOrders': true}),
+        throwsA(isA<CoreException>()
+            .having((e) => e.code, 'stale service', 'catalog_changed')));
+    await api.patchService(paused, {'acceptingOrders': true});
+    expect((await api.service('restaurant-a')).flags, intake.flags);
+
     final team = await api.team('restaurant-a');
     final self = team.singleWhere(
         (v) => v.principalId == Platform.environment['CORE_NATIVE_PRINCIPAL']);

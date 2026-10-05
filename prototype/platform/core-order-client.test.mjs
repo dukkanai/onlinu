@@ -124,3 +124,11 @@ test('staff catalogue summary supports the original 5000-item bound with byte li
  assert.equal((await client.menu('restaurant-a',randomUUID())).items.length,5000);
  count=5001;await assert.rejects(client.menu('restaurant-a',randomUUID()),{code:'restaurant_unavailable'});
 });
+
+test('service switches sign narrow settings scope and reject omitted, unknown and coercible values',async()=>{
+ const actor=randomUUID(),flags={acceptingOrders:true,deliveryEnabled:true,pickupEnabled:true,tableEnabled:false};let calls=0;
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{calls++;assert.equal(new URL(url).pathname,'/platform-api/staff/service');const claims=JSON.parse(Buffer.from(options.headers.authorization.slice(9).split('.')[0],'base64url'));assert.equal(claims.scope,options.method==='GET'?'staff:settings:read':'staff:settings:update');return json({version:options.method==='GET'?1:2,...flags,...(options.body?JSON.parse(options.body):{}),taxNumber:'private'});}});
+ const initial=await client.service('restaurant-a',actor);assert.equal(initial.taxNumber,undefined);
+ for(const value of [{expectedVersion:1},{expectedVersion:1,acceptingOrders:'false'},{expectedVersion:1,acceptingOrders:null},{expectedVersion:1,paymentMethods:[]}])assert.throws(()=>client.patchService('restaurant-a',actor,value),{code:'invalid_request'});
+ const closed=await client.patchService('restaurant-a',actor,{expectedVersion:1,acceptingOrders:false});assert.equal(closed.acceptingOrders,false);assert.equal(closed.expectedVersion,undefined);assert.equal(calls,2);
+});
