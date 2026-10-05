@@ -103,6 +103,12 @@ try {
   await app.directory.setMembership(alice.id,'restaurant-a',bob.id,{role:'kitchen',enabled:true,expectedVersion:null});
   const kitchenPage=await send('/manage/restaurant-a/orders',{cookie:bob.cookie});
   assert.equal(kitchenPage.status,200);assert.match(kitchenPage.data,/تحديث الحالة/);assert.doesNotMatch(kitchenPage.data,/تأكيد استلام المبلغ النقدي/);
+  const kitchenDetail=await send(staffPath+'/'+order.number,{cookie:bob.cookie});
+  assert.equal(kitchenDetail.status,200);assert.equal(kitchenDetail.data.items[0].name,'Rice');
+  assert.equal(kitchenDetail.data.items[0].quantity,2);assert.equal(kitchenDetail.data.items[0].options.length,2);
+  for(const field of ['customerName','phone','address','trackingToken','accessCode'])assert.equal(kitchenDetail.data[field],undefined);
+  assert.equal((await send(staffPath+'/'+order.number,{token:alice.token})).status,403);
+  assert.match((await send('/manage/restaurant-a/orders/'+order.number,{cookie:bob.cookie})).data,/الأصناف/);
   assert.equal((await send('/manage/restaurant-b/orders',{cookie:bob.cookie})).status,403);
   const loginPage=await send('/manage');assert.equal(loginPage.status,302);assert.equal(loginPage.headers.location,'/auth/login?returnTo=%2Fmanage');
   assert.equal((await send(loginPage.headers.location)).status,302,'OIDC accepts the bounded management return path');
@@ -228,6 +234,10 @@ try {
       await page.getByRole('link',{name:'restaurant-a',exact:true}).click();
       await page.waitForURL(baseUrl+'/manage/restaurant-a/orders');
       assert.match(await page.locator('body').innerText(),/تحديث الحالة/);
+      await page.getByRole('link',{name:order.number,exact:true}).click();
+      await page.waitForURL(baseUrl+'/manage/restaurant-a/orders/'+order.number);
+      assert.match(await page.locator('body').innerText(),/Rice/);
+      assert.equal((await page.locator('body').innerText()).includes(contact.phone),false);
       await page.goto(baseUrl+'/manage/restaurant-a/channels');
       assert.equal(await page.locator('form[action$="/channels/whatsapp_qr"]').count(),0);
       const webForm=page.locator('form[action$="/channels/web"]');

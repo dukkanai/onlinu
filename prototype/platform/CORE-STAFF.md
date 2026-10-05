@@ -24,14 +24,26 @@ orders remain operable during suspension; disabled memberships are rejected on
 their next request. Already-authorized in-flight operations may finish. This is
 not a distributed instantaneous revocation protocol.
 
-The first browser view is intentionally limited to summaries, status and cash.
+The first browser view includes summaries, kitchen-facing details, status and cash.
+Staff detail is a separate `orders:read` service route: historical line items,
+options, quantities, prices, table name and fulfilment notes are preserved.
+Structured customer contact/address fields, receipt access codes and payment
+capabilities are excluded. Free-text fulfilment notes may themselves contain
+customer-provided information; they are staff-only, escaped in HTML and never
+added to the customer MCP status result. Existing Unicode notes are supported.
+The detail response is explicitly bounded at 2 MB to cover the original core's
+50-line/option limits; other signed response limits remain smaller.
+
 It does not replace the complete React management app or claim Flutter parity.
-Item details, delivery assignments, menu/brand/stock/settings, refunds, channel
-management, audit UI, pagination and native staff login still require integration.
+Delivery/contact workflows, menu/brand/stock/settings, refunds, full channel
+account management, audit UI, pagination and native staff login still require
+integration. New-order channel policy has its separate `CORE-CHANNELS.md` guide.
 Existing original interfaces and their authorization remain unchanged.
 
 Tests cover customer-token exclusion, foreign membership, kitchen cash denial,
 membership revocation, suspended-tenant settlement, stale versions, redaction,
 scope isolation and audit-failure rollback. Browser payment navigation is a
 separate active CI investigation; do not infer its acceptance from staff HTTP
-tests. No real staff accounts, merchant credentials or production were changed.
+tests. Browser payment/OAuth acceptance passed in run 37289872901; current detail
+navigation has its own regression. No real staff accounts, merchant credentials
+or production were changed.

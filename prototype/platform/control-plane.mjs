@@ -244,17 +244,17 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           return redirect(res,`/manage/${tenantId}/channels`,303);
         }
       }
-      const management=/^\/manage(?:\/([a-z0-9-]{1,64})\/orders(?:\/(R[0-9]{8,20})\/(status|cash))?)?$/.exec(url.pathname);
+      const management=/^\/manage(?:\/([a-z0-9-]{1,64})\/orders(?:\/(R[0-9]{8,20})(?:\/(status|cash))?)?)?$/.exec(url.pathname);
       if(management&&orderClient){
         if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
         const who=await browser(req),[,tenantId,number,action]=management;
         if(url.search)throw problem(400,'invalid_request');
-        if(req.method==='GET'&&!number){
+        if(req.method==='GET'&&!action){
           let html;
           if(!tenantId)html=staffHome(who);
           else{
             const membership=await directory.authorize(who.id,tenantId,'orders:read');
-            const {orders}=await orderClient.staffOrders(tenantId,who.id);
+            const {orders}=number?{orders:[await orderClient.staffOrder(tenantId,who.id,number)]}:await orderClient.staffOrders(tenantId,who.id);
             html=staffOrdersPage({tenantId,membership,orders,csrf:auth.csrfToken(req)});
           }
           htmlHeaders(res);res.end(html);return;
@@ -284,13 +284,13 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           if(req.method==='GET'&&!channel)return json(res,200,await orderClient.channels(tenantId,who.id));
           if(req.method==='POST'&&channel)return json(res,200,await orderClient.setChannel(tenantId,who.id,channel,await body(req)));
         }
-        const staffRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/orders(?:\/(R[0-9]{8,20})\/(status|cash))?$/.exec(url.pathname);
+        const staffRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/orders(?:\/(R[0-9]{8,20})(?:\/(status|cash))?)?$/.exec(url.pathname);
         if(staffRoute&&orderClient){
           if(url.search)throw problem(400,'invalid_request');
           const [,tenantId,number,action]=staffRoute;
-          if(req.method==='GET'&&!number){
+          if(req.method==='GET'&&!action){
             await directory.authorize(who.id,tenantId,'orders:read');
-            return json(res,200,await orderClient.staffOrders(tenantId,who.id));
+            return json(res,200,number?await orderClient.staffOrder(tenantId,who.id,number):await orderClient.staffOrders(tenantId,who.id));
           }
           if(req.method==='POST'&&number){
             await directory.authorize(who.id,tenantId,action==='status'?'orders:update':'payments:collect');

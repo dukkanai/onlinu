@@ -89,6 +89,17 @@ Its local full regression has 585 Go passes/five known network restrictions/one
 codec skip and 152 platform passes, with the final additional HTTP policy test
 covered by a subsequent focused race run. Vet/build and 37 packaging tests pass.
 
+Channel-policy commit 958d518 passed all CI jobs in run 37292236715, including
+browser disable/enable forms, full race tests and translated customer errors.
+The browser assertion correctly waits for hidden version fields to be attached,
+not visible. Client tests scan backend error codes: rerun them when Go errors
+change even if no TypeScript implementation changed.
+
+Current increment adds kitchen-facing order detail without structured contact or
+receipt capabilities. Focused real Go/PostgreSQL/Node HTTP tests, all 154 platform
+tests, Go vet/build and client 80 tests/type-check/build pass locally. Browser
+detail navigation is added to CI and remains pending publication/remote evidence.
+
 ## External acceptance still required
 
 - Actual ChatGPT account/Extensions/Events flows on an approved HTTPS origin.

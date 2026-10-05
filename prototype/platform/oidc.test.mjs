@@ -14,7 +14,7 @@ const callback = state => `${baseUrl}/auth/callback?code=test-code&state=${state
 const stateOf = flow => new URL(flow.authorizationUrl).searchParams.get('state');
 
 test('return destinations are constrained to three local routes', () => {
-  for (const path of ['/', '/manage', '/manage/restaurant-a/orders', '/manage/restaurant-a/channels', '/checkout/check_123', '/oauth/authorize?client_id=x&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fcallback']) {
+  for (const path of ['/', '/manage', '/manage/restaurant-a/orders', '/manage/restaurant-a/orders/R2026000001', '/manage/restaurant-a/channels', '/checkout/check_123', '/oauth/authorize?client_id=x&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fcallback']) {
     assert.equal(validateReturnTo(path, baseUrl), path);
   }
   for (const path of ['https://evil.example/', '//evil.example/', '/\\evil.example/', '/%5cevil.example/',

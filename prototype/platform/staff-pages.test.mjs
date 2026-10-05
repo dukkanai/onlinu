@@ -23,3 +23,9 @@ test('channel controls separate ordering capability from existing WhatsApp conne
   assert.match(html,/المكالمات القائمة/);
   assert.match(staffHome({memberships:[{tenantId:'a',role:'manager',permissions:['channels:manage']}]}),/\/manage\/a\/channels/);
 });
+test('kitchen detail uses historical lines and escapes customer instructions',()=>{
+  const html=staffOrdersPage({tenantId:'a',membership:{permissions:['orders:read']},csrf:'test',orders:[{...order,
+    items:[{name:'<Rice>',quantity:2,totalMinor:3000,options:[{name:'Extra'}]}],notes:'<script>untrusted</script>',tableName:'One'}]});
+  assert.match(html,/&lt;Rice&gt;/);assert.match(html,/Extra/);assert.match(html,/&lt;script&gt;/);
+  assert.doesNotMatch(html,/<script>/);assert.match(html,/تفاصيل الأصناف/);assert.doesNotMatch(html,/أحدث 100 طلب/);
+});

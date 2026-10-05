@@ -65,3 +65,16 @@ test('payment URLs stay provider-bound and payment scope is separate from order 
   }});
   await assert.rejects(client.payment('restaurant-a',randomUUID(),view.number,'start','stripe'),{code:'order_outcome_unknown'});
 });
+test('staff detail uses its own scope and preserves Unicode notes without structured contact capabilities',async()=>{
+  const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{
+    assert.ok(url.endsWith('/platform-api/staff/orders/'+view.number));
+    const claims=JSON.parse(Buffer.from(options.headers.authorization.slice('Platform '.length).split('.')[0],'base64url'));
+    assert.equal(claims.scope,'staff:orders:read');
+    return json({...view,items:[{itemId:'rice',name:'Rice',quantity:1,unitPriceMinor:2500,totalMinor:2500,options:[]}],
+      notes:'🍚'.repeat(1000),createdAt:view.updatedAt,phone:'private',address:{private:true},accessCode:'private'});
+  }});
+  const detail=await client.staffOrder('restaurant-a',randomUUID(),view.number);
+  assert.equal([...detail.notes].length,1000);assert.equal(detail.items[0].name,'Rice');
+  for(const field of ['phone','address','accessCode'])assert.equal(detail[field],undefined);
+  assert.throws(()=>client.staffOrder('restaurant-a',randomUUID(),'../other'),{code:'invalid_request'});
+});

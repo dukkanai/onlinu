@@ -4,17 +4,51 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"time"
 )
 
 type platformStaffActorKey struct{}
 type platformStaffActor struct{ ID, Scope string }
+type platformStaffOrderView struct {
+	platformOrderView
+	Items     []restaurantOrderLine `json:"items"`
+	Notes     string                `json:"notes"`
+	TableName string                `json:"tableName,omitempty"`
+	CreatedAt time.Time             `json:"createdAt"`
+}
 
 // Staff grants use a separate namespace from customer order scopes. The
 // control plane resolves current membership before signing each operation.
 // No restaurant master key or caller-supplied role enters this path.
 func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(string, func(http.ResponseWriter, *http.Request, []byte, string)) http.HandlerFunc) {
+	mux.HandleFunc("GET /platform-api/staff/orders/{number}", wrap("staff:orders:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
+		if r.URL.RawQuery != "" {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		var raw []byte
+		err := s.orders.store.db.QueryRowContext(r.Context(), "SELECT document FROM restaurant_orders WHERE number=$1", r.PathValue("number")).Scan(&raw)
+		if errors.Is(err, sql.ErrNoRows) {
+			err = restaurantFail(404, "order_not_found")
+		}
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		var order restaurantOrder
+		if err = json.Unmarshal(raw, &order); err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		// Fulfilment notes can contain customer-provided instructions. They stay
+		// in staff scope; structured contacts, receipt capabilities and payment
+		// secrets are not copied into this kitchen-facing representation.
+		writeJSON(w, 200, platformStaffOrderView{publicPlatformOrder(order), order.Items, order.Notes, order.TableName, order.CreatedAt})
+	}))
 	mux.HandleFunc("GET /platform-api/staff/orders", wrap("staff:orders:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
 		if r.URL.RawQuery != "" {
 			writeRestaurantError(w, restaurantFail(400, "invalid_request"))

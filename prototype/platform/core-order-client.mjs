@@ -1,6 +1,6 @@
 import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { z } from 'zod';
-import { coreQuoteInput } from './core-adapter.mjs';
+import { coreQuoteInput, coreQuoteSchema } from './core-adapter.mjs';
 import { problem } from './auth.mjs';
 
 const uuid = z.string().uuid();
@@ -49,7 +49,7 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
         || url.search || url.hash || routes.has(parsed.id) || [...routes.values()].includes(url.origin)) throw new Error('invalid_restaurant_routes');
     routes.set(parsed.id, url.origin);
   }
-  async function request(tenantId, subject, method, path, input, idempotencyKey = '', overrideScope, resultSchema=coreOrderView) {
+  async function request(tenantId, subject, method, path, input, idempotencyKey = '', overrideScope, resultSchema=coreOrderView, maxBytes=128_000) {
     if (!routes.has(tenantId)) throw problem(404, 'restaurant_not_found');
     if (!uuid.safeParse(subject).success) throw problem(403, 'invalid_identity');
     const body = input === undefined ? '' : JSON.stringify(input);
@@ -67,7 +67,7 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
         ...(method === 'POST' ? { body } : {}) });
       const chunks = []; let bytes = 0;
       for await (const chunk of response.body ?? []) {
-        bytes += chunk.length; if (bytes > 128_000) throw Error('oversized_response'); chunks.push(chunk);
+        bytes += chunk.length; if (bytes > maxBytes) throw Error('oversized_response'); chunks.push(chunk);
       }
       const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (!response.ok) throw problem([400,401,403,404,409].includes(response.status) ? response.status : 503,
@@ -93,6 +93,11 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     staffOrders(tenantId,subject) {
       return request(tenantId,subject,'GET','/platform-api/staff/orders',undefined,'','staff:orders:read',
         z.object({orders:z.array(coreOrderView).max(100),limit:z.literal(100)}));
+    },
+    staffOrder(tenantId,subject,number){
+      if(!/^R[0-9]{8,20}$/.test(number??''))throw problem(400,'invalid_request');
+      return request(tenantId,subject,'GET',`/platform-api/staff/orders/${number}`,undefined,'','staff:orders:read',
+        coreOrderView.extend({items:coreQuoteSchema.shape.items,notes:z.string().max(2000),tableName:z.string().max(4096).optional(),createdAt:z.string().datetime({offset:true})}),2_000_000);
     },
     staffChange(tenantId,subject,number,action,input) {
       if(!/^R[0-9]{8,20}$/.test(number??'')||!['status','cash'].includes(action))throw problem(400,'invalid_request');
