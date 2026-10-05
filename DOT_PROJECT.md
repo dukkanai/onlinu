@@ -1,0 +1,165 @@
+# onlinu — project reference
+
+Updated: 2026-10-05 UTC. Initial inspected upstream: `main` at
+`90b16a000c2cad908e51e78d01a07bfb4e785410`.
+
+## Workspace and source of truth
+
+- Working directory: `/workspace/scratch/46a62ae0b82b/onlinu`.
+- Remote: `https://github.com/dukkanai/onlinu.git` (private).
+- Authenticated full Git clone completed after user-approved GitHub CLI device
+  authorization. All 565 tracked files were reconciled byte-for-byte against
+  the inspected snapshot, including the two Windows DLLs; full `.git` history
+  is now present. `git pull --ff-only` reports already up to date.
+- Initial tracked working tree is clean; this reference is the only new file.
+- GitHub is the durable source of truth. The cloud filesystem is not the only
+  copy. Credentials are outside this repository; no secrets are in this file.
+- Shell credential helper uses the approved GitHub CLI connection. Global Git
+  configuration is read-only, so helper configuration is repository-local.
+
+## Working agreement
+
+Development, analysis, edits and tests are performed directly by the user's dot
+in its cloud computer. Do not create Codex/Work tasks or delegate code work unless
+the user explicitly requests it. Production Ubuntu is separate and is not a
+development target. Before major changes check status and safely update from the
+remote; never overwrite uncommitted work. After changes run relevant tests,
+type/build/lint checks and review the diff. Make clear commits and push authorized
+work only after checking what is being published. Verify the remote commit.
+
+Never commit real `.env`, credentials, passwords, API keys or production data.
+Do not delete production data/databases, change firewall/DNS/passwords/API keys,
+perform destructive migrations or major production changes without the required
+approval. Do not delete outside project-specific paths. Do not perform real
+calls, payments, messages, production migrations or deployments during tests.
+
+## Stack and major areas
+
+- Main backend: Go 1.26.4, module `wacalls`, HTTP/SSE; pgx/PostgreSQL;
+  whatsmeow WhatsApp integration, Pion WebRTC, optional cgo MLow/Opus codec.
+- Web client: React 19, TypeScript 5, Vite 7, Tailwind 4, Radix/shadcn-style
+  components, Zustand and TanStack React Query. Node 22 is the CI baseline.
+- `cmd/server/`: restaurant ordering/admin, sessions, messaging, Meta calls,
+  translation, Chatwoot, webhooks, payments, geography, delivery and persistence.
+- `cmd/migrate/`: migration utility; inspect before use. Never target production
+  as part of local development.
+- `internal/wa/`, `internal/voip/`: WhatsApp adapter, signaling, calls, codecs,
+  media, transport and video.
+- `client/src/`, `client/public/`, `client/tests/`: web UI, assets and tests.
+- `native/`: platform codec binaries. Real audio requires the correct build/tag.
+- `deploy/`: isolated Docker installer/runtime Compose, management and tests.
+- `scripts/`: packaging, smoke tests and restaurant/browser validation.
+- `prototype/`: separate synthetic SaaS implementation, NOT production parity.
+  `platform/` uses Node/JavaScript ESM, MCP, OAuth/OIDC, Events, PostgreSQL and
+  Moyasar test integration; `tenant/` is a separate Go module; `admin_flutter/`
+  contains Dart/Flutter administration; `staging/` uses Compose/Caddy/Dex.
+- `plans/` and Arabic project documents: requirements, launch gates and status.
+- `passkey-extension/`: browser extension; not installed during this inspection.
+
+External integrations are conditional: WhatsApp QR/Meta, OpenAI translation,
+Chatwoot, payment/delivery services, and prototype MCP/OIDC. Code presence does
+not prove a live integration is configured or accepted by its provider.
+
+## Local run
+
+1. Install Go 1.26.4 and Node 22+; install frontend dependencies with `npm ci`
+   in `client/`, using a writable npm cache. Keep lockfiles unchanged.
+2. Provision an isolated local PostgreSQL instance and set `WACALLS_PG_URL`.
+   Main backend requires database connectivity and its account needs database
+   creation rights. Never use production credentials or an existing production DB.
+3. Start backend from root: `go run ./cmd/server -addr 127.0.0.1:3001`.
+4. Start frontend in `client/`: `npm run dev -- --host 127.0.0.1` (port 5173).
+   Current Vite proxy targets backend port 3001. README's 8080 quick-start is
+   inconsistent with this proxy; use matching ports, not both defaults blindly.
+5. Production-style static serving: build client, then run server with
+   `-static client/dist`; primary routes `/`, `/admin`, `/admin/calls`.
+6. Backend health endpoint: `/healthz`. Frontend HTTP 200 alone does not establish
+   working database-backed operations.
+
+For real MLow audio, use `CGO_ENABLED=1`, `-tags mlow`, and correct native library
+link/runtime paths documented in README/Dockerfile. External integration secrets
+are unnecessary for basic source/unit inspection and should not be requested
+until that integration is being tested.
+
+## Checks and build
+
+- Main module: `go mod download`, `go mod verify`, `go vet ./...`,
+  `gofmt -l .`, `go build ./...`, `go test -race -count=1 ./...`.
+- Client: `npm test`; `npm run build` runs `tsc -b && vite build`.
+  There is no separate client lint script in package.json.
+- Cloud runner workaround for tsx CLI Unix-socket EPERM:
+  `node --import tsx --test tests/*.test.ts` runs the same client test files.
+- During API-snapshot inspection only, `GOFLAGS=-buildvcs=false` was required.
+  The full Git checkout now supports ordinary VCS stamping.
+- Installer: `python -m unittest discover -s deploy -p 'test_*.py'`.
+- Prototype platform: `npm ci`, `npm test`; integration suite is separate
+  (`npm run test:integration`) and requires the configured synthetic services.
+- Prototype tenant: enter `prototype/tenant` and run `go test -v -race ./...`.
+  Database cases require disposable DB `astracalls_tenant_prototype_test` via
+  `TENANT_TEST_DATABASE_URL`; test schema cleanup must remain confined there.
+- Other DB tests use `TEST_RESTAURANT_PG_URL`, `TEST_META_PG_URL` and platform
+  `TEST_DATABASE_URL`. Review fixture safeguards before setting these variables.
+- Flutter requires separate SDK, analysis/tests and platform build validation.
+- Docker build: `docker build -t onlinu-local .`; Dockerfile also runs client
+  tests/build and Go MLow tests. Native build fetches a pinned opus_mlow source.
+
+## Deployment model
+
+Read `DOCKER.ar.md`, `deploy/INSTALL.ar.md`, `TRANSLATION.ar.md`, `META.ar.md`,
+`RESTAURANT-RESUMPTION.ar.md` and `prototype/staging/README.ar.md` before choosing
+a deployment path. `compose.translation.yml` builds app with PostgreSQL;
+`deploy/compose.yml` consumes prebuilt installer images with persistent DB and
+recording volumes. Prototype Compose is a separate synthetic stack.
+
+GitHub CI runs for main pushes/PRs. Release workflow triggers on `v*` tags,
+builds platform binaries and publishes release artifacts. Do not push a release
+tag as a side effect of ordinary work. No production deployment was performed.
+
+## Initial verification results (local, 2026-10-05)
+
+- Installed official Go 1.26.4 under sibling `.tools/go`; existing `/usr/bin/go`
+  was not the Go language toolchain. Used workspace-local Go/npm caches.
+- Client dependencies installed with scripts disabled; no lockfile edit.
+- Client tests: **80 passed, 0 failed, 0 skipped** using direct tsx import.
+- Client TypeScript/build: **passed**. Loopback Vite HTTP smoke: **200**.
+- Installer: **34 passed** without deployment/Docker operations.
+- Prototype platform: **66 passed, 0 failed, 5 skipped** (DB-backed cases).
+- Prototype tenant: **2 passed, 6 skipped** (PostgreSQL prerequisites absent).
+- Main Go module verification, vet and build: **passed**. Vet/build also passed
+  again after complete Git checkout, with normal VCS stamping enabled. Root race
+  suite: **failed** in `cmd/server`.
+- Five WebRTC-related tests fail in this cloud sandbox because network interface
+  discovery/netlink is not permitted, or dependent media offer creation fails.
+  Do not interpret these alone as production defects or bypass sandbox controls.
+- Geography pinned-source test fails: `data/saudi-geography/regions_lite.json`
+  is absent. The recursive GitHub tree also lacks this data directory; `.gitignore`
+  ignores `/data/`. Other pinned geography files/license are required too. Recover
+  the intended authoritative inputs and check hashes before any fix.
+- Five tested internal Go package groups pass (call, video, media, signaling,
+  transport); consult logs for exact package outputs.
+- Docker, local PostgreSQL and Flutter SDK were not available in the initial
+  environment inspection. Full backend/database runtime, real calls, browser
+  end-to-end flows, Docker image and Flutter build are **not validated**.
+
+## Verified existing issues
+
+1. Latest inspected CI run `37256759982` fails on formatting of nine files:
+   `cmd/server/broker_scope_test.go`, `chatwoot_outbox_test.go`, `db.go`,
+   `eventrsvp_test.go`, `productsend.go`, `restaurant_types.go`,
+   `widgetauth_test.go`, `internal/voip/call/callmanager_video_signaling_test.go`,
+   `internal/voip/call/video/pipeline.go`. Server build/tests were skipped in CI.
+2. CI client job builds/type-checks but does not run `npm test`.
+3. Missing pinned geography source data makes a clean checkout's relevant test
+   fail; do not silently fabricate fixtures or remove the test.
+4. README proxy port mismatch (8080 versus Vite 3001).
+5. Full database services, network-capable media validation, Docker and Flutter
+   checks remain prerequisites for complete runtime acceptance.
+
+## Next prerequisites
+
+Git authentication and full checkout are complete. Preserve the initial baseline:
+application source has not been changed. Commit this documentation on a dedicated
+branch and verify it on GitHub. Existing CI formatting and missing geography data
+require fixes; local PostgreSQL is required to run the skipped integration cases.
+The network-restricted cloud runner cannot currently validate all WebRTC tests.
+Do not claim full runtime acceptance from the successful client build.
