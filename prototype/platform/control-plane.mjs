@@ -148,6 +148,9 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const who = await auth.authenticate(req, { cookieOnly: true });
         if (!who) return redirect(res, '/auth/login?returnTo=' + encodeURIComponent(url.pathname + url.search));
         const hidden = Object.entries(input).map(([key, value]) => `<input type="hidden" name="${escape(key)}" value="${escape(value)}">`).join('');
+        // validateAuthorization checked the registered exact redirect URI.
+        // Allow only that client's origin for the form's authorization redirect.
+        res.setHeader('content-security-policy',`default-src 'none'; form-action 'self' ${new URL(input.redirect_uri).origin}; frame-ancestors 'none'; base-uri 'none'`);
         htmlHeaders(res);
         res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>موافقة الربط</title><h1>ربط حسابك</h1><p>الصلاحيات المطلوبة: ${escape(input.scope)}</p><p>العميل: ${escape(input.client_id)}</p><form method="post" action="/oauth/authorize">${hidden}<input type="hidden" name="csrf" value="${escape(auth.csrfToken(req))}"><button name="approve" value="yes">موافقة</button><button name="approve" value="no">رفض</button></form></html>`); return;
       }
@@ -159,7 +162,9 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         auth.verifyCsrf(req, input.csrf);
         const { csrf, approve, ...grant } = input;
         if (approve !== 'yes') throw problem(403, 'consent_declined');
-        return redirect(res, await auth.authorize(grant, who));
+        const destination=await auth.authorize(grant, who);
+        res.setHeader('content-security-policy',`default-src 'none'; form-action 'self' ${new URL(destination).origin}; frame-ancestors 'none'; base-uri 'none'`);
+        return redirect(res, destination);
       }
       if (req.method === 'POST' && url.pathname === '/auth/logout') {
         auth.verifyCsrf(req); await auth.revoke(auth.browserToken(req));

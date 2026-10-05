@@ -84,6 +84,20 @@ The strict Origin and CSRF checks remain in place. Browser assertions require
 the real same-origin Origin and forbid both session cookies and private checkout
 referrers at the simulated provider. Remote validation of this fix is pending.
 
+Run `37288362873` progressed past the Origin rejection but exposed a test-harness
+gap: the high-level route handler did not observe the provider redirect hop.
+The browser fixture now uses CDP Fetch interception, whose protocol explicitly
+reports redirect requests, with a dead loopback-only browser proxy as a second
+barrier. Only the test runner forwards fixed platform URLs to its local HTTP
+server; external provider/client pages are synthesized. Earlier high-level route
+results do not establish complete browser-network interception. Payment adapters
+remained mocked, with synthetic paths and no real merchant credentials throughout.
+
+The same browser suite also covers staff navigation and OAuth consent/PKCE.
+Consent CSP permits only the validated registered client's origin for its form
+redirect, while redirect responses retain `no-referrer`. This closes the same
+class of form-navigation failure without relaxing callback registration.
+
 Production acceptance still requires actual provider/account flows, image/host
 tests, operational limits and retention policy, full staff/Flutter parity,
 licensing gates and approved deployment. No automatic outbox deletion is enabled.

@@ -5,6 +5,7 @@ import pg from 'pg';
 import { createControlPlane } from '../control-plane.mjs';
 import { MCP_PROTOCOL_VERSION } from '../mcp.mjs';
 import { Webhook } from 'standardwebhooks';
+import { pkceChallenge } from '../auth.mjs';
 
 const fixture=JSON.parse(process.env.CORE_ORDER_FIXTURE);
 const database=new URL(process.env.IDENTITY_TEST_DATABASE_URL);
@@ -19,6 +20,7 @@ try {
   const webhookSecret=`whsec_${randomBytes(32).toString('base64')}`;
   const app=await createControlPlane({pool,baseUrl,csrfKey:randomBytes(32).toString('base64'),serviceSigningKey:fixture.privateKey,
     eventsEncryptionKey:randomBytes(32).toString('base64'),
+    redirectAllowlist:['https://client.example/callback'],
     oidc:{issuer,clientId:'integration-test',clientSecret:'synthetic-client-secret-only'},
     restaurants:[{id:'restaurant-a',name:'Actual Go fixture',cuisine:'saudi',baseUrl:fixture.baseUrl}],
   },{oidcClientAdapter:{async authorizationUrl(){return `${issuer}authorize`;},async exchange(){throw Error('unused');}},
@@ -143,38 +145,77 @@ try {
   if(process.env.CORE_BROWSER_TEST==='1'){
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,
-      args:['--no-sandbox','--disable-dev-shm-usage','--disable-background-networking']});
+      args:['--no-sandbox','--disable-dev-shm-usage','--disable-background-networking',
+        '--proxy-server=http://127.0.0.1:9','--proxy-bypass-list=<-loopback>']});
     try{
       const context=await browser.newContext({locale:'ar-SA'});
       await context.addCookies([{name:'__Host-platform_session',value:alice.cookie.split('=')[1],url:baseUrl,secure:true,httpOnly:true,sameSite:'Lax'}]);
       let providerVisits=0;
-      await context.route('**/*',async route=>{
-        const request=route.request(),url=new URL(request.url());
+      let oauthCallback;
+      const page=await context.newPage();page.setDefaultTimeout(8000);
+      const interceptionErrors=[];
+      const cdp=await context.newCDPSession(page);
+      // CDP intercepts redirect hops too. A dead loopback-only browser proxy is
+      // a second safety barrier: no missed interception can contact a provider.
+      await cdp.send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]});
+      cdp.on('Fetch.requestPaused',async event=>{
+        const request=event.request,url=new URL(request.url);
+        const headers=Object.fromEntries(Object.entries(request.headers).map(([key,value])=>[key.toLowerCase(),value]));
+        const fulfill=(status,body,headers={'content-type':'text/html; charset=utf-8'})=>cdp.send('Fetch.fulfillRequest',{
+          requestId:event.requestId,responseCode:status,responseHeaders:Object.entries(headers).map(([name,value])=>({name,value})),body:Buffer.from(body).toString('base64')});
+        try{
         if(url.origin===baseUrl){
-          if(request.method()==='POST')assert.equal((await request.allHeaders()).origin,baseUrl,'HTML forms preserve same-origin validation');
-          const response=await route.fetch({url:local+url.pathname+url.search,headers:{...await request.allHeaders(),host:'platform.example'},maxRedirects:0});
-          await route.fulfill({response});return;
+          if(request.method==='POST')assert.equal(headers.origin,baseUrl,'HTML forms preserve same-origin validation');
+          const response=await fetch(local+url.pathname+url.search,{method:request.method,headers:{...headers,host:'platform.example'},
+            redirect:'manual',...(request.postData===undefined?{}:{body:request.postData})});
+          const responseHeaders=Object.fromEntries([...response.headers].filter(([name])=>!['connection','transfer-encoding','content-length'].includes(name)));
+          await fulfill(response.status,Buffer.from(await response.arrayBuffer()),responseHeaders);return;
         }
         if(url.origin==='https://checkout.stripe.com'){
-          assert.equal((await request.allHeaders()).cookie,undefined,'Provider must not receive the platform cookie');
-          assert.equal((await request.allHeaders()).referer,undefined,'Provider must not receive private checkout URLs');
-          providerVisits++;
-          await route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><title>Synthetic provider</title><h1>Mock payment page</h1>'});return;
+          assert.equal(headers.cookie,undefined,'Provider must not receive the platform cookie');
+          assert.equal(headers.referer,undefined,'Provider must not receive private checkout URLs');
+          if(event.resourceType==='Document')providerVisits++;
+          await fulfill(200,'<!doctype html><title>Synthetic provider</title><h1>Mock payment page</h1>');return;
         }
-        await route.abort();throw new Error('Unexpected browser destination');
+        if(url.origin==='https://client.example'&&url.pathname==='/callback'){
+          assert.equal(headers.cookie,undefined);
+          assert.equal(headers.referer,undefined);
+          oauthCallback=url;
+          await fulfill(200,'<!doctype html><title>Synthetic OAuth client</title>');return;
+        }
+        if(event.resourceType==='Document')throw new Error('Unexpected browser destination');
+        await cdp.send('Fetch.failRequest',{requestId:event.requestId,errorReason:'BlockedByClient'});
+        }catch(error){interceptionErrors.push(error.message);await cdp.send('Fetch.failRequest',{requestId:event.requestId,errorReason:'BlockedByClient'}).catch(()=>{});}
       });
-      const page=await context.newPage();page.setDefaultTimeout(8000);
       const browserDiagnostics=[];
       page.on('console',message=>{if(message.type()==='error')browserDiagnostics.push(message.text());});
       page.on('response',response=>{if(response.status()>=400)browserDiagnostics.push(`${response.status()} ${new URL(response.url()).pathname}`);});
       await page.goto(baseUrl+cardPath);
       await page.getByRole('button',{name:'الانتقال لصفحة الدفع'}).click();
       try{await page.waitForURL('https://checkout.stripe.com/**');}
-      catch(error){console.error('Synthetic browser navigation diagnostics',new URL(page.url()).pathname,await page.locator('body').innerText(),browserDiagnostics);throw error;}
+      catch(error){console.error('Synthetic browser navigation diagnostics',new URL(page.url()).pathname,await page.locator('body').innerText(),browserDiagnostics,interceptionErrors);throw error;}
       assert.equal(providerVisits,1);
       await page.goBack();await page.waitForURL(baseUrl+cardPath);
       assert.match(await page.locator('body').innerText(),/حالة الدفع: pending/);
+      await page.goto(baseUrl+'/manage');
+      await page.getByRole('link',{name:'restaurant-a',exact:true}).click();
+      await page.waitForURL(baseUrl+'/manage/restaurant-a/orders');
+      assert.match(await page.locator('body').innerText(),/تحديث الحالة/);
+      const registration=await app.auth.register({redirect_uris:['https://client.example/callback'],token_endpoint_auth_method:'none',grant_types:['authorization_code'],response_types:['code']});
+      const verifier=randomBytes(32).toString('base64url');
+      const grant={client_id:registration.client_id,redirect_uri:'https://client.example/callback',response_type:'code',resource:baseUrl+'/mcp',
+        scope:'orders:read',state:'synthetic-browser-state',code_challenge_method:'S256',code_challenge:pkceChallenge(verifier)};
+      await page.goto(baseUrl+'/oauth/authorize?'+new URLSearchParams(grant));
+      await page.getByRole('button',{name:'موافقة',exact:true}).click();
+      await page.waitForURL('https://client.example/callback?**');
+      assert.equal(oauthCallback.searchParams.get('state'),grant.state);
+      const exchanged=await app.auth.exchange({grant_type:'authorization_code',client_id:grant.client_id,redirect_uri:grant.redirect_uri,
+        code:oauthCallback.searchParams.get('code'),code_verifier:verifier,resource:grant.resource});
+      assert.ok(exchanged.access_token);
+      await app.auth.revoke(exchanged.access_token);
+      assert.deepEqual(interceptionErrors,[]);
       console.log('Verified Chromium payment form, provider-bound CSP redirect, private cookie isolation and Back navigation using intercepted test origins');
+      console.log('Verified authenticated staff navigation and real browser OAuth consent -> registered callback -> PKCE exchange using synthetic identities');
     }finally{await browser.close();}
   }
   const payment=await pay(alice.cookie);assert.equal(payment.status,303);

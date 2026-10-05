@@ -96,9 +96,12 @@ test('control-plane HTTP enforces subject identity, browser CSRF and tenant auth
       code_challenge_method: 'S256', code_challenge: pkceChallenge(verifier) };
     const consent = await request('/oauth/authorize?' + new URLSearchParams(grant), { who: owner });
     assert.equal(consent.status, 200); assert.match(consent.data, /<form/);
+    assert.equal(consent.headers.get('referrer-policy'),'same-origin');
+    assert.match(consent.headers.get('content-security-policy'),/form-action 'self' https:\/\/client\.example;/);
     assert.equal((await request('/oauth/authorize', { method: 'POST', who: owner, body: { ...grant, approve: 'yes', csrf: 'bad' } })).status, 403);
     const approved = await request('/oauth/authorize', { method: 'POST', who: owner, body: { ...grant, approve: 'yes', csrf: owner.csrf } });
     assert.equal(approved.status, 302);
+    assert.equal(approved.headers.get('referrer-policy'),'no-referrer');
     const callback = new URL(approved.headers.get('location'));
     const exchanged = await request('/oauth/token', { method: 'POST', body: {
       grant_type: 'authorization_code', client_id: grant.client_id, redirect_uri: grant.redirect_uri,
