@@ -5,12 +5,12 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 12:33 UTC
+## Latest verified position — 2026-10-05 13:00 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `caf7d5d0361c445eb849c3f90aa315d4967449f2`, CI [37307753202](https://github.com/dukkanai/onlinu/actions/runs/37307753202), all jobs successful.
+- Latest published and fully verified commit: `6d97f7cb0f38caef7871f44c16a3f9ec3592ec9e`, CI [37310443981](https://github.com/dukkanai/onlinu/actions/runs/37310443981), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Current unpublished increment: isolated native-app authorization broker foundation; HTTP/Flutter wiring follows.
+- Current unpublished increment: native HTTP consent/staff API/device revocation; Flutter dependencies are prepared separately for the client implementation.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
 - Historical verification entries below describe their exact commits; they are not a claim that the entire SaaS is complete.
 
@@ -206,3 +206,15 @@ creation/enable/granular-read/disable and last-owner guard. Native work is next.
 - Shared broker gains a fixed native public-client profile with a separate issuer/resource/scope, bounded loopback redirects,15minute access/8hour refresh family, customer/native revocation isolation and own-device grant management primitives. No HTTP native routes are exposed yet.
 - Final local platform179/179 and focused real Go/control-plane regression pass. Native UI/HTTP/API/Flutter wiring and remote regression pending.
 - Pinned official Flutter3.47.5 SDK checksum/version verified outside Git. Its cloud autodetection was blocked; source inspection identified the official CI/BOT short-circuit, which avoids the metadata request entirely. Workspace-local config and disabled analytics work. Flutter dependency/baseline tests are still running.
+
+Native broker foundation6d97f7c passed all CI37310443981 jobs. Flutter3.47.5
+baseline dependency resolution, analyze and12 tests passed with explicit
+per-command `--suppress-analytics` and CI/BOT configuration. No cloud metadata
+was used and no telemetry permission was granted.
+
+### Native HTTP/API wiring (in progress, 2026-10-05)
+
+- Added default-off native runtime flag, browser consent and cancellation, canonical metadata, native token/revoke endpoints and own-device browser revocation.
+- Browser and native staff transports share one existing permission-checked operation router. Native access additionally requires membership in the requested restaurant and cannot inherit platform-operator bypasses or call registry lifecycle APIs.
+- Added PostgreSQL HTTP consent/isolation/revocation tests and actual Go/control-plane native order reads/menu write, plus new Chromium loopback-callback/device-revoke cases. Local platform184/184 and Go regression pass except the five known local netlink cases; remote new browser cases pending.
+- Release follow-up: fix trusted-proxy/per-principal rate limiting and load-test before scale claims. MFA policy/OS secure-storage acceptance, Windows signing, Flutter parity and mobile callbacks remain open.

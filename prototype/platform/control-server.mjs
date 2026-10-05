@@ -23,7 +23,8 @@ export function controlConfiguration(env=process.env){
   const restaurants=JSON.parse(readFileSync(routesFile,'utf8'));
   const port=Number(env.PORT??18789),bind=env.BIND_ADDRESS??'127.0.0.1';
   if(!Number.isInteger(port)||port<1024||port>65535||!['127.0.0.1','0.0.0.0','::1'].includes(bind))throw new Error('Invalid listener configuration');
-  return{baseUrl,restaurants,port,bind,databaseUrl:setting(env,'DATABASE_URL',true),
+  if(env.CORE_NATIVE_STAFF_ENABLED!==undefined&&!['true','false'].includes(env.CORE_NATIVE_STAFF_ENABLED))throw new Error('Invalid CORE_NATIVE_STAFF_ENABLED');
+  return{baseUrl,restaurants,port,bind,nativeStaffEnabled:env.CORE_NATIVE_STAFF_ENABLED==='true',databaseUrl:setting(env,'DATABASE_URL',true),
     csrfKey:setting(env,'CSRF_KEY',true),serviceSigningKey:setting(env,'SERVICE_SIGNING_KEY'),
     eventsEncryptionKey:setting(env,'EVENTS_ENCRYPTION_KEY'),
     redirectAllowlist:(setting(env,'OAUTH_REDIRECT_URIS')??'').split(',').map(value=>value.trim()).filter(Boolean),

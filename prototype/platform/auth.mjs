@@ -163,7 +163,7 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
     if((cookieOnly || !authorization) && rows[0]?.session_kind!=='browser')return null;
     if(!allowSyntheticAuthorization && authorization && !cookieOnly && rows[0]?.session_kind!=='oauth')return null;
     const identity=rows[0]?await principal(rows[0].principal_id,rows[0].scopes):null;
-    if(identity&&rows[0].session_kind==='oauth'&&rows[0].expires_at)return{...identity,eventGrantExpiresAt:new Date(rows[0].grant_expires_at??rows[0].expires_at).toISOString()};
+    if(identity&&!native&&rows[0].session_kind==='oauth'&&rows[0].expires_at)return{...identity,eventGrantExpiresAt:new Date(rows[0].grant_expires_at??rows[0].expires_at).toISOString()};
     return identity;
   }
   async function register(input) {

@@ -5,7 +5,7 @@ import pg from 'pg';
 import { createControlPlane } from '../control-plane.mjs';
 import { MCP_PROTOCOL_VERSION } from '../mcp.mjs';
 import { Webhook } from 'standardwebhooks';
-import { pkceChallenge } from '../auth.mjs';
+import { pkceChallenge,NATIVE_CLIENT_ID,NATIVE_SCOPE } from '../auth.mjs';
 
 const fixture=JSON.parse(process.env.CORE_ORDER_FIXTURE);
 const database=new URL(process.env.IDENTITY_TEST_DATABASE_URL);
@@ -19,7 +19,7 @@ try {
   const callbackBodies=[];
   const webhookSecret=`whsec_${randomBytes(32).toString('base64')}`;
   const app=await createControlPlane({pool,baseUrl,csrfKey:randomBytes(32).toString('base64'),serviceSigningKey:fixture.privateKey,
-    eventsEncryptionKey:randomBytes(32).toString('base64'),
+    eventsEncryptionKey:randomBytes(32).toString('base64'),nativeStaffEnabled:true,
     redirectAllowlist:['https://client.example/callback'],
     oidc:{issuer,clientId:'integration-test',clientSecret:'synthetic-client-secret-only'},
     restaurants:[{id:'restaurant-a',name:'Actual Go fixture',cuisine:'saudi',baseUrl:fixture.baseUrl}],
@@ -226,6 +226,21 @@ try {
   const imageResponse=await send(new URL(publicImageURL).pathname);
   assert.equal(imageResponse.status,200);assert.equal(imageResponse.headers['content-type'],'image/png');assert.equal(imageResponse.data.includes('PRIVATE-TRAILER'),false);
   assert.equal((await send(new URL(publicImageURL).pathname.replace('restaurant-a','restaurant-b'))).status,404);
+  const nativeVerifier=randomBytes(32).toString('base64url');
+  const nativeGrant={client_id:NATIVE_CLIENT_ID,redirect_uri:'http://127.0.0.1:43123/oauth/callback',resource:baseUrl+'/native/api',response_type:'code',scope:NATIVE_SCOPE,state:'synthetic-native-state',code_challenge_method:'S256',code_challenge:pkceChallenge(nativeVerifier)};
+  const nativeApproved=await send('/native/oauth/authorize',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl},body:{...nativeGrant,csrf,approve:'yes'}});
+  assert.equal(nativeApproved.status,303,JSON.stringify(nativeApproved.data));
+  const nativeCode=new URL(nativeApproved.headers.location).searchParams.get('code');
+  const nativeExchange=await send('/native/oauth/token',{method:'POST',body:{grant_type:'authorization_code',client_id:NATIVE_CLIENT_ID,redirect_uri:nativeGrant.redirect_uri,resource:nativeGrant.resource,code:nativeCode,code_verifier:nativeVerifier}});
+  assert.equal(nativeExchange.status,200,JSON.stringify(nativeExchange.data));
+  const nativeToken=nativeExchange.data.access_token,nativeMenuPath='/native/api/restaurants/restaurant-a/staff/menu';
+  assert.equal((await send('/native/api/me',{token:alice.token})).status,401);
+  assert.equal((await send(menuPath,{token:nativeToken})).status,403);
+  const nativeOrders=await send('/native/api/restaurants/restaurant-a/staff/orders',{token:nativeToken});assert.equal(nativeOrders.status,200);assert.ok(nativeOrders.data.orders.some(row=>row.number===order.number));
+  assert.equal((await send('/native/api/restaurants/restaurant-b/staff/orders',{token:nativeToken})).status,403);
+  const nativeItem=(await send(nativeMenuPath+'/items/rice',{token:nativeToken})).data;
+  const nativeWrite=await send(nativeMenuPath+'/items/rice',{method:'POST',token:nativeToken,body:{expectedVersion:nativeItem.version,description:'Synthetic native staff edit'}});
+  assert.equal(nativeWrite.status,200,JSON.stringify(nativeWrite.data));assert.equal(nativeWrite.data.item.description,'Synthetic native staff edit');assert.deepEqual(nativeWrite.data.item.options,nativeItem.item.options);
   if(process.env.CORE_BROWSER_TEST==='1'){
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,
@@ -235,7 +250,7 @@ try {
       const context=await browser.newContext({locale:'ar-SA'});
       await context.addCookies([{name:'__Host-platform_session',value:alice.cookie.split('=')[1],url:baseUrl,secure:true,httpOnly:true,sameSite:'Lax'}]);
       let providerVisits=0;
-      let oauthCallback;
+      let oauthCallback,nativeCallback;
       const page=await context.newPage();page.setDefaultTimeout(8000);
       const interceptionErrors=[];
       const cdp=await context.newCDPSession(page);
@@ -266,6 +281,10 @@ try {
           else assert.ok(!headers.referer||new URL(headers.referer).origin===url.origin,'Provider subresources may refer only to their own origin');
           if(event.resourceType==='Document')providerVisits++;
           await fulfill(200,'<!doctype html><title>Synthetic provider</title><h1>Mock payment page</h1>');return;
+        }
+        if(url.origin==='http://127.0.0.1:43123'&&url.pathname==='/oauth/callback'){
+          assert.equal(headers.cookie,undefined);assert.equal(headers.referer,undefined);nativeCallback=url;
+          await fulfill(200,'<!doctype html><title>Synthetic native callback</title>');return;
         }
         if(url.origin==='https://client.example'&&url.pathname==='/callback'){
           assert.equal(headers.cookie,undefined);
@@ -394,6 +413,20 @@ try {
       await ownerForm.getByRole('button',{name:'حفظ العضوية',exact:true}).click();
       await page.getByText('لا يمكن تعطيل أو تغيير دور آخر مالك نشط. عيّن مالكًا آخر أولًا.',{exact:true}).waitFor();
       await app.directory.authorize(alice.id,'restaurant-a','members:manage');
+      const browserNativeVerifier=randomBytes(32).toString('base64url');
+      const browserNativeGrant={...nativeGrant,state:'synthetic-browser-native-state',code_challenge:pkceChallenge(browserNativeVerifier)};
+      await page.goto(baseUrl+'/native/oauth/authorize?'+new URLSearchParams(browserNativeGrant));
+      await page.getByRole('button',{name:'ربط تطبيق الإدارة',exact:true}).click();
+      await page.waitForURL('http://127.0.0.1:43123/oauth/callback?**');
+      assert.equal(nativeCallback.searchParams.get('state'),browserNativeGrant.state);assert.equal(nativeCallback.searchParams.get('iss'),baseUrl+'/native');
+      const browserNativeSession=await send('/native/oauth/token',{method:'POST',body:{grant_type:'authorization_code',client_id:NATIVE_CLIENT_ID,redirect_uri:nativeGrant.redirect_uri,resource:nativeGrant.resource,code:nativeCallback.searchParams.get('code'),code_verifier:browserNativeVerifier}});
+      assert.equal(browserNativeSession.status,200);
+      assert.equal((await send('/native/api/me',{token:browserNativeSession.data.access_token})).status,200);
+      await page.goto(baseUrl+'/native/sessions');
+      await page.getByRole('button',{name:'إبطال جميع جلسات التطبيق',exact:true}).click();
+      await page.waitForFunction(()=>document.querySelectorAll('section').length===0);
+      assert.equal((await send('/native/api/me',{token:browserNativeSession.data.access_token})).status,401);
+      assert.equal((await send('/native/api/me',{token:nativeToken})).status,401);
       const registration=await app.auth.register({redirect_uris:['https://client.example/callback'],token_endpoint_auth_method:'none',grant_types:['authorization_code'],response_types:['code']});
       const verifier=randomBytes(32).toString('base64url');
       const grant={client_id:registration.client_id,redirect_uri:'https://client.example/callback',response_type:'code',resource:baseUrl+'/mcp',

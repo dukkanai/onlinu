@@ -14,7 +14,7 @@ const callback = state => `${baseUrl}/auth/callback?code=test-code&state=${state
 const stateOf = flow => new URL(flow.authorizationUrl).searchParams.get('state');
 
 test('return destinations are constrained to approved local views', () => {
-  for (const path of ['/', '/manage', '/manage/restaurant-a/orders', '/manage/restaurant-a/orders/R2026000001', '/manage/restaurant-a/channels', '/manage/restaurant-a/stock', '/manage/restaurant-a/members', '/manage/restaurant-a/menu', '/manage/restaurant-a/menu/items/rice', '/checkout/check_123', '/oauth/authorize?client_id=x&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fcallback']) {
+  for (const path of ['/', '/manage', '/manage/restaurant-a/orders', '/manage/restaurant-a/orders/R2026000001', '/manage/restaurant-a/channels', '/manage/restaurant-a/stock', '/manage/restaurant-a/members', '/native/sessions', '/native/oauth/authorize?client_id=onlinu-native-windows-v1', '/manage/restaurant-a/menu', '/manage/restaurant-a/menu/items/rice', '/checkout/check_123', '/oauth/authorize?client_id=x&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fcallback']) {
     assert.equal(validateReturnTo(path, baseUrl), path);
   }
   for (const path of ['https://evil.example/', '//evil.example/', '/\\evil.example/', '/%5cevil.example/',

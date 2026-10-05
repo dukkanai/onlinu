@@ -1,3 +1,5 @@
+import {createStaffApi} from './staff-api.mjs';
+import {createNativeStaff} from './native-staff.mjs';
 import {createCoreMedia,publicMenuImages} from './core-media.mjs';
 import { randomUUID } from 'node:crypto';
 import { checkoutSummary, checkoutErrorPage } from './checkout-pages.mjs';
@@ -46,7 +48,8 @@ async function body(req,maxBytes=32768) {
   return parsed;
 }
 
-export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey, eventsEncryptionKey }, { oidcClientAdapter, webhookFetch } = {}) {
+export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey, eventsEncryptionKey, nativeStaffEnabled=false }, { oidcClientAdapter, webhookFetch } = {}) {
+  if(typeof nativeStaffEnabled!=='boolean')throw new Error('invalid_native_staff_configuration');
   const base = new URL(baseUrl);
   if (base.protocol !== 'https:' || base.pathname !== '/' || base.username || base.password || base.search || base.hash) throw new Error('control_plane_requires_https_origin');
   const directory = createIdentityDirectory({ pool, trustedIssuers: [new URL(oidc.issuer).href] });
@@ -95,6 +98,9 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
     eventWorker=createCoreEventWorker({pool,orderClient,events,resolvePrincipal:directory.resolve});await eventWorker.init();
   }
   const mcp = createMcpHandler({ baseUrl: base.origin, authenticate: req => auth.authenticate(req, { bearerOnly: true }), coreAdapter: publicCore, coreCheckouts: checkouts,events });
+  const staffApi=createStaffApi({directory,orderClient,body,json});
+  if(nativeStaffEnabled&&!orderClient)throw new Error('native_staff_requires_core_signing');
+  const nativeStaff=nativeStaffEnabled?await createNativeStaff({pool,baseUrl:base.origin,csrfKey,directory,browserAuth:auth,staffApi,body,json,htmlHeaders,redirect}):null;
   const limits = new Map();
   function rate(req) {
     const now = Date.now(), key = req.socket.remoteAddress;
@@ -128,6 +134,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const result=await media.image(tenantId,name);
         res.writeHead(200,{'content-type':result.type,'content-length':result.bytes.length,'cache-control':'public, max-age=300','content-security-policy':"default-src 'none'; sandbox"});res.end(result.bytes);return;
       }
+      if(nativeStaff&&(url.pathname.startsWith('/native/')||['/.well-known/oauth-authorization-server/native','/.well-known/oauth-protected-resource/native/api'].includes(url.pathname)))return await nativeStaff.handle(req,res,url);
       if (url.pathname === '/mcp') return await mcp(req, res);
       if (req.method === 'GET' && url.pathname === '/.well-known/oauth-protected-resource') return json(res, 200, auth.resourceMetadata);
       if (req.method === 'GET' && url.pathname === '/.well-known/oauth-authorization-server') return json(res, 200, auth.metadata);
@@ -385,7 +392,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         if(url.search)throw problem(400,'invalid_request');
         if(req.method==='GET'&&!action){
           let html;
-          if(!tenantId)html=staffHome(who,{coreEnabled:!!orderClient});
+          if(!tenantId)html=staffHome(who,{coreEnabled:!!orderClient,nativeEnabled:!!nativeStaff});
           else{
             const membership=await directory.authorize(who.id,tenantId,'orders:read');
             const {orders}=number?{orders:[await orderClient.staffOrder(tenantId,who.id,number)]}:await orderClient.staffOrders(tenantId,who.id);
@@ -410,66 +417,10 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const who = await browser(req);
         if (req.method !== 'GET') auth.verifyCsrf(req);
         if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { principal: who, csrfToken: auth.csrfToken(req) });
-        const categoryEditRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu\/categories\/([A-Za-z0-9][A-Za-z0-9_-]{0,79})$/.exec(url.pathname);
-        if(categoryEditRoute&&orderClient&&req.method==='POST'){
-          if(url.search)throw problem(400,'invalid_request');
-          const [,tenantId,categoryId]=categoryEditRoute;await directory.authorize(who.id,tenantId,'menu:update');
-          return json(res,200,await orderClient.patchMenuCategory(tenantId,who.id,categoryId,await body(req)));
-        }
-        const menuCreateRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu\/(items|categories)$/.exec(url.pathname);
-        if(menuCreateRoute&&orderClient&&req.method==='POST'){
-          if(url.search)throw problem(400,'invalid_request');
-          const [,tenantId,kind]=menuCreateRoute;await directory.authorize(who.id,tenantId,'menu:update');
-          const input=await body(req,128*1024);
-          return json(res,201,await orderClient[kind==='items'?'createMenuItem':'createMenuCategory'](tenantId,who.id,input));
-        }
-        const menuRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu(?:\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79}))?$/.exec(url.pathname);
-        if(menuRoute&&orderClient){
-          if(url.search)throw problem(400,'invalid_request');
-          const [,tenantId,itemId]=menuRoute;
-          if(req.method==='GET'){
-            await directory.authorize(who.id,tenantId,'menu:read');
-            return json(res,200,itemId?await orderClient.menuItem(tenantId,who.id,itemId):await orderClient.menu(tenantId,who.id));
-          }
-          if(req.method==='POST'&&itemId){
-            await directory.authorize(who.id,tenantId,'menu:update');
-            return json(res,200,await orderClient.patchMenuItem(tenantId,who.id,itemId,await body(req,128*1024)));
-          }
-        }
-        const stockRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/stock(?:\/([A-Za-z0-9_-]{1,128}))?$/.exec(url.pathname);
-        if(stockRoute&&orderClient){
-          if(url.search)throw problem(400,'invalid_request');
-          const [,tenantId,itemId]=stockRoute;
-          if(req.method==='GET'&&!itemId){await directory.authorize(who.id,tenantId,'stock:read');return json(res,200,await orderClient.stock(tenantId,who.id));}
-          if(req.method==='POST'&&itemId){await directory.authorize(who.id,tenantId,'stock:update');return json(res,200,await orderClient.setStock(tenantId,who.id,itemId,await body(req)));}
-        }
-        const channelRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/channels(?:\/(web|chatgpt|whatsapp_qr|whatsapp_cloud))?$/.exec(url.pathname);
-        if(channelRoute&&orderClient){
-          if(url.search)throw problem(400,'invalid_request');
-          const [,tenantId,channel]=channelRoute;
-          await directory.authorize(who.id,tenantId,'channels:manage');
-          if(req.method==='GET'&&!channel)return json(res,200,await orderClient.channels(tenantId,who.id));
-          if(req.method==='POST'&&channel)return json(res,200,await orderClient.setChannel(tenantId,who.id,channel,await body(req)));
-        }
-        const staffRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/orders(?:\/(R[0-9]{8,20})(?:\/(status|cash))?)?$/.exec(url.pathname);
-        if(staffRoute&&orderClient){
-          if(url.search)throw problem(400,'invalid_request');
-          const [,tenantId,number,action]=staffRoute;
-          if(req.method==='GET'&&!action){
-            await directory.authorize(who.id,tenantId,'orders:read');
-            return json(res,200,number?await orderClient.staffOrder(tenantId,who.id,number):await orderClient.staffOrders(tenantId,who.id));
-          }
-          if(req.method==='POST'&&number){
-            await directory.authorize(who.id,tenantId,action==='status'?'orders:update':'payments:collect');
-            return json(res,200,await orderClient.staffChange(tenantId,who.id,number,action,await body(req)));
-          }
-        }
         if (req.method === 'POST' && url.pathname === '/api/platform/restaurants') return json(res, 201, await directory.createTenant(who.id, await body(req)));
         let match = /^\/api\/platform\/restaurants\/([a-z0-9-]{1,64})\/status$/.exec(url.pathname);
         if (match && req.method === 'PATCH') return json(res, 200, await directory.setTenantStatus(who.id, match[1], await body(req)));
-        match = /^\/api\/restaurants\/([a-z0-9-]{1,64})\/members(?:\/([a-f0-9-]{36}))?$/.exec(url.pathname);
-        if (match && req.method === 'GET' && !match[2]) return json(res, 200, { members: await directory.members(who.id, match[1]) });
-        if (match && req.method === 'PUT' && match[2]) return json(res, 200, await directory.setMembership(who.id, match[1], match[2], await body(req)));
+        return await staffApi(req,res,who,url);
       }
       throw problem(404, 'not_found');
     } catch (error) {
@@ -483,7 +434,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       json(res, status, { error: code });
     }
   }
-  return { handle, auth, directory, login, core: publicCore, checkouts,events,eventWorker,
+  return { handle, auth, directory, login, core: publicCore, checkouts,events,eventWorker,nativeStaff,
     startWorkers(){if(eventWorker&&!timer){timer=setInterval(()=>eventWorker.tick(),1000);timer.unref();}},
     async stopWorkers(){clearInterval(timer);timer=undefined;await eventWorker?.settle();},
   };

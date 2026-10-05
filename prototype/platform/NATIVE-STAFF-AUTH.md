@@ -30,8 +30,7 @@ The shared, tested broker now has an explicit `native_staff` profile:
   own grant or all-native-grant revocation is available for the upcoming browser
   device page. Restaurant owners do not receive other users' tokens.
 
-At this checkpoint the profile is tested but not exposed by the HTTP runtime.
-Native consent, staff API routing and Flutter consumption are the next steps.
+The HTTP runtime now exposes this profile only when `CORE_NATIVE_STAFF_ENABLED=true` and original-core signing is configured. It is disabled by default. Flutter consumption is the next step.
 No real OAuth client consent, credential, provider configuration or deployment
 has been performed. Real identity-provider MFA policy, OS secure storage,
 Windows acceptance/signing and Android/iOS callback setup remain release gates.
@@ -44,3 +43,19 @@ storage, lifetime bounds, rotating-refresh reuse, own-grant isolation and live
 membership/identity resolution. Existing customer refresh/event and core flows
 run unchanged alongside these cases. Passing these tests is not a claim of
 completed native application login or OS-specific acceptance.
+
+## HTTP wiring (local verification complete; remote browser pending)
+
+- Canonical authorization metadata: `/.well-known/oauth-authorization-server/native`.
+- Resource metadata: `/.well-known/oauth-protected-resource/native/api`, whose resource is exactly `{origin}/native/api`. The private client uses its configured trusted origin/resource rather than following arbitrary server-supplied issuers.
+- Browser consent: `/native/oauth/authorize`; verified browser identity, live staff membership, CSRF, exact callback-origin CSP and explicit approval/denial.
+- Token/refresh and revocation: `/native/oauth/token` and `/native/oauth/revoke`, fixed public client ID; ambient browser cookies, Authorization headers and Origin are rejected on these native-client exchanges.
+- Staff API: `/native/api/me` and `/native/api/restaurants/{tenant}/...`. Bearer-only access uses the shared existing staff operation router. Customer OAuth and browser cookies are not accepted. Current tenant membership is mandatory even for platform operators; native clients cannot reach the platform registry/admin lifecycle API or inherit operator membership bypasses.
+- Own device grants: `/native/sessions` uses the browser session and CSRF for per-grant/all-native revocation, even after staff membership is removed. Customer/ChatGPT grants and browser sessions remain separate.
+
+The API bridge covers existing order/status/cash, menu/category/options, stock,
+channel and membership operations. It does not claim complete Flutter UI parity,
+native image selection, courier/refund integration, push/printing or mobile
+platform callback setup. The current global IP rate bucket also needs explicit
+trusted-proxy/per-principal design and load verification before a large
+reverse-proxy deployment; it must not be presented as 100k-user acceptance.

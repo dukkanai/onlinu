@@ -228,4 +228,4 @@ from the official release manifest; SDK is outside Git at `../.tools/flutter`.
 Dart3.13.4/version command verified. Set `CI=true BOT=true` to bypass the SDK's
 unneeded cloud-instance autodetection (the metadata request itself is not
 permitted), plus workspace-local HOME/XDG_CONFIG_HOME/XDG_CACHE_HOME/PUB_CACHE.
-Analytics are disabled. Baseline Flutter dependency/test verification is pending.
+Analytics are disabled. Baseline Flutter dependency lock, analyze and all 12 tests pass. Every Flutter invocation must also pass `--suppress-analytics`; configuration opt-out alone was insufficient for the safety review.

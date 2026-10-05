@@ -5,14 +5,14 @@ const labels={new:'جديد',accepted:'مقبول',preparing:'قيد التحض�
 const label=value=>escape(labels[value]??value);
 const page=(title,body)=>`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title><h1>${escape(title)}</h1>${body}</html>`;
 
-export function staffHome(principal,{coreEnabled=true}={}){
+export function staffHome(principal,{coreEnabled=true,nativeEnabled=false}={}){
   const sections=[['orders:read','orders',''],['menu:read','menu','منيو '],['stock:read','stock','مخزون '],['channels:manage','channels','قنوات '],['members:manage','members','فريق ']].filter(([,path])=>coreEnabled||path==='members');
   const memberships=principal.memberships.filter(member=>sections.some(([permission])=>member.permissions.includes(permission)));
   const rows=memberships.map(member=>{
     const links=sections.filter(([permission])=>member.permissions.includes(permission)).map(([,path,prefix])=>`<a href="/manage/${escape(member.tenantId)}/${path}">${escape(prefix+member.tenantId)}</a>`).join(' · ');
     return `<li>${links} (${escape(member.role)})</li>`;
   }).join('');
-  return page('إدارة المطاعم',`<p>معرّف حسابك الداخلي: <span dir="ltr">${escape(principal.id??'')}</span>. شاركه مع مالك المطعم لإضافة عضويتك؛ هذا ليس كلمة مرور.</p><p>اختر المطعم. لا يظهر هنا إلا ما تسمح به عضويتك الحالية.</p><ul>${rows}</ul>${memberships.length?'':'<p>لا توجد عضوية تسمح بالإدارة.</p>'}<a href="/">الصفحة الرئيسية</a>`);
+  return page('إدارة المطاعم',`${nativeEnabled?'<a href="/native/sessions">جلسات تطبيق الإدارة</a>':''}<p>معرّف حسابك الداخلي: <span dir="ltr">${escape(principal.id??'')}</span>. شاركه مع مالك المطعم لإضافة عضويتك؛ هذا ليس كلمة مرور.</p><p>اختر المطعم. لا يظهر هنا إلا ما تسمح به عضويتك الحالية.</p><ul>${rows}</ul>${memberships.length?'':'<p>لا توجد عضوية تسمح بالإدارة.</p>'}<a href="/">الصفحة الرئيسية</a>`);
 }
 
 export function menuPriceMinor(value){
