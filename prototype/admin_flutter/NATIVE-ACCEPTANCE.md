@@ -1,5 +1,13 @@
 # Native client verification boundaries
 
+Latest verified code: `35eb297cdb51e76f679c7b38712f7c9f79c4ed22`, all jobs passed
+[CI37379196274](https://github.com/dukkanai/onlinu/actions/runs/37379196274) on
+2026-10-05. 108 Flutter tests, native Windows renderer/store/build, actual Dart
+HTTP and Chromium checks passed. Financial/picker screenshots were inspected.
+Historical pending notes below describe earlier increments and are superseded by
+this result where the feature is covered. Real account/device/provider acceptance
+and production deployment are not implied.
+
 ## 1. Pure/controller/widget tests
 
 `flutter --suppress-analytics test --no-pub` checks PKCE callback binding,

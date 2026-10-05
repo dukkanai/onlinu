@@ -1,8 +1,8 @@
 # Native courier identity and owned work
 
-Status: base workflow plus packaging correction passed all CI37360485687 jobs at
-`faa7c44`; the additional revocation hardening below is locally verified and awaits
-remote acceptance. This is not production acceptance. Dispatcher assignment
+Status: base workflow, packaging correction and the revocation hardening below
+passed all CI37379196274 jobs at `35eb297`. Windows identity-picker screenshots
+were inspected. This is not production acceptance. Dispatcher assignment
 to existing courier accounts is already verified separately.
 
 ## Authority and identity
@@ -86,4 +86,4 @@ tenants offer only unlink, and stale link versions disable confirmation.
 Local regressions cover mid-review suspension, actual Node→Go unlink under a
 suspended tenant, maintained courier settlement grants and masked native choices.
 No real identity was linked/unlinked by these tests. Native Windows regression of
-the revised picker remains a remote gate.
+the revised picker passed in CI37379196274; actual merchant/NVDA acceptance remains.

@@ -351,3 +351,15 @@ avoids the tsx CLI's optional Unix IPC listener; it runs the same complete test 
   open financial snapshots refresh with foreground polling. Late responses cannot
   reopen a dismissed dialog. Display is limited to 100 refund records, while the
   ledger totals cover the full order history.
+
+## Verified checkpoint — 2026-10-05 22:06 UTC
+
+`35eb297cdb51e76f679c7b38712f7c9f79c4ed22` passed every job in
+[CI37379196274](https://github.com/dukkanai/onlinu/actions/runs/37379196274).
+This includes service intake, read-only financial snapshots, suspended-tenant
+courier unlink and masked identity selection. 108 Flutter/210 platform tests,
+full server/client checks, actual Chromium/Dart and Windows smoke/build passed.
+Windows financial/picker screenshots were inspected. All data/providers in these
+checks are synthetic. The overall completion ledger remains open; refund command
+UI, broader management/mobile parity, WhatsApp ordering, provisioning/billing,
+real account acceptance and deployment gates still require further work.
