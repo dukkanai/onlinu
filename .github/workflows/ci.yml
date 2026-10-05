@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -17,10 +18,49 @@ jobs:
   server:
     name: server
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-test-password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       CGO_ENABLED: "0"
+      TEST_RESTAURANT_PG_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_restaurant_test?sslmode=disable
+      TEST_META_PG_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_meta_test?sslmode=disable
+      TENANT_TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_tenant_prototype_test?sslmode=disable
+      CHANNELS_TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_channels_prototype_test?sslmode=disable
+      TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_oauth_refresh_test?sslmode=disable
+      TEST_CORE_ADAPTER: "1"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Node for core adapter integration
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: prototype/platform/package-lock.json
+
+      - name: Install platform test dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: prototype/platform
+
+      - name: Create isolated test databases
+        env:
+          PGPASSWORD: ci-only-test-password
+        run: |
+          for database in astracalls_restaurant_test astracalls_meta_test astracalls_tenant_prototype_test astracalls_channels_prototype_test astracalls_oauth_refresh_test; do
+            psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $database"
+          done
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -53,6 +93,19 @@ jobs:
           CGO_ENABLED: "1"
         run: go test -race -count=1 ./...
 
+      - name: Test tenant with PostgreSQL
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=1 ./...
+        working-directory: prototype/tenant
+
+      - name: Test platform with PostgreSQL
+        run: npm test
+        working-directory: prototype/platform
+
+      - name: Test installer and source packaging
+        run: python3 -m unittest discover -s deploy -p 'test_*.py'
+
   client:
     name: client
     runs-on: ubuntu-latest
@@ -74,6 +127,9 @@ jobs:
 
       - name: Type-check
         run: npx tsc -b
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build
