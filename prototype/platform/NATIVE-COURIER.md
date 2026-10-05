@@ -60,3 +60,10 @@ and updates availability. Another courier's order remains unchanged. Browser API
 CSRF, duplicate identities, busy rebindings, disabled/granular grants and revoked
 native access are checked. Go vet/build pass. Windows renderer/build verification
 is pending the feature branch CI, and real OIDC/device/merchant acceptance remains.
+
+Initial remote run `37359055274` found a packaging omission: the explicit control
+image COPY allowlist did not include `courier-service.mjs`. The image build itself
+succeeded but the non-root import smoke failed. The allowlist is corrected and a
+local transitive-import-graph regression test now catches missing runtime modules;
+an isolated copy of exactly those runtime files imports successfully. Actual
+Docker/non-root and full CI verification must pass on the corrective commit.
