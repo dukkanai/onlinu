@@ -71,6 +71,8 @@ void main() {
       await File(path).parent.create(recursive: true);
       await File(path).writeAsBytes(bytes.buffer.asUint8List());
     }
+    await tester.tap(find.byTooltip('إغلاق التفاصيل'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('تسجيل الخروج'));
     await tester.pumpAndSettle();
     expect(find.textContaining('بدون ملح'), findsNothing);

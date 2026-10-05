@@ -29,6 +29,8 @@ void main() {
     await tester.tap(find.text('تفاصيل الطلب'));
     await tester.pumpAndSettle();
     expect(find.textContaining('بدون ملح'), findsOneWidget);
+    await tester.tap(find.byTooltip('إغلاق التفاصيل'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('تسجيل الخروج'));
     await tester.pumpAndSettle();
     expect(find.textContaining('بدون ملح'), findsNothing);

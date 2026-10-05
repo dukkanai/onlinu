@@ -12,6 +12,7 @@ import (
 // portions. Adjusting it is a physical recount, not a reset of active holds.
 type restaurantStockItem struct {
 	ItemID    string    `json:"itemId"`
+	Name      string    `json:"name,omitempty"`
 	Tracked   bool      `json:"tracked"`
 	Available int64     `json:"available"`
 	Held      int64     `json:"held"`
@@ -73,6 +74,7 @@ func (s *restaurantOrders) ListStock(ctx context.Context) ([]restaurantStockItem
 		if !exists {
 			item.ItemID = product.ID
 		}
+		item.Name = product.Name
 		items = append(items, item)
 	}
 	return items, nil
@@ -94,9 +96,11 @@ func (s *restaurantOrders) SaveStock(ctx context.Context, itemID string, input r
 		return restaurantStockItem{}, err
 	}
 	found := false
+	name := ""
 	for _, item := range catalog.Items {
 		if item.ID == itemID {
 			found = true
+			name = item.Name
 			break
 		}
 	}
@@ -124,7 +128,7 @@ func (s *restaurantOrders) SaveStock(ctx context.Context, itemID string, input r
 		return restaurantStockItem{}, restaurantFail(409, "conflict")
 	}
 	now := time.Now().UTC()
-	item := restaurantStockItem{ItemID: itemID, Tracked: input.Tracked, Available: input.Available, Version: previous.Version + 1, UpdatedAt: now}
+	item := restaurantStockItem{ItemID: itemID, Name: name, Tracked: input.Tracked, Available: input.Available, Version: previous.Version + 1, UpdatedAt: now}
 	_, err = tx.ExecContext(ctx, `INSERT INTO restaurant_stock(item_id,tracked,available,version,updated_at) VALUES($1,$2,$3,$4,$5)
 	 ON CONFLICT(item_id) DO UPDATE SET tracked=EXCLUDED.tracked,available=EXCLUDED.available,version=EXCLUDED.version,updated_at=EXCLUDED.updated_at`, itemID, item.Tracked, item.Available, item.Version, now)
 	if err != nil {

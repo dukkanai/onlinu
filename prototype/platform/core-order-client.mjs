@@ -37,7 +37,7 @@ const safeCodes = new Set(['invalid_request','invalid_quantity','invalid_option'
 const channelId=z.enum(['web','chatgpt','whatsapp_qr','whatsapp_cloud']);
 const channelPolicy=z.object({channel:channelId,newOrdersEnabled:z.boolean(),adapterImplemented:z.boolean(),
   version:z.number().int().positive(),updatedAt:z.string().datetime({offset:true})});
-const stockItem=z.object({itemId:z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),tracked:z.boolean(),available:z.number().int().nonnegative(),
+const stockItem=z.object({itemId:z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),name:z.string().max(4096).optional(),tracked:z.boolean(),available:z.number().int().nonnegative(),
   held:z.number().int().nonnegative(),version:z.number().int().nonnegative(),updatedAt:z.string().datetime({offset:true})});
 const menuId=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/);
 const menuItemView=z.object({version:z.number().int().positive(),currency:z.literal('SAR'),categories:coreCatalogSchema.shape.categories,

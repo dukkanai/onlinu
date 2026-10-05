@@ -5,6 +5,8 @@ import 'auth.dart';
 import 'models.dart';
 import 'transport.dart';
 
+enum CoreSection { orders, stock }
+
 class CoreController extends ChangeNotifier {
   CoreController(this.api,
       {this.pollInterval = const Duration(seconds: 10),
@@ -13,6 +15,8 @@ class CoreController extends ChangeNotifier {
   final CoreGateway api;
   final Duration pollInterval;
   final DateTime Function() _now;
+  CoreSection section = CoreSection.orders;
+  List<CoreStockItem> stock = const [];
   CoreProfile? profile;
   String? selectedTenant;
   List<CoreOrder> orders = const [];
@@ -45,12 +49,36 @@ class CoreController extends ChangeNotifier {
   }
 
   void _clearOrders() {
+    stock = const [];
     orders = const [];
     detail = null;
     online = false;
     refreshedAt = null;
     loadingDetail = false;
     _detailGeneration++;
+  }
+
+  void _chooseSection() {
+    if (membership?.can('orders:read') != true &&
+        membership?.can('stock:read') == true)
+      section = CoreSection.stock;
+    else if (membership?.can('stock:read') != true &&
+        membership?.can('orders:read') == true) section = CoreSection.orders;
+  }
+
+  Future<void> selectSection(CoreSection value) async {
+    if (busy ||
+        !signedIn ||
+        value == section ||
+        membership?.can(
+                value == CoreSection.orders ? 'orders:read' : 'stock:read') !=
+            true) return;
+    ++_generation;
+    section = value;
+    message = null;
+    _clearOrders();
+    _emit();
+    await refresh();
   }
 
   void _poll() {
@@ -80,6 +108,7 @@ class CoreController extends ChangeNotifier {
       profile = result;
       if (result.memberships.length == 1)
         selectedTenant = result.memberships.single.tenantId;
+      _chooseSection();
     } catch (error) {
       if (_current(generation)) message = errorMessage(error);
     } finally {
@@ -121,6 +150,7 @@ class CoreController extends ChangeNotifier {
         !(profile!.memberships.any((v) => v.tenantId == tenant))) return;
     ++_generation;
     selectedTenant = tenant;
+    _chooseSection();
     busy = false;
     message = null;
     _clearOrders();
@@ -145,18 +175,26 @@ class CoreController extends ChangeNotifier {
         return;
       }
       final member = membership;
-      if (member == null || !member.can('orders:read')) {
+      if (member == null ||
+          !member.can(
+              section == CoreSection.orders ? 'orders:read' : 'stock:read')) {
         if (member == null) selectedTenant = null;
         _clearOrders();
         message = member?.tenantStatus == 'suspended'
             ? 'المطعم موقوف مؤقتًا.'
-            : 'لا توجد صلاحية لعرض طلبات هذا المطعم.';
+            : 'لا توجد صلاحية لعرض هذا القسم في المطعم.';
         _emit();
         return;
       }
-      final result = await api.orders(tenant);
-      if (!_current(generation)) return;
-      orders = result;
+      if (section == CoreSection.orders) {
+        final result = await api.orders(tenant);
+        if (!_current(generation)) return;
+        orders = result;
+      } else {
+        final result = await api.stock(tenant);
+        if (!_current(generation)) return;
+        stock = result;
+      }
       online = true;
       refreshedAt = _now();
       if (detail != null &&
@@ -194,7 +232,8 @@ class CoreController extends ChangeNotifier {
 
   Future<void> showDetail(String number) async {
     final tenant = selectedTenant;
-    if (!signedIn ||
+    if (section != CoreSection.orders ||
+        !signedIn ||
         suspended ||
         tenant == null ||
         membership?.can('orders:read') != true) return;
@@ -227,7 +266,16 @@ class CoreController extends ChangeNotifier {
   Future<void> change(CoreOrder expected, {bool cash = false}) async {
     final tenant = selectedTenant;
     final permission = cash ? 'payments:collect' : 'orders:update';
-    if (expected.tenantId != tenant ||
+    if (section == CoreSection.orders &&
+        expected.tenantId == tenant &&
+        !orders.any((v) =>
+            v.number == expected.number && v.version == expected.version)) {
+      message = 'تغير الطلب أثناء التأكيد. افتح الإجراء من نسخته الحالية.';
+      _emit();
+      return;
+    }
+    if (section != CoreSection.orders ||
+        expected.tenantId != tenant ||
         !writable ||
         tenant == null ||
         membership?.can(permission) != true ||
@@ -250,6 +298,48 @@ class CoreController extends ChangeNotifier {
       if (_current(generation))
         message =
             cash ? 'تم تسجيل استلام المبلغ نقدًا.' : 'تم تحديث حالة الطلب.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
+  Future<void> recount(CoreStockItem expected,
+      {required bool tracked, required int available}) async {
+    final tenant = selectedTenant;
+    if (section == CoreSection.stock &&
+        expected.tenantId == tenant &&
+        !stock.any((v) =>
+            v.itemId == expected.itemId && v.version == expected.version)) {
+      message = 'تغير المخزون أثناء الجرد. افتح النموذج من النسخة الحالية.';
+      _emit();
+      return;
+    }
+    if (section != CoreSection.stock ||
+        !writable ||
+        tenant == null ||
+        expected.tenantId != tenant ||
+        membership?.can('stock:update') != true ||
+        !stock.any((v) =>
+            v.itemId == expected.itemId && v.version == expected.version) ||
+        available < 0 ||
+        available > 1000000 ||
+        (!tracked && available != 0)) return;
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.setStock(tenant, expected,
+          tracked: tracked, available: available);
+      if (_current(generation))
+        message = 'حُفظ الجرد دون تغيير الكميات المحجوزة للطلبات.';
     } catch (error) {
       if (_current(generation)) _failure(error);
     } finally {
@@ -287,7 +377,7 @@ class CoreController extends ChangeNotifier {
 String errorMessage(Object error) {
   if (error is! CoreException) return 'تعذر إكمال العملية. أعد تحديث البيانات.';
   if (error.uncertain || error.code == 'order_outcome_unknown')
-    return 'لم تتأكد نتيجة العملية. تحقق من حالة الطلب بعد التحديث قبل تنفيذ إجراء آخر.';
+    return 'لم تتأكد نتيجة العملية. تحقق من البيانات بعد التحديث قبل تنفيذ إجراء آخر.';
   return switch (error.code) {
     'authentication_required' ||
     'invalid_grant' ||
@@ -296,7 +386,7 @@ String errorMessage(Object error) {
     'cancelled' || 'access_denied' => 'أُلغي تسجيل الدخول.',
     'secure_storage_unavailable' =>
       'تعذر الوصول إلى مخزن النظام الآمن. لن تُحفظ الجلسة في ملف عادي.',
-    'conflict' => 'تغير الطلب على جهاز آخر. جرى طلب نسخة محدثة.',
+    'conflict' => 'تغيرت البيانات على جهاز آخر. جرى طلب نسخة محدثة.',
     'payment_required' => 'يجب تأكيد الدفع قبل هذه الخطوة.',
     'invalid_status' =>
       'لا يسمح الخادم بهذه الخطوة الآن؛ راجع الطلب أو طلب إلغائه.',

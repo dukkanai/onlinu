@@ -5,6 +5,9 @@ import 'transport.dart';
 abstract interface class CoreGateway {
   CoreSession get session;
   Future<CoreProfile> profile();
+  Future<List<CoreStockItem>> stock(String tenant);
+  Future<CoreStockItem> setStock(String tenant, CoreStockItem item,
+      {required bool tracked, required int available});
   Future<List<CoreOrder>> orders(String tenant);
   Future<CoreOrder> detail(String tenant, String number);
   Future<CoreOrder> change(String tenant, CoreOrder order,
@@ -90,6 +93,45 @@ class CoreApi implements CoreGateway {
       _tenant(data, tenant);
       final result = CoreOrder(data, tenantId: tenant);
       if (result.number != order.number || result.version <= order.version)
+        invalidResponse();
+      return result;
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
+  }
+
+  @override
+  Future<List<CoreStockItem>> stock(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/stock');
+    _tenant(data, tenant);
+    final rows = array(data['items'], max: 5000)
+        .map((v) => CoreStockItem(object(v), tenantId: tenant))
+        .toList(growable: false);
+    if (rows.map((v) => v.itemId).toSet().length != rows.length)
+      invalidResponse();
+    return List.unmodifiable(rows);
+  }
+
+  @override
+  Future<CoreStockItem> setStock(String tenant, CoreStockItem item,
+      {required bool tracked, required int available}) async {
+    if (item.tenantId != tenant ||
+        available < 0 ||
+        available > 1000000 ||
+        (!tracked && available != 0))
+      throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(tenant)}/staff/stock/${item.itemId}',
+        body: {
+          'version': item.version,
+          'tracked': tracked,
+          'available': available
+        });
+    try {
+      _tenant(data, tenant);
+      final result = CoreStockItem(data, tenantId: tenant);
+      if (result.itemId != item.itemId || result.version <= item.version)
         invalidResponse();
       return result;
     } on CoreException {

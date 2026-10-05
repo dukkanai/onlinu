@@ -136,3 +136,34 @@ String coreStatusLabel(String value) => switch (value) {
       'cancelled' => 'ملغي',
       _ => 'حالة غير مدعومة',
     };
+
+class CoreStockItem {
+  CoreStockItem(Map<String, dynamic> json, {required this.tenantId})
+      : itemId = textField(json['itemId'], max: 128),
+        name = textField(json['name'] ?? json['itemId']),
+        tracked = json['tracked'] is bool
+            ? json['tracked'] as bool
+            : invalidResponse(),
+        available = integer(json['available']),
+        held = integer(json['held']),
+        version = integer(json['version']) {
+    if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(itemId)) invalidResponse();
+  }
+  final String tenantId, itemId, name;
+  final bool tracked;
+  final int available, held, version;
+}
+
+int? stockQuantity(String raw) {
+  final digits = raw.trim().split('').map((v) {
+    final arabic = '٠١٢٣٤٥٦٧٨٩'.indexOf(v), persian = '۰۱۲۳۴۵۶۷۸۹'.indexOf(v);
+    return arabic >= 0
+        ? '$arabic'
+        : persian >= 0
+            ? '$persian'
+            : v;
+  }).join();
+  if (!RegExp(r'^[0-9]{1,7}$').hasMatch(digits)) return null;
+  final result = int.tryParse(digits);
+  return result != null && result <= 1000000 ? result : null;
+}

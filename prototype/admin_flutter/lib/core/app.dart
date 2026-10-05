@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'controller.dart';
 import 'models.dart';
+import 'stock_pane.dart';
 
 class CoreApp extends StatefulWidget {
   const CoreApp({super.key, required this.controller});
@@ -71,6 +72,41 @@ class CoreScreen extends StatelessWidget {
         accepted != true ||
         controller.selectedTenant != tenant) return;
     await controller.change(order, cash: cash);
+  }
+
+  Future<void> _details(BuildContext context, String number) async {
+    unawaited(controller.showDetail(number));
+    await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => ListenableBuilder(
+              listenable: controller,
+              builder: (context, _) => Dialog(
+                  child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(maxWidth: 720, maxHeight: 650),
+                child: SingleChildScrollView(
+                    child: controller.detail != null
+                        ? _Detail(
+                            order: controller.detail!,
+                            close: () => Navigator.pop(dialogContext))
+                        : Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (controller.loadingDetail)
+                                    const LinearProgressIndicator()
+                                  else
+                                    Text(controller.message ??
+                                        'تعذر عرض التفاصيل.'),
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(dialogContext),
+                                      child: const Text('إغلاق التفاصيل')),
+                                ]))),
+              )),
+            ));
+    controller.closeDetail();
   }
 
   @override
@@ -176,7 +212,36 @@ class CoreScreen extends StatelessWidget {
                         const Padding(
                             padding: EdgeInsets.all(24),
                             child: Text('اختر المطعم الذي تريد إدارته.')),
-                      if (member?.can('orders:read') == true) ...[
+                      if (member != null)
+                        Wrap(spacing: 12, children: [
+                          if (member.can('orders:read'))
+                            ChoiceChip(
+                                label: const Text('الطلبات'),
+                                selected: c.section == CoreSection.orders,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(c
+                                            .selectSection(CoreSection.orders));
+                                      }),
+                          if (member.can('stock:read'))
+                            ChoiceChip(
+                                label: const Text('المخزون'),
+                                selected: c.section == CoreSection.stock,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(
+                                            c.selectSection(CoreSection.stock));
+                                      }),
+                        ]),
+                      if (c.section == CoreSection.stock &&
+                          member?.can('stock:read') == true)
+                        StockPane(
+                            key: ValueKey('stock-${c.selectedTenant}'),
+                            controller: c),
+                      if (c.section == CoreSection.orders &&
+                          member?.can('orders:read') == true) ...[
                         const SizedBox(height: 20),
                         const Text('آخر 100 طلب',
                             style: TextStyle(
@@ -222,8 +287,8 @@ class CoreScreen extends StatelessWidget {
                                             children: [
                                               OutlinedButton(
                                                   onPressed: () {
-                                                    unawaited(c.showDetail(
-                                                        order.number));
+                                                    unawaited(_details(
+                                                        context, order.number));
                                                   },
                                                   child: const Text(
                                                       'تفاصيل الطلب')),
@@ -258,15 +323,6 @@ class CoreScreen extends StatelessWidget {
                                             ]),
                                       ]))),
                       ],
-                      if (c.loadingDetail)
-                        Row(children: [
-                          const Expanded(child: LinearProgressIndicator()),
-                          TextButton(
-                              onPressed: c.closeDetail,
-                              child: const Text('إغلاق التفاصيل'))
-                        ]),
-                      if (c.detail != null)
-                        _Detail(order: c.detail!, close: c.closeDetail),
                     ],
                   ]))),
         );

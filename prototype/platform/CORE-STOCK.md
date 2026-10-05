@@ -43,3 +43,11 @@ history. Cross-language tests cover read-only kitchen access, denied writes,
 rejection of caller-provided holds, stale versions and untracked response parsing.
 Chromium CI exercises the actual recount form and verifies holds are unchanged.
 No live stock, merchant credentials or production databases were modified.
+
+Native Flutter now consumes the same stock API with its own staff bearer.
+Stock responses include an optional `name` from the current original catalogue,
+including unconfigured items and recount responses. This is an additive display
+field, not another inventory database, and stock-only staff need no menu scope.
+The native form preserves holds, validates integer quantities/versions, makes
+untracked explicit and does not replay uncertain writes. See the Flutter README
+for local versus actual Windows verification evidence.

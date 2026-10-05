@@ -33,6 +33,23 @@ func restaurantAssertStock(t *testing.T, orders *restaurantOrders, available, he
 	}
 }
 
+func TestRestaurantStockNamesComeFromCurrentCatalogueWithoutChangingCounters(t *testing.T) {
+	orders, _, _ := restaurantOrdersFixtureDB(t)
+	ctx := context.Background()
+	catalog, err := loadRestaurantCatalog(ctx, orders.store.db, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := orders.ListStock(ctx)
+	if err != nil || len(items) != 1 || items[0].Name != catalog.Items[0].Name || items[0].Version != 0 || items[0].Tracked {
+		t.Fatalf("unconfigured stock label: %+v %v", items, err)
+	}
+	changed, err := orders.SaveStock(ctx, items[0].ItemID, restaurantStockInput{Tracked: true, Available: 7})
+	if err != nil || changed.Name != catalog.Items[0].Name || changed.Available != 7 || changed.Held != 0 {
+		t.Fatalf("recount label: %+v %v", changed, err)
+	}
+}
+
 func TestRestaurantStockStaffRecountKeepsHoldsAndAuditsAtomically(t *testing.T) {
 	orders, input := restaurantStockFixture(t, 5)
 	if _, err := orders.Create(context.Background(), input, "", uuid.NewString()); err != nil {

@@ -5,12 +5,14 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-05 13:00 UTC
+## Latest verified position — 2026-10-05 14:04 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `6d97f7cb0f38caef7871f44c16a3f9ec3592ec9e`, CI [37310443981](https://github.com/dukkanai/onlinu/actions/runs/37310443981), all jobs successful.
+- Latest published and fully verified commit: `0c1d61cbc3d4dcfbcaf0f15729d4d9d8bc2cb65e`, CI [37319998899](https://github.com/dukkanai/onlinu/actions/runs/37319998899), all jobs successful.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
-- Current unpublished increment: native HTTP consent/staff API/device revocation; Flutter dependencies are prepared separately for the client implementation.
+- Current locally verified increment: native inventory UI/recount, original-core product labels, and immediate order-detail dialog; 44 Flutter tests, 190 platform tests and Go stock/bridge race checks pass. Remote verification pending.
+- Native Windows PKCE client, order/cash UI, actual OS-store/rendering smoke and unsigned build are verified at the published commit above. The synthetic screenshot was inspected; no Arabic clipping observed.
+- POS integration is explicitly deferred by the owner’s voice instruction; continue current development without choosing/connecting a vendor.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
 - Historical verification entries below describe their exact commits; they are not a claim that the entire SaaS is complete.
 
@@ -255,3 +257,20 @@ successful unsigned release compilation with locked plugins. The retained
 actual Windows OS-store/native-renderer smoke test is now being added, using
 random disposable synthetic keys only; real OIDC/MFA/device acceptance remains
 separate. No credential enumeration or existing OS-store deletion is performed.
+
+
+### Native inventory management — 2026-10-05
+
+Permission-aware order/stock sections; stock-only staff do not need order/menu
+privileges. Inventory shows original-core item names, sellable versus held
+quantities, and untracked/version-zero explicitly. Arabic/Persian integer input,
+bounded search/pagination, explicit recount confirmation, stale-version guards,
+late-response isolation and no mutation retries. Product labels are additive
+response fields from the current catalogue; no new stock ledger or DB migration.
+Order details now open immediately in a modal, rather than below100 cards.
+
+Local verification: Flutter analyze/all44 tests, platform190 PostgreSQL tests,
+Go stock and cross-language integration race tests, Go vet/build and diff checks.
+Windows OS storage/native renderer/release acceptance for the previous increment
+is fully green in CI37319998899; current increment needs its own remote run.
+Deferred POS scope is recorded in the transformation plan, not implemented.

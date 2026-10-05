@@ -135,6 +135,21 @@ class FakeCoreSession implements CoreSession {
   }
 }
 
+CoreStockItem stockFixture(
+        {String tenant = 'demo-a',
+        int version = 1,
+        bool tracked = true,
+        int available = 12,
+        int held = 3}) =>
+    CoreStockItem({
+      'itemId': 'meal',
+      'name': 'وجبة',
+      'tracked': tracked,
+      'available': available,
+      'held': held,
+      'version': version
+    }, tenantId: tenant);
+
 class FakeCoreGateway implements CoreGateway {
   @override
   final FakeCoreSession session = FakeCoreSession();
@@ -144,6 +159,10 @@ class FakeCoreGateway implements CoreGateway {
   Completer<List<CoreOrder>>? readGate;
   Completer<CoreOrder>? detailGate, writeGate;
   int writes = 0, reads = 0, profiles = 0;
+  int stockWrites = 0, stockReads = 0;
+  CoreStockItem currentStock = stockFixture();
+  Completer<List<CoreStockItem>>? stockGate;
+  Completer<CoreStockItem>? stockWriteGate;
   String? writeTenant, writeStatus;
   int? writeVersion;
   @override
@@ -191,5 +210,35 @@ class FakeCoreGateway implements CoreGateway {
         mode: order.mode,
         version: order.version + 1);
     return currentOrder;
+  }
+
+  @override
+  Future<List<CoreStockItem>> stock(String tenant) async {
+    stockReads++;
+    if (readError != null) throw readError!;
+    return stockGate?.future ??
+        [
+          stockFixture(
+              tenant: tenant,
+              version: currentStock.version,
+              tracked: currentStock.tracked,
+              available: currentStock.available,
+              held: currentStock.held)
+        ];
+  }
+
+  @override
+  Future<CoreStockItem> setStock(String tenant, CoreStockItem item,
+      {required bool tracked, required int available}) async {
+    stockWrites++;
+    if (writeError != null) throw writeError!;
+    if (stockWriteGate != null) return stockWriteGate!.future;
+    currentStock = stockFixture(
+        tenant: tenant,
+        version: item.version + 1,
+        tracked: tracked,
+        available: available,
+        held: item.held);
+    return currentStock;
   }
 }
