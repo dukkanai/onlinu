@@ -19,11 +19,15 @@ test('owned core handoffs are durable, private and idempotent across ambiguous o
   await directory.createTenant(alice.id,{id:'a',name:'A',ownerId:alice.id});
   await directory.setTenantStatus(alice.id,'a',{status:'active',expectedVersion:1});
   const orders=new Map();let creates=0,loseReply=false,failBeforeCreate=false;
-  const quote={tenantId:'a',currency:'SAR',totalMinor:2500};
-  const core={async preview(){return quote;},async quote(){return quote;}};
+  const quote={tenantId:'a',currency:'SAR',totalMinor:2500,subtotalMinor:2500,deliveryFeeMinor:0,demo:false,paymentMethods:['card'],
+    tax:{enabled:false,rateBps:0,number:'',netMinor:2500,taxMinor:0,grossMinor:2500},
+    items:[{itemId:'rice',name:'Rice',quantity:1,unitPriceMinor:2500,totalMinor:2500,options:[{id:'extra',name:'Extra',priceMinor:0,available:true}]}]};
+  let currentQuote=quote;
+  const core={async preview(){return currentQuote;},async quote(){return currentQuote;}};
   const notFound=()=>Object.assign(Error('not found'),{status:404,code:'invalid_order_access'});
   const client={
     async create(tenant,subject,input,key){
+      assert.match(input.expectedQuoteHash,/^[0-9a-f]{64}$/,'Every real checkout dispatch binds the reviewed quote');
       creates++;
       if(failBeforeCreate)throw Object.assign(Error('network'),{status:503,code:'order_outcome_unknown'});
       if(!orders.has(key))orders.set(key,{owner:subject,number:`R${String(orders.size+1).padStart(8,'0')}`,version:1,status:'new',paymentStatus:'unpaid',totalMinor:2500,currency:'SAR',mode:'pickup',updatedAt:new Date().toISOString()});
@@ -64,6 +68,12 @@ test('owned core handoffs are durable, private and idempotent across ambiguous o
     const before=creates;
     await assert.rejects(store.confirm(alice,checkout.checkoutId,contact),{code:'checkout_expired'});
     assert.equal(creates,before);
+  });
+  await t.test('same-total changes to reviewed details require a new quote before dispatch',async()=>{
+    const checkout=await store.prepare(alice,prepare(randomUUID()));const before=creates;
+    currentQuote={...quote,items:[{...quote.items[0],name:'Changed item title'}]};
+    try{await assert.rejects(store.confirm(alice,checkout.checkoutId,contact),{code:'quote_changed'});assert.equal(creates,before);}
+    finally{currentQuote=quote;}
   });
   await t.test('lost reply recovers same order after expiry without resubmission',async()=>{
     const checkout=await store.prepare(alice,prepare(randomUUID()));loseReply=true;

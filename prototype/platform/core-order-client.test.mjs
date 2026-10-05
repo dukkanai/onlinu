@@ -78,3 +78,17 @@ test('staff detail uses its own scope and preserves Unicode notes without struct
   for(const field of ['phone','address','accessCode'])assert.equal(detail[field],undefined);
   assert.throws(()=>client.staffOrder('restaurant-a',randomUUID(),'../other'),{code:'invalid_request'});
 });
+
+test('owned financial detail is separately scoped and drops contacts and receipt capabilities',async()=>{
+ const details={...view,subtotalMinor:3000,deliveryFeeMinor:500,demo:true,createdAt:view.updatedAt,
+  tax:{enabled:false,rateBps:0,number:'',netMinor:3500,taxMinor:0,grossMinor:3500},
+  items:[{itemId:'rice',name:'Rice',quantity:2,unitPriceMinor:1500,totalMinor:3000,options:[]}]};
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{
+  assert.equal(url,'http://127.0.0.1:3001/platform-api/order-details/'+view.number);
+  const claims=JSON.parse(Buffer.from(options.headers.authorization.slice(9).split('.')[0],'base64url'));
+  assert.equal(claims.scope,'orders:read');
+  return json({...details,phone:'private',address:{street:'private'},trackingToken:'private',accessCode:'private'});
+ }});
+ assert.deepEqual(await client.details('restaurant-a',randomUUID(),view.number),{tenantId:'restaurant-a',...details});
+ assert.throws(()=>client.details('restaurant-a',randomUUID(),'../admin'),{code:'invalid_request'});
+});

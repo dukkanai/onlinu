@@ -122,6 +122,23 @@ func publicPlatformOrder(order restaurantOrder) platformOrderView {
 		Mode: order.Mode, PaymentMethod: order.Payment.Method, PaymentProvider: order.Payment.Provider, UpdatedAt: order.UpdatedAt}
 }
 
+// Separate owned receipt summary: no contact details or access tokens.
+type platformOrderDetails struct {
+	platformOrderView
+	Items            []restaurantOrderLine `json:"items"`
+	Tax              restaurantTaxSummary  `json:"tax"`
+	SubtotalMinor    int64                 `json:"subtotalMinor"`
+	DeliveryFeeMinor int64                 `json:"deliveryFeeMinor"`
+	TableName        string                `json:"tableName,omitempty"`
+	Demo             bool                  `json:"demo"`
+	CreatedAt        time.Time             `json:"createdAt"`
+}
+
+func publicPlatformOrderDetails(order restaurantOrder) platformOrderDetails {
+	return platformOrderDetails{platformOrderView: publicPlatformOrder(order), Items: order.Items, Tax: order.Tax,
+		SubtotalMinor: order.SubtotalMinor, DeliveryFeeMinor: order.DeliveryFeeMinor, TableName: order.TableName, Demo: order.Demo, CreatedAt: order.CreatedAt}
+}
+
 func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
 	limiter := &restaurantRateLimiter{entries: make(map[string]restaurantRateEntry)}
 	slots := make(chan struct{}, 64)
@@ -216,6 +233,14 @@ func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, 200, publicPlatformOrder(order))
+	}))
+	mux.HandleFunc("GET /platform-api/order-details/{number}", wrap("orders:read", func(w http.ResponseWriter, r *http.Request, _ []byte, owner string) {
+		order, err := s.orders.Track(r.Context(), r.PathValue("number"), "", "", owner)
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, publicPlatformOrderDetails(order))
 	}))
 	for _, method := range []string{"GET", "POST"} {
 		scope := "payments:read"

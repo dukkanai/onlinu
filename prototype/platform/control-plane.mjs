@@ -1,3 +1,4 @@
+import { checkoutSummary, checkoutErrorPage } from './checkout-pages.mjs';
 /** Real subject-based identity and staff control API, separate from demo routes.
  * Deployment still needs approved HTTPS/OIDC configuration. No public bootstrap,
  * Docker socket or production provisioning is exposed by this module. Payment
@@ -186,20 +187,20 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           const checkout=await checkouts.get(who,checkoutId);
           const csrf=auth.csrfToken(req);
           const methods=checkout.quote.paymentMethods.map(value=>`<option value="${escape(value)}">${escape(value)}</option>`).join('');
-          const items=(checkout.quote.items??[]).map(item=>`<li>${escape(item.name)} × ${escape(item.quantity)}: ${escape((item.totalMinor/100).toFixed(2))} SAR</li>`).join('');
+
           if(checkout.state==='confirmed') {
-            const order=await checkouts.status(who,checkout.tenantId,checkout.orderId);
+            const order=await checkouts.details(who,checkout.tenantId,checkout.orderId);
             const button=(action,label)=>`<form method="post" action="/checkout/${checkoutId}/${action}"><input type="hidden" name="csrf" value="${escape(csrf)}"><button>${label}</button></form>`;
             const pay=order.paymentMethod==='card'&&['unpaid','pending'].includes(order.paymentStatus)?button('payment','الانتقال لصفحة الدفع'):'';
             const refresh=order.paymentMethod==='card'?button('refresh-payment','التحقق من حالة الدفع'):'';
             htmlHeaders(res);
-            res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>طلبك</title><h1>طلب ${escape(order.number)}</h1><p>حالة الطلب: ${escape(order.status)}</p><p>حالة الدفع: ${escape(order.paymentStatus)}</p><p>الإجمالي: ${escape((order.totalMinor/100).toFixed(2))} SAR</p>${checkout.quote.demo?'<p>هذا طلب تجريبي.</p>':''}${pay}${refresh}<p>لا يعتبر الدفع مكتملًا إلا بعد التحقق لدى مزود الدفع.</p></html>`);return;
+            res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>طلبك</title><h1>طلب ${escape(order.number)}</h1><p>حالة الطلب: ${escape(order.status)}</p><p>حالة الدفع: ${escape(order.paymentStatus)}</p>${checkoutSummary(order)}${pay}${refresh}<p>لا يعتبر الدفع مكتملًا إلا بعد التحقق لدى مزود الدفع.</p></html>`);return;
           }
           const providers=(await core.payments(checkout.tenantId)).providers.filter(row=>['stripe','moyasar','tap','paytabs','geidea','myfatoorah'].includes(row.id));
           const providerOptions=providers.map(row=>`<option value="${escape(row.id)}">${escape(row.name)}${row.mode==='test'?' (اختبار)':''}</option>`).join('');
           htmlHeaders(res);
           const delivery=checkout.cart.mode==='delivery'?'<fieldset><legend>عنوان التوصيل</legend><label>العنوان التفصيلي <textarea name="addressLine" maxlength="500"></textarea></label><label>العنوان الوطني أو المختصر <input name="nationalAddress" maxlength="300"></label></fieldset>':'';
-          res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>تأكيد الطلب</title><h1>راجع الطلب ثم أكّد</h1><ul>${items}</ul><p>الإجمالي: ${escape((checkout.totalMinor/100).toFixed(2))} SAR، شامل الرسوم والضريبة المعروضة.</p><form method="post" action="/checkout/${checkoutId}/confirm"><input type="hidden" name="csrf" value="${escape(csrf)}"><label>الاسم <input name="customerName" required maxlength="100" autocomplete="name"></label><label>الهاتف <input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>${delivery}<label>طريقة الدفع <select name="paymentMethod">${methods}</select></label><label>مزود الدفع الإلكتروني <select name="paymentProvider"><option value="">اختر المزود عند الدفع الإلكتروني</option>${providerOptions}</select></label><label>ملاحظات <textarea name="notes" maxlength="1000"></textarea></label><button type="submit">تأكيد وإنشاء الطلب</button></form><p>هذه الخطوة تنشئ الطلب فقط، ولا تثبت سدادًا إلكترونيًا.</p></html>`);return;
+          res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>تأكيد الطلب</title><h1>راجع الطلب ثم أكّد</h1>${checkoutSummary(checkout.quote)}<form method="post" action="/checkout/${checkoutId}/confirm"><input type="hidden" name="csrf" value="${escape(csrf)}"><label>الاسم <input name="customerName" required maxlength="100" autocomplete="name"></label><label>الهاتف <input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>${delivery}<label>طريقة الدفع <select name="paymentMethod">${methods}</select></label><label>مزود الدفع الإلكتروني <select name="paymentProvider"><option value="">اختر المزود عند الدفع الإلكتروني</option>${providerOptions}</select></label><label>ملاحظات <textarea name="notes" maxlength="1000"></textarea></label><button type="submit">تأكيد وإنشاء الطلب</button></form><p>هذه الخطوة تنشئ الطلب فقط، ولا تثبت سدادًا إلكترونيًا.</p></html>`);return;
         }
         if(req.method==='POST'&&['payment','refresh-payment'].includes(checkoutRoute[2])) {
           const input=await body(req);auth.verifyCsrf(req,input.csrf);
@@ -368,6 +369,8 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       if (res.headersSent) { res.end(); return; }
       const status = [400,401,403,404,409,413,415,429,503].includes(error.status) ? error.status : 500;
       const code = status === 500 || !/^[a-z_]{1,80}$/.test(error.code ?? '') ? 'request_failed' : error.code;
+      const checkoutError=req.url?.startsWith('/checkout/') && req.headers.accept?.includes('text/html') ? checkoutErrorPage(code) : null;
+      if(checkoutError){htmlHeaders(res);res.statusCode=status;res.end(checkoutError);return;}
       json(res, status, { error: code });
     }
   }

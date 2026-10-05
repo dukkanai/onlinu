@@ -73,3 +73,29 @@ in `CORE-PAYMENTS-EVENTS.md`; real provider and ChatGPT account acceptance remai
 separate. Complete staff interfaces/Flutter parity, provisioning, external account
 acceptance and production rollout remain in the completion ledger. No production
 server, live account, real customer or real payment was used for these checks.
+
+## Reviewed quote and owned financial summary
+
+The browser review includes selected options, item subtotal, delivery fee,
+inclusive tax/net breakdown, restaurant tax number when enabled, table name
+and a visible demo marker. The confirmed page reads a separate owned
+`GET /platform-api/order-details/{number}` snapshot using `orders:read`.
+It does not reprice old orders from today's menu or reuse a prepared quote as
+proof of the accepted order. Contacts, addresses and receipt access capabilities
+are excluded. The minimal MCP status/event schema is unchanged.
+
+Central confirmations bind the reviewed quote using the versioned
+`onlinu-quote-v1` positional JSON SHA-256 encoding shared by Go and Node.
+It includes displayed names, selected options, tax, totals, table/demo and payment
+methods. Full quote is checked before dispatch; the original Create transaction
+checks again while holding its catalog/stock locks. A same-total change therefore
+requires a fresh handoff rather than silently accepting changed details.
+The additive `expectedQuoteHash` field is optional for legacy/native callers;
+central handoffs always send it. Accepted idempotent recovery still precedes
+current quote validation. Golden-vector tests include HTML escaping, Unicode
+separators and emoji to keep encoders byte-identical.
+
+The financial summary is not a claim of ZATCA-certified e-invoicing. Provider
+confirmation remains authoritative for payment status. Friendly browser errors
+explain expired/stale quotes and instruct users not to duplicate an order after
+an unknown outcome; JSON callers keep stable error codes.

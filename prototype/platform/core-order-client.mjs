@@ -6,13 +6,16 @@ import { problem } from './auth.mjs';
 const uuid = z.string().uuid();
 const id = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
 const orderInput = coreQuoteInput.extend({ expectedTotalMinor: z.number().int().min(0).max(100_000_000),
-  notes: z.string().max(1000).optional() }).strict();
+  notes: z.string().max(1000).optional(),expectedQuoteHash:z.string().regex(/^[0-9a-f]{64}$/).optional() }).strict();
 export const coreOrderView = z.object({ number: z.string().regex(/^R[0-9]{8,20}$/),
   version: z.number().int().positive(), status: z.string().max(40), paymentStatus: z.string().max(40),
   totalMinor: z.number().int().min(0).max(100_000_000), currency: z.literal('SAR'),
   mode: z.enum(['pickup','delivery','table']), updatedAt: z.string().datetime({ offset: true }),
   paymentMethod: z.string().max(40).optional(), paymentProvider: z.string().max(40).optional(),
 });
+const coreOrderDetails=coreOrderView.extend({items:coreQuoteSchema.shape.items,tax:coreQuoteSchema.shape.tax,
+  subtotalMinor:coreQuoteSchema.shape.subtotalMinor,deliveryFeeMinor:coreQuoteSchema.shape.deliveryFeeMinor,
+  tableName:coreQuoteSchema.shape.tableName,demo:z.boolean(),createdAt:z.string().datetime({offset:true})});
 const paymentHosts={stripe:['checkout.stripe.com'],moyasar:['checkout.moyasar.com'],tap:['checkout.tap.company','payment.tap.company','tap.company'],
     paytabs:['secure.paytabs.sa'],geidea:['www.ksamerchant.geidea.net','ksamerchant.geidea.net','merchant.geidea.net'],
     myfatoorah:['sa.myfatoorah.com','demo.myfatoorah.com','portal.myfatoorah.com']};
@@ -30,7 +33,7 @@ const safeCodes = new Set(['invalid_request','invalid_quantity','invalid_option'
   'district_unavailable','delivery_minimum','delivery_unavailable','store_closed','mode_unavailable',
   'item_unavailable','out_of_stock','payment_required','payment_unavailable','price_changed','conflict',
   'invalid_order_access','platform_unauthorized','not_found','order_not_found','invalid_status','invalid_payment_method',
-  'channel_ordering_disabled','channel_ordering_unavailable','invalid_order_channel','catalog_changed']);
+  'channel_ordering_disabled','channel_ordering_unavailable','invalid_order_channel','catalog_changed','quote_changed']);
 const channelId=z.enum(['web','chatgpt','whatsapp_qr','whatsapp_cloud']);
 const channelPolicy=z.object({channel:channelId,newOrdersEnabled:z.boolean(),adapterImplemented:z.boolean(),
   version:z.number().int().positive(),updatedAt:z.string().datetime({offset:true})});
@@ -148,6 +151,10 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     status(tenantId, subject, number) {
       if (!/^R[0-9]{8,20}$/.test(number ?? '')) throw problem(400, 'invalid_request');
       return request(tenantId, subject, 'GET', `/platform-api/orders/${number}`);
+    },
+    details(tenantId, subject, number) {
+      if (!/^R[0-9]{8,20}$/.test(number ?? '')) throw problem(400, 'invalid_request');
+      return request(tenantId,subject,'GET',`/platform-api/order-details/${number}`,undefined,'','orders:read',coreOrderDetails,2_000_000);
     },
     recover(tenantId, subject, idempotencyKey) {
       if (!uuid.safeParse(idempotencyKey).success || idempotencyKey[14] !== '4') throw problem(400, 'invalid_request');

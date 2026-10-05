@@ -100,6 +100,7 @@ export const ar = {
   "errors.invalid_order_channel": "قناة استقبال الطلب هذه غير صالحة.",
   "errors.channel_ordering_disabled": "استقبال الطلبات الجديدة عبر هذه القناة متوقف حاليًا. يمكنك متابعة الطلبات السابقة.",
   "errors.channel_ordering_unavailable": "استقبال الطلبات عبر هذه القناة غير متاح بعد.",
+  "errors.quote_changed": "تغيّرت تفاصيل الطلب أو الضريبة. راجع عرضًا جديدًا قبل التأكيد.",
   "errors.item_unavailable": "أحد أطباق طلبك لم يعد متاحًا.", "errors.invalid_quantity": "تحقق من كمية كل طبق.",
   "errors.invalid_option": "أحد الخيارات المحددة غير متاح أو غير صالح.",
   "errors.price_changed": "تغير الإجمالي. راجع السعر الجديد قبل التأكيد.", "errors.delivery_unavailable": "التوصيل غير متاح حاليًا.",

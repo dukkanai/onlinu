@@ -146,12 +146,22 @@ func TestPlatformOrdersOwnedIdempotentAndMinimal(t *testing.T) {
 			}
 		}
 	}
-	for _, path := range []string{"/platform-api/orders/" + number, "/platform-api/orders/by-idempotency/" + key} {
+	for _, path := range []string{"/platform-api/orders/" + number, "/platform-api/orders/by-idempotency/" + key, "/platform-api/order-details/" + number} {
 		if w := send(platformTestRequest(t, private, actor, "GET", path, "", "orders:read", nil, nil)); w.Code != 200 {
 			t.Fatalf("owner read: %d %s", w.Code, w.Body.String())
 		}
 		if w := send(platformTestRequest(t, private, other, "GET", path, "", "orders:read", nil, nil)); w.Code != 404 {
 			t.Fatalf("foreign actor read: %d", w.Code)
+		}
+	}
+	details := send(platformTestRequest(t, private, actor, "GET", "/platform-api/order-details/"+number, "", "orders:read", nil, nil))
+	var summary platformOrderDetails
+	if err = json.Unmarshal(details.Body.Bytes(), &summary); err != nil || len(summary.Items) != 1 || summary.SubtotalMinor != 3000 || summary.DeliveryFeeMinor != 500 {
+		t.Fatal("invalid owned financial summary", err)
+	}
+	for _, secret := range []string{"customerName", "phone", "address", "trackingToken", "accessCode"} {
+		if strings.Contains(details.Body.String(), secret) {
+			t.Fatalf("owned summary leaked %s", secret)
 		}
 	}
 	w := send(platformTestRequest(t, private, other, "POST", "/platform-api/orders", key, "orders:write", input, nil))

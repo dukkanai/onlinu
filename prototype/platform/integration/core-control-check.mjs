@@ -71,12 +71,15 @@ try {
   assert.equal((await send(path,{cookie:bob.cookie})).status,404);
   const page=await send(path,{cookie:alice.cookie});assert.equal(page.status,200);assert.match(page.data,/35\.00/);
   const csrf=/name="csrf" value="([A-Za-z0-9_-]+)"/.exec(page.data)?.[1];assert.ok(csrf);
+  assert.match(page.data,/Extra/);assert.match(page.data,/Free sauce/);assert.match(page.data,/رسوم التوصيل/);
   const contact={customerName:'Synthetic',phone:'+966501234567',paymentMethod:'cash_on_delivery',address:{country:'SA',nationalAddress:'ABCD1234'}};
   const confirm=async(who,extra={})=>send(path+'/confirm',{method:'POST',cookie:who.cookie,headers:{origin:baseUrl},body:{...contact,csrf,...extra}});
   assert.equal((await confirm(alice,{csrf:'bad'})).status,403);
   const confirmed=await confirm(alice);assert.equal(confirmed.status,200,JSON.stringify(confirmed));
   const order=confirmed.data.order;assert.equal(order.totalMinor,3500);assert.equal(order.paymentStatus,'unpaid');
   assert.deepEqual((await confirm(alice)).data.order,order);
+  const receiptPage=await send(path,{cookie:alice.cookie});assert.equal(receiptPage.status,200);
+  assert.match(receiptPage.data,/Free sauce/);assert.match(receiptPage.data,/35\.00/);assert.equal(receiptPage.data.includes(contact.phone),false);
   assert.equal((await confirm(bob)).status,403,'CSRF token is bound to Alice browser');
   const tracked=await rpc('get_order_status',{tenantId:'restaurant-a',orderId:order.number},alice);
   assert.deepEqual(tracked.structuredContent,order);
@@ -164,6 +167,8 @@ try {
   const priceChange=await menuPost(alice,{expectedVersion:menuBefore.data.version,priceMinor:1300});assert.equal(priceChange.status,200);
   assert.deepEqual(priceChange.data.item.options,menuBefore.data.item.options);
   assert.equal((await rpc('quote_cart',cart)).structuredContent.totalMinor,3700,'New quotes use the server-edited menu price');
+  const historicalReceipt=await send(path,{cookie:alice.cookie});assert.equal(historicalReceipt.status,200);
+  assert.match(historicalReceipt.data,/35\.00/);assert.doesNotMatch(historicalReceipt.data,/37\.00/);
   assert.equal((await rpc('get_order_status',{tenantId:'restaurant-a',orderId:order.number},alice)).structuredContent.totalMinor,3500,'Existing orders keep their historical price');
   assert.equal((await menuPost(alice,{expectedVersion:menuBefore.data.version,priceMinor:1200})).status,409);
   assert.equal((await menuPost(alice,{expectedVersion:priceChange.data.version,priceMinor:1200})).status,200);

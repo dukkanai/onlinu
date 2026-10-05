@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { problem, requireScope } from './auth.mjs';
 import { corePreviewInput, coreQuoteInput } from './core-adapter.mjs';
 import { coreOrderView } from './core-order-client.mjs';
+import { quoteBinding } from './quote-binding.mjs';
 
 const uuid = z.string().uuid();
 const prepareSchema = corePreviewInput.extend({ tenantId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
@@ -110,6 +111,8 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     const { expectedTotalMinor,...quoteInput } = input;
     const quote = await core.quote(row.tenant_id,quoteInput);
     if (quote.totalMinor !== expectedTotalMinor || quote.currency !== row.quote.currency) throw problem(409,'price_changed');
+    const expectedQuoteHash=quoteBinding(row.quote);
+    if(quoteBinding(quote)!==expectedQuoteHash)throw problem(409,'quote_changed');
     const db = await pool.connect();
     try {
       await db.query('BEGIN'); row = await owned(who.id,checkoutId,db,true);
@@ -124,13 +127,18 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     if (row.state === 'confirmed') return record(row,await orderClient.status(row.tenant_id,who.id,row.order_number));
     // Never reset dispatching on an ambiguous network or DB failure. Recovery
     // reads the original core using the SAME owner and stable UUID on retry.
-    return record(row,await orderClient.create(row.tenant_id,who.id,input,row.id));
+    return record(row,await orderClient.create(row.tenant_id,who.id,{...input,expectedQuoteHash},row.id));
   }
   async function status(identity, tenantId, number) {
     const who = await principal(identity,'orders:read');
     // Core ownership is authoritative. No order number alone grants access.
     try { return await orderClient.status(tenantId,who.id,number); }
     catch(error) { if(error.code==='invalid_order_access')throw problem(404,'not_found');throw error; }
+  }
+  async function details(identity,tenantId,number) {
+    const who=await principal(identity,'orders:read');
+    try {return await orderClient.details(tenantId,who.id,number);}
+    catch(error){if(error.code==='invalid_order_access')throw problem(404,'not_found');throw error;}
   }
   async function payment(identity,checkoutId,action) {
     const who=await principal(identity,action==='start'?'orders:write':'orders:read');
@@ -140,5 +148,5 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     if(order.paymentMethod!=='card')throw problem(409,'payment_not_required');
     return orderClient.payment(row.tenant_id,who.id,row.order_number,action,order.paymentProvider);
   }
-  return { init, prepare, get, confirm, status, payment };
+  return { init, prepare, get, confirm, status, details, payment };
 }

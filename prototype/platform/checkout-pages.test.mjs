@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {checkoutSummary} from './checkout-pages.mjs';
+test('checkout summary lists selected options and inclusive tax once with escaped text',()=>{
+ const html=checkoutSummary({items:[{name:'<img src=x>',quantity:2,totalMinor:3000,options:[{name:'Extra & sauce',priceMinor:300}]}],
+ subtotalMinor:3000,deliveryFeeMinor:500,totalMinor:3500,tax:{enabled:true,rateBps:1500,number:'<synthetic>',netMinor:3043,taxMinor:457,grossMinor:3500},demo:true});
+ assert.match(html,/&lt;img src=x&gt;/);assert.doesNotMatch(html,/<img/);assert.match(html,/Extra &amp; sauce/);
+ for(const amount of ['30.00','5.00','35.00','30.43','4.57','3.00'])assert.ok(html.includes(amount+' SAR'));
+ assert.match(html,/الضريبة المشمولة \(15%\)/);assert.match(html,/هذا طلب تجريبي/);
+ assert.doesNotMatch(html,/40\.00/);
+});
+
+test('review failures explain recovery without claiming a failed order was not created',async()=>{
+ const {checkoutErrorPage}=await import('./checkout-pages.mjs');
+ assert.match(checkoutErrorPage('quote_changed'),/عرض سعر/);
+ assert.match(checkoutErrorPage('order_outcome_unknown'),/لا تنشئ طلبًا آخر/);
+ assert.equal(checkoutErrorPage('<script>'),null);
+});

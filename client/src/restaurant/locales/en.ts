@@ -22,6 +22,7 @@ export const english = {
   "errors.invalid_order_channel": "This ordering channel is invalid.",
   "errors.channel_ordering_disabled": "New orders through this channel are currently disabled. Existing orders can still be tracked.",
   "errors.channel_ordering_unavailable": "Ordering through this channel is not available yet.",
+  "errors.quote_changed": "The order details or tax changed. Review a new quote before confirming.",
   "errors.mode_unavailable": "This order method is currently unavailable.",
   "errors.item_unavailable": "A dish in your order is no longer available.",
   "errors.invalid_quantity": "Check the quantity of each dish.",

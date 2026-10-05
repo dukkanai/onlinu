@@ -227,6 +227,18 @@ func (s *restaurantOrders) Create(ctx context.Context, input restaurantOrderInpu
 	if err != nil {
 		return restaurantReceipt{}, err
 	}
+	if input.ExpectedQuoteHash != "" {
+		if !restaurantQuoteHashPattern.MatchString(input.ExpectedQuoteHash) {
+			return restaurantReceipt{}, restaurantFail(400, "invalid_request")
+		}
+		actual, err := restaurantQuoteBinding(quote)
+		if err != nil {
+			return restaurantReceipt{}, err
+		}
+		if subtle.ConstantTimeCompare([]byte(actual), []byte(input.ExpectedQuoteHash)) != 1 {
+			return restaurantReceipt{}, restaurantFail(409, "quote_changed")
+		}
+	}
 	if input.PaymentMethod == "card" {
 		if input.PaymentProvider == "" || quote.TotalMinor <= 0 {
 			return restaurantReceipt{}, restaurantFail(409, "payment_unavailable")

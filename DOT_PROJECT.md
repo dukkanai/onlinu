@@ -208,3 +208,8 @@ The payment/Events and initial staff order bridge subsequently passed full CI at
 `2b24ccd`, run `37289872901`, including isolated real-Chromium navigation tests.
 The next channel-policy increment is documented in `CORE-CHANNELS.md` beside the
 other core integration guides; it is not a WhatsApp shopping completion claim.
+
+Customer review changes (2026-10-05, under verification):
+- Central checkout shows selected options and original gross-inclusive tax breakdown.
+- Confirmed summary uses owned `/platform-api/order-details/{number}` instead of reusing the prepared quote.
+- `expectedQuoteHash` binds central confirmations to reviewed details, with a second check inside original Create. Legacy native callers remain compatible when omitted. See `prototype/platform/CORE-ORDERS.md`.

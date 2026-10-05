@@ -111,6 +111,7 @@ type restaurantOrderInput struct {
 	Notes              string                     `json:"notes"`
 	Items              []restaurantOrderLineInput `json:"items"`
 	ExpectedTotalMinor int64                      `json:"expectedTotalMinor"`
+	ExpectedQuoteHash  string                     `json:"expectedQuoteHash,omitempty"`
 }
 type restaurantOrderLine struct {
 	ItemID         string             `json:"itemId"`
