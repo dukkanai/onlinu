@@ -1,6 +1,7 @@
 import { McpServer, ProtocolError, SUPPORTED_PROTOCOL_VERSIONS as SDK_LEGACY_VERSIONS, createMcpHandler as createSdkHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { z } from 'zod';
+import { coreCatalogSchema, coreQuoteSchema, corePreviewInput } from './core-adapter.mjs';
 
 export const MCP_PROTOCOL_VERSION = '2026-07-28';
 export const UI_RESOURCE_URI = 'ui://restaurant-prototype/directory.html';
@@ -34,6 +35,10 @@ const outputs = {
 const requiredScopes = { prepare_checkout: 'orders:write', get_order_status: 'orders:read' };
 const allowedMethods = new Set(['server/discover', 'initialize', 'notifications/initialized', 'tools/list', 'tools/call', 'resources/list', 'resources/read', 'ping', 'events/list', 'events/subscribe', 'events/unsubscribe']);
 const safeErrorCodes = new Set(['invalid_request', 'invalid_items', 'not_found', 'forbidden', 'price_changed', 'out_of_stock', 'idempotency_conflict', 'version_conflict', 'checkout_expired', 'rate_limited', 'service_unavailable']);
+for (const code of ['invalid_quantity', 'invalid_option', 'store_closed', 'mode_unavailable',
+  'item_unavailable', 'delivery_unavailable', 'delivery_minimum', 'table_unavailable',
+  'payment_unavailable', 'invalid_district', 'district_unavailable', 'country_required',
+  'location_required', 'outside_delivery_area', 'restaurant_not_found']) safeErrorCodes.add(code);
 const eventMeta = { _meta: z.record(z.string(), z.unknown()).optional() };
 const eventIdentity = {
   name: z.string().min(1).max(100),
@@ -88,10 +93,10 @@ function safeEventFailure(error) {
  * this module checks customer roles/scopes and the callbacks check ownership.
  * The official v2 SDK performs transport/envelope handling and server/discover.
  */
-export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMenu, quoteCart, prepareCheckout, getOrderStatus, events, uiHtml, requireCatalogAuth = false, onProtocolExchange = () => {} }) {
+export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMenu, quoteCart, prepareCheckout, getOrderStatus, events, uiHtml, coreAdapter, requireCatalogAuth = false, onProtocolExchange = () => {} }) {
   const base = new URL(baseUrl);
   const metadataUrl = new URL('/.well-known/oauth-protected-resource', base).href;
-  const eventEnabled = ['list', 'subscribe', 'unsubscribe'].every(key => typeof events?.[key] === 'function');
+  const eventEnabled = !coreAdapter && ['list', 'subscribe', 'unsubscribe'].every(key => typeof events?.[key] === 'function');
   if (base.username || base.password || base.pathname !== '/' || base.search || base.hash) throw new Error('invalid_mcp_base_url');
   if (typeof requireCatalogAuth !== 'boolean') throw new Error('invalid_catalog_auth_option');
   if (typeof onProtocolExchange !== 'function') throw new Error('invalid_protocol_reporter');
@@ -117,8 +122,10 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
     // Webhook Events require MCP2. Older clients get the same protected tools
     // and UI resources, without an unsupported event capability.
     const modernEvents = eventEnabled && era === 'modern';
-    const server = new McpServer({ name: 'restaurant-saas-synthetic-prototype', version: '0.1.0' }, {
-      instructions: 'Synthetic restaurant prototype. All money is SAR minor units. Quote before preparing checkout. Checkout only creates a handoff; a customer must confirm on the website. No real payment, personal details, precise locations, or merchant operations are available through these tools.',
+    const server = new McpServer({ name: coreAdapter ? 'restaurant-core-catalog' : 'restaurant-saas-synthetic-prototype', version: '0.1.0' }, {
+      instructions: coreAdapter
+        ? 'Read-only restaurant core catalog integration. Money is in SAR minor units. Cart previews do not reserve stock, place orders or accept payments. Do not collect customer names, phone numbers or street addresses. If delivery requires location, ask the customer before supplying it. Orders, checkout and events are not available in this integration stage.'
+        : 'Synthetic restaurant prototype. All money is SAR minor units. Quote before preparing checkout. Checkout only creates a handoff; a customer must confirm on the website. No real payment, personal details, precise locations, or merchant operations are available through these tools.',
       capabilities: { ...(modernEvents ? { events: {} } : {}) },
     });
     const toolDescriptors = [];
@@ -164,18 +171,30 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
       });
     };
 
+    if (coreAdapter) {
+      register('search_restaurants', 'Find restaurants', 'Search the configured restaurant directory. No personal data or order creation.', searchArgs,
+        z.object({ restaurants: z.array(z.object({ id: identifier, name: z.string().max(4096), cuisine: z.string().max(4096) })).max(1000) }),
+        args => ({ restaurants: coreAdapter.listRestaurants(args) }), { scope: catalogScope });
+      register('get_restaurant_menu', 'Read the restaurant menu', 'Read original menu categories, available items/options, prices and published appearance. Availability is not a stock reservation.',
+        z.object({ tenantId: identifier }).strict(), coreCatalogSchema.extend({ tenantId: identifier }),
+        args => coreAdapter.getMenu(args.tenantId), { scope: catalogScope });
+      register('quote_cart', 'Preview cart price', 'Authoritative original restaurant pricing, delivery coverage, options and tax. No contact details, order, payment or stock reservation. For delivery, supply the requested area; ask consent before using location.',
+        corePreviewInput.extend({ tenantId: identifier }).strict(), coreQuoteSchema.extend({ tenantId: identifier }),
+        ({ tenantId, ...input }) => coreAdapter.preview(tenantId, input), { scope: catalogScope });
+    } else {
     register('search_restaurants', 'Browse synthetic restaurants', 'Find the two synthetic restaurants by name or cuisine. Opens the directory UI; does not access personal data.', searchArgs, outputs.search, args => listRestaurants(args), { ui: true, scope: catalogScope });
     register('get_restaurant_menu', 'Read restaurant menu', 'Get menu items, prices in SAR minor units, and current stock for the selected restaurant.', z.object({ tenantId: identifier }).strict(), outputs.menu, args => getMenu(args), { scope: catalogScope });
     register('quote_cart', 'Quote a cart', 'Compute authoritative current prices for selected items. Read only: does not reserve stock or create an order.', quoteArgs, outputs.quote, args => quoteCart(principal, args), { scope: catalogScope });
     register('prepare_checkout', 'Prepare checkout handoff', 'Create a short-lived website checkout link after reviewing a quote. Does not place an order, charge a card, or collect customer details. Use the same idempotencyKey when retrying the same cart.', checkoutArgs, outputs.checkout, args => prepareCheckout(principal, args), { scope: 'orders:write', write: true });
     register('get_order_status', 'Read my order status', 'Read a confirmed order belonging to the authenticated customer. Returns status and amount only, never the customer name, phone, address, or receipt.', orderArgs, outputs.order, args => getOrderStatus(principal, args), { scope: 'orders:read' });
+    }
 
     // This is a documented low-level SDK API, not a replacement transport or a
     // handwritten protocol response. The SDK still supplies resultType, cache
     // metadata, validation of the request envelope, and JSON-RPC encoding.
     server.server.setRequestHandler('tools/list', () => ({ tools: toolDescriptors }));
 
-    server.registerResource('restaurant-directory', UI_RESOURCE_URI, { title: 'Synthetic restaurant directory', mimeType: 'text/html;profile=mcp-app' }, async () => ({
+    if (!coreAdapter) server.registerResource('restaurant-directory', UI_RESOURCE_URI, { title: 'Synthetic restaurant directory', mimeType: 'text/html;profile=mcp-app' }, async () => ({
       contents: [{
         uri: UI_RESOURCE_URI,
         mimeType: 'text/html;profile=mcp-app',

@@ -118,6 +118,17 @@ func newRestaurantOrders(ctx context.Context, store *restaurantStore) (*restaura
 }
 
 func (s *restaurantOrders) Quote(ctx context.Context, input restaurantOrderInput) (restaurantQuote, error) {
+	return s.quote(ctx, input, false)
+}
+
+// Preview prices a cart without collecting checkout contact/address details.
+// Coverage, tax, payment availability and stock checks stay authoritative.
+// It does not create an order or reserve stock; Create still validates checkout.
+func (s *restaurantOrders) Preview(ctx context.Context, input restaurantPreviewInput) (restaurantQuote, error) {
+	return s.quote(ctx, input.orderInput(), true)
+}
+
+func (s *restaurantOrders) quote(ctx context.Context, input restaurantOrderInput, preview bool) (restaurantQuote, error) {
 	// Fees, coverage and canonical names must come from one consistent view.
 	tx, err := s.store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
 	if err != nil {
@@ -133,7 +144,7 @@ func (s *restaurantOrders) Quote(ctx context.Context, input restaurantOrderInput
 	if err != nil {
 		return restaurantQuote{}, err
 	}
-	quote, err := restaurantPriceOrder(catalog, input)
+	quote, err := restaurantPriceCart(catalog, input, !preview)
 	if err != nil {
 		return restaurantQuote{}, err
 	}
@@ -827,6 +838,10 @@ func restaurantNormalizeOrderInput(input restaurantOrderInput) restaurantOrderIn
 }
 
 func restaurantPriceOrder(catalog restaurantCatalog, input restaurantOrderInput) (restaurantQuote, error) {
+	return restaurantPriceCart(catalog, input, true)
+}
+
+func restaurantPriceCart(catalog restaurantCatalog, input restaurantOrderInput, requireCheckout bool) (restaurantQuote, error) {
 	settings := catalog.Settings
 	if !settings.AcceptingOrders {
 		return restaurantQuote{}, restaurantFail(409, "store_closed")
@@ -850,7 +865,7 @@ func restaurantPriceOrder(catalog restaurantCatalog, input restaurantOrderInput)
 	if !restaurantOrderText(input.CustomerName, 100, false) || !restaurantOrderText(input.Notes, 1000, true) || len(input.TableCode) > 128 {
 		return restaurantQuote{}, restaurantFail(400, "invalid_request")
 	}
-	if input.Phone != "" && !restaurantOrderPhone(input.Phone) || input.Mode != "table" && input.Phone == "" {
+	if input.Phone != "" && !restaurantOrderPhone(input.Phone) || requireCheckout && input.Mode != "table" && input.Phone == "" {
 		return restaurantQuote{}, restaurantFail(400, "phone_required")
 	}
 	if len(input.Items) < 1 || len(input.Items) > 50 {
@@ -909,7 +924,7 @@ func restaurantPriceOrder(catalog restaurantCatalog, input restaurantOrderInput)
 		quote.SubtotalMinor += total
 	}
 	if input.Mode == "delivery" {
-		if err := restaurantValidateDelivery(settings, input.Address); err != nil {
+		if err := restaurantValidateDeliveryForCart(settings, input.Address, requireCheckout); err != nil {
 			return restaurantQuote{}, err
 		}
 		if settings.DeliveryMinimumMinor < 0 || settings.DeliveryFeeMinor < 0 || settings.DeliveryFeeMinor > restaurantMaxMinor {
@@ -1075,6 +1090,10 @@ func restaurantNormalizePhone(value string) string {
 }
 
 func restaurantValidateDelivery(settings restaurantSettings, address restaurantAddress) error {
+	return restaurantValidateDeliveryForCart(settings, address, true)
+}
+
+func restaurantValidateDeliveryForCart(settings restaurantSettings, address restaurantAddress, requireCheckout bool) error {
 	if !restaurantSupportedCountry(address.Country) {
 		return restaurantFail(400, "country_required")
 	}
@@ -1095,7 +1114,7 @@ func restaurantValidateDelivery(settings restaurantSettings, address restaurantA
 	nationalEnough := address.Country == "SA" && utf8.RuneCountInString(strings.TrimSpace(address.NationalAddress)) >= 8
 	freeformEnough := utf8.RuneCountInString(strings.TrimSpace(address.AddressLine)) >= 5
 	structuredEnough := address.City != "" && (address.Street != "" || address.District != "") && address.Building != ""
-	if !nationalEnough && !freeformEnough && !structuredEnough {
+	if requireCheckout && !nationalEnough && !freeformEnough && !structuredEnough {
 		return restaurantFail(400, "address_required")
 	}
 	if (address.Latitude == nil) != (address.Longitude == nil) {

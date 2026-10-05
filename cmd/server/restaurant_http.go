@@ -264,6 +264,18 @@ func (s *server) registerRestaurantRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, v)
 	})
+	pub.HandleFunc("POST /storefront-api/preview", func(w http.ResponseWriter, r *http.Request) {
+		var in restaurantPreviewInput
+		if !decodeRestaurantBody(w, r, &in) {
+			return
+		}
+		v, err := s.orders.Preview(r.Context(), in)
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, v)
+	})
 	pub.HandleFunc("POST /storefront-api/orders", func(w http.ResponseWriter, r *http.Request) {
 		var in restaurantOrderInput
 		if !decodeRestaurantBody(w, r, &in) {
