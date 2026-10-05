@@ -25,6 +25,44 @@ type platformStaffOrderView struct {
 // control plane resolves current membership before signing each operation.
 // No restaurant master key or caller-supplied role enters this path.
 func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(string, func(http.ResponseWriter, *http.Request, []byte, string)) http.HandlerFunc) {
+	mux.HandleFunc("GET /platform-api/staff/stock", wrap("staff:stock:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
+		if r.URL.RawQuery != "" {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		items, err := s.orders.ListStock(r.Context())
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"items": items})
+	}))
+	mux.HandleFunc("POST /platform-api/staff/stock/{itemId}", wrap("staff:stock:update", func(w http.ResponseWriter, r *http.Request, body []byte, actor string) {
+		if r.URL.RawQuery != "" {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		var input struct {
+			Tracked   *bool  `json:"tracked"`
+			Available *int64 `json:"available"`
+			Version   *int64 `json:"version"`
+		}
+		if !decodeRestaurantBody(w, r, &input) {
+			return
+		}
+		if input.Tracked == nil || input.Available == nil || input.Version == nil {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		ctx := context.WithValue(r.Context(), platformStaffActorKey{}, platformStaffActor{actor, "staff:stock:update"})
+		item, err := s.orders.SaveStock(ctx, r.PathValue("itemId"), restaurantStockInput{Tracked: *input.Tracked, Available: *input.Available, Version: *input.Version})
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, item)
+	}))
 	mux.HandleFunc("GET /platform-api/staff/orders/{number}", wrap("staff:orders:read", func(w http.ResponseWriter, r *http.Request, _ []byte, _ string) {
 		if r.URL.RawQuery != "" {
 			writeRestaurantError(w, restaurantFail(400, "invalid_request"))

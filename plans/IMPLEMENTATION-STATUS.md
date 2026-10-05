@@ -100,6 +100,16 @@ receipt capabilities. Focused real Go/PostgreSQL/Node HTTP tests, all 154 platfo
 tests, Go vet/build and client 80 tests/type-check/build pass locally. Browser
 detail navigation is added to CI and remains pending publication/remote evidence.
 
+Kitchen detail commit 4000bfc was pushed and passed all CI jobs in run 37293304675,
+including real Chromium detail navigation. Current uncommitted work adds the
+original-stock read/recount bridge and staff form with attributed transactional
+audit; see `prototype/platform/CORE-STOCK.md`. It preserves active holds and
+does not invent historical actor attribution. Regression/publication are pending.
+Stock local regression: 588 Go passes, the same five local netlink restrictions
+and one native codec skip; 155 platform, eight tenant, 80 client and 37 packaging
+tests pass. Go vet/build and client type-check/build pass. Chromium stock recount
+is included in the next remote CI run rather than claimed from local HTTP tests.
+
 ## External acceptance still required
 
 - Actual ChatGPT account/Extensions/Events flows on an approved HTTPS origin.

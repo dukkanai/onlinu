@@ -35,9 +35,10 @@ The detail response is explicitly bounded at 2 MB to cover the original core's
 50-line/option limits; other signed response limits remain smaller.
 
 It does not replace the complete React management app or claim Flutter parity.
-Delivery/contact workflows, menu/brand/stock/settings, refunds, full channel
+Delivery/contact workflows, menu/brand/settings, refunds, full channel
 account management, audit UI, pagination and native staff login still require
 integration. New-order channel policy has its separate `CORE-CHANNELS.md` guide.
+Inventory read/recount and its audit boundary are documented in `CORE-STOCK.md`.
 Existing original interfaces and their authorization remain unchanged.
 
 Tests cover customer-token exclusion, foreign membership, kitchen cash denial,

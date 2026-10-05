@@ -34,6 +34,8 @@ const safeCodes = new Set(['invalid_request','invalid_quantity','invalid_option'
 const channelId=z.enum(['web','chatgpt','whatsapp_qr','whatsapp_cloud']);
 const channelPolicy=z.object({channel:channelId,newOrdersEnabled:z.boolean(),adapterImplemented:z.boolean(),
   version:z.number().int().positive(),updatedAt:z.string().datetime({offset:true})});
+const stockItem=z.object({itemId:z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),tracked:z.boolean(),available:z.number().int().nonnegative(),
+  held:z.number().int().nonnegative(),version:z.number().int().nonnegative(),updatedAt:z.string().datetime({offset:true})});
 
 export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchImpl = fetch, now = Date.now }) {
   const source = new URL(issuer);
@@ -82,6 +84,14 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    stock(tenantId,subject){
+      return request(tenantId,subject,'GET','/platform-api/staff/stock',undefined,'','staff:stock:read',z.object({items:z.array(stockItem).max(5000)}),2_000_000);
+    },
+    setStock(tenantId,subject,itemId,input){
+      const parsed=z.object({tracked:z.boolean(),available:z.number().int().min(0).max(1_000_000),version:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1)}).strict().safeParse(input);
+      if(!/^[A-Za-z0-9_-]{1,128}$/.test(itemId??'')||!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST',`/platform-api/staff/stock/${itemId}`,parsed.data,'','staff:stock:update',stockItem);
+    },
     channels(tenantId,subject){
       return request(tenantId,subject,'GET','/platform-api/staff/channels',undefined,'','staff:channels:manage',z.object({channels:z.array(channelPolicy).length(4)}));
     },

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {staffHome,staffOrdersPage,staffChannelsPage} from './staff-pages.mjs';
+import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage} from './staff-pages.mjs';
 const order={number:'R2026000001',version:2,status:'accepted',paymentStatus:'unpaid',paymentMethod:'cash_on_delivery',mode:'delivery',totalMinor:3500};
 test('staff pages display only authorized actions and escape dynamic content',()=>{
   const kitchen={permissions:['orders:read','orders:update'],tenantStatus:'active'};
@@ -28,4 +28,11 @@ test('kitchen detail uses historical lines and escapes customer instructions',()
     items:[{name:'<Rice>',quantity:2,totalMinor:3000,options:[{name:'Extra'}]}],notes:'<script>untrusted</script>',tableName:'One'}]});
   assert.match(html,/&lt;Rice&gt;/);assert.match(html,/Extra/);assert.match(html,/&lt;script&gt;/);
   assert.doesNotMatch(html,/<script>/);assert.match(html,/تفاصيل الأصناف/);assert.doesNotMatch(html,/أحدث 100 طلب/);
+});
+test('stock interface distinguishes untracked amounts and does not offer writes to read-only staff',()=>{
+  const config={tenantId:'a',items:[{itemId:'rice',tracked:false,available:0,held:0,version:0}],catalog:{items:[{id:'rice',name:'<Rice>'}]},csrf:'test'};
+  const read=staffStockPage({...config,membership:{permissions:['stock:read']}});
+  assert.match(read,/ليس قياسًا/);assert.match(read,/&lt;Rice&gt;/);assert.doesNotMatch(read,/<form/);
+  const edit=staffStockPage({...config,membership:{permissions:['stock:read','stock:update']}});
+  assert.match(edit,/name="version" value="0"/);assert.match(edit,/حفظ مخزون &lt;Rice&gt;/);assert.match(edit,/لا يمسح الحجوزات القائمة/);
 });

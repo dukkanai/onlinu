@@ -113,6 +113,18 @@ try {
   const loginPage=await send('/manage');assert.equal(loginPage.status,302);assert.equal(loginPage.headers.location,'/auth/login?returnTo=%2Fmanage');
   assert.equal((await send(loginPage.headers.location)).status,302,'OIDC accepts the bounded management return path');
   const bobMe=await send('/api/me',{cookie:bob.cookie});
+  const stockPath='/api/restaurants/restaurant-a/staff/stock';
+  const kitchenStock=await send(stockPath,{cookie:bob.cookie});assert.equal(kitchenStock.status,200);
+  assert.equal(kitchenStock.data.items[0].tracked,false);assert.equal(kitchenStock.data.items[0].version,0);
+  assert.equal((await send(stockPath,{token:alice.token})).status,403);
+  const stockPost=(who,input)=>send(stockPath+'/rice',{method:'POST',cookie:who.cookie,
+    headers:{origin:baseUrl,'x-csrf-token':who.id===alice.id?csrf:bobMe.data.csrfToken},body:input});
+  assert.equal((await stockPost(bob,{tracked:true,available:20,version:0})).status,403,'Kitchen can read but cannot recount');
+  assert.equal((await stockPost(alice,{tracked:true,available:20,version:0,held:0})).status,400,'Caller cannot reset holds');
+  const stocked=await stockPost(alice,{tracked:true,available:20,version:0});assert.equal(stocked.status,200);assert.equal(stocked.data.held,0);
+  assert.equal((await stockPost(alice,{tracked:true,available:21,version:0})).status,409);
+  const readStockPage=await send('/manage/restaurant-a/stock',{cookie:bob.cookie});assert.equal(readStockPage.status,200);
+  assert.doesNotMatch(readStockPage.data,/حفظ مخزون/);assert.match(readStockPage.data,/Rice/);
   const channelsPath='/api/restaurants/restaurant-a/staff/channels';
   assert.equal((await send(channelsPath,{cookie:bob.cookie})).status,403,'Kitchen cannot configure channels');
   assert.equal((await send(channelsPath,{token:alice.token})).status,403,'Customer OAuth cannot configure channels');
@@ -248,6 +260,14 @@ try {
       await webForm.getByLabel('استقبال طلبات الموقع').selectOption('true');
       await webForm.getByRole('button').click();
       await page.locator('form[action$="/channels/web"] input[name="expectedVersion"][value="3"]').waitFor({state:'attached'});
+      const stockBefore=(await send(stockPath,{cookie:alice.cookie})).data.items.find(item=>item.itemId==='rice');
+      await page.goto(baseUrl+'/manage/restaurant-a/stock');
+      const stockForm=page.locator('form[action$="/stock/rice"]');
+      await stockForm.getByLabel('الكمية المتاحة للبيع من Rice').fill(String(stockBefore.available+3));
+      await stockForm.getByRole('button',{name:'حفظ مخزون Rice'}).click();
+      await page.locator(`form[action$="/stock/rice"] input[name="version"][value="${stockBefore.version+1}"]`).waitFor({state:'attached'});
+      const stockAfter=(await send(stockPath,{cookie:alice.cookie})).data.items.find(item=>item.itemId==='rice');
+      assert.equal(stockAfter.available,stockBefore.available+3);assert.equal(stockAfter.held,stockBefore.held);
       const registration=await app.auth.register({redirect_uris:['https://client.example/callback'],token_endpoint_auth_method:'none',grant_types:['authorization_code'],response_types:['code']});
       const verifier=randomBytes(32).toString('base64url');
       const grant={client_id:registration.client_id,redirect_uri:'https://client.example/callback',response_type:'code',resource:baseUrl+'/mcp',
@@ -276,6 +296,7 @@ try {
   await app.directory.setTenantStatus(alice.id,'restaurant-a',{status:'suspended',expectedVersion:2});
   assert.equal((await send(staffPath,{cookie:alice.cookie})).status,200,'Suspension preserves existing order operations');
   assert.equal((await send(channelsPath,{cookie:alice.cookie})).status,403,'Suspension does not permit enabling new channel work');
+  assert.equal((await send(stockPath,{cookie:alice.cookie})).status,403,'Stock management requires an active tenant');
   const cash=await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version});
   assert.equal(cash.status,200);assert.equal(cash.data.paymentStatus,'paid');
   assert.equal((await staffPost(alice,`/${order.number}/cash`,{version:advanced.data.version})).status,409);

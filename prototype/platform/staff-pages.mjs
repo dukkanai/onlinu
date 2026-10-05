@@ -5,8 +5,19 @@ const label=value=>escape(labels[value]??value);
 const page=(title,body)=>`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title><h1>${escape(title)}</h1>${body}</html>`;
 
 export function staffHome(principal){
-  const memberships=principal.memberships.filter(member=>member.permissions.includes('orders:read')||member.permissions.includes('channels:manage'));
-  return page('إدارة المطاعم',`<p>اختر المطعم. لا يظهر هنا إلا ما تسمح به عضويتك الحالية.</p><ul>${memberships.map(member=>`<li>${member.permissions.includes('orders:read')?`<a href="/manage/${escape(member.tenantId)}/orders">${escape(member.tenantId)}</a>`:escape(member.tenantId)} (${escape(member.role)}) ${member.permissions.includes('channels:manage')?`<a href="/manage/${escape(member.tenantId)}/channels">قنوات ${escape(member.tenantId)}</a>`:''}</li>`).join('')}</ul>${memberships.length?'':'<p>لا توجد عضوية تسمح بالإدارة.</p>'}<a href="/">الصفحة الرئيسية</a>`);
+  const memberships=principal.memberships.filter(member=>['orders:read','channels:manage','stock:read'].some(permission=>member.permissions.includes(permission)));
+  return page('إدارة المطاعم',`<p>اختر المطعم. لا يظهر هنا إلا ما تسمح به عضويتك الحالية.</p><ul>${memberships.map(member=>`<li>${member.permissions.includes('orders:read')?`<a href="/manage/${escape(member.tenantId)}/orders">${escape(member.tenantId)}</a>`:escape(member.tenantId)} (${escape(member.role)}) ${member.permissions.includes('channels:manage')?`<a href="/manage/${escape(member.tenantId)}/channels">قنوات ${escape(member.tenantId)}</a>`:''} ${member.permissions.includes('stock:read')?`<a href="/manage/${escape(member.tenantId)}/stock">مخزون ${escape(member.tenantId)}</a>`:''}</li>`).join('')}</ul>${memberships.length?'':'<p>لا توجد عضوية تسمح بالإدارة.</p>'}<a href="/">الصفحة الرئيسية</a>`);
+}
+
+export function staffStockPage({tenantId,membership,items,catalog,csrf}){
+  const names=new Map(catalog.items.map(item=>[item.id,item.name]));
+  const sections=items.map(item=>{
+    const name=names.get(item.itemId)??item.itemId;
+    const state=item.tracked?`المتاح للبيع: ${escape(item.available)}. المحجوز: ${escape(item.held)}.`:'التتبع غير مفعّل؛ الصفر المعروض ليس قياسًا للمخزون الفعلي.';
+    const form=membership.permissions.includes('stock:update')?`<form method="post" action="/manage/${escape(tenantId)}/stock/${escape(item.itemId)}"><fieldset><legend>تعديل مخزون ${escape(name)}</legend><input type="hidden" name="csrf" value="${escape(csrf)}"><input type="hidden" name="version" value="${escape(item.version)}"><label>تتبع مخزون ${escape(name)} <select name="tracked"><option value="true" ${item.tracked?'selected':''}>مفعّل</option><option value="false" ${!item.tracked?'selected':''}>غير مفعّل</option></select></label><label>الكمية المتاحة للبيع من ${escape(name)} <input name="available" type="number" min="0" max="1000000" step="1" required value="${escape(item.available)}"></label><button>حفظ مخزون ${escape(name)}</button></fieldset></form>`:'';
+    return `<section><h2>${escape(name)}</h2><p>${state}</p><p>الإصدار: ${escape(item.version)}</p>${form}</section>`;
+  }).join('');
+  return page('مخزون '+tenantId,`<a href="/manage">مطاعمي</a><p>الجرد يضبط المتاح للبيع فقط، خارج الكميات المحجوزة أو المباعة. لا يمسح الحجوزات القائمة. عند تعطيل التتبع يجب أن تكون الكمية صفرًا؛ وقد يُرفض التغيير حتى تسوية الطلبات الجارية.</p>${sections||'<p>لا توجد أصناف.</p>'}`);
 }
 
 export function staffChannelsPage({tenantId,channels,csrf}){

@@ -33,6 +33,61 @@ func restaurantAssertStock(t *testing.T, orders *restaurantOrders, available, he
 	}
 }
 
+func TestRestaurantStockStaffRecountKeepsHoldsAndAuditsAtomically(t *testing.T) {
+	orders, input := restaurantStockFixture(t, 5)
+	if _, err := orders.Create(context.Background(), input, "", uuid.NewString()); err != nil {
+		t.Fatal(err)
+	}
+	items, err := orders.ListStock(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(context.Background(), platformStaffActorKey{}, platformStaffActor{"platform:synthetic-staff", "staff:stock:update"})
+	changed, err := orders.SaveStock(ctx, "rice", restaurantStockInput{Tracked: true, Available: 9, Version: items[0].Version})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restaurantAssertStock(t, orders, 9, 1)
+	var actor, scope string
+	if err = orders.store.db.QueryRow("SELECT actor_id,actor_scope FROM restaurant_stock_events WHERE kind='recount' ORDER BY id DESC LIMIT 1").Scan(&actor, &scope); err != nil || actor != "platform:synthetic-staff" || scope != "staff:stock:update" {
+		t.Fatal("missing staff inventory attribution", err)
+	}
+	_, err = orders.store.db.Exec(`CREATE FUNCTION reject_stock_recount_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+		IF NEW.kind='recount' THEN RAISE EXCEPTION 'synthetic audit failure';END IF;RETURN NEW;END $$;
+		CREATE TRIGGER reject_stock_recount_audit BEFORE INSERT ON restaurant_stock_events FOR EACH ROW EXECUTE FUNCTION reject_stock_recount_audit()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = orders.SaveStock(ctx, "rice", restaurantStockInput{Tracked: true, Available: 3, Version: changed.Version}); err == nil {
+		t.Fatal("recount ignored failed audit")
+	}
+	restaurantAssertStock(t, orders, 9, 1)
+}
+
+func TestRestaurantStockActorMigrationPreservesHistoricalEvents(t *testing.T) {
+	db := restaurantIntegrationDB(t)
+	ctx := context.Background()
+	_, err := db.ExecContext(ctx, `CREATE TABLE restaurant_stock_events (
+		id bigserial PRIMARY KEY,item_id text NOT NULL,order_number text NOT NULL DEFAULT '',kind text NOT NULL,
+		quantity bigint NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+		INSERT INTO restaurant_stock_events(item_id,kind,quantity) VALUES('old-item','recount',5)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := newRestaurantStore(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = newRestaurantOrders(ctx, store); err != nil {
+		t.Fatal(err)
+	}
+	var actor, scope string
+	var quantity int
+	if err = db.QueryRowContext(ctx, "SELECT actor_id,actor_scope,quantity FROM restaurant_stock_events WHERE item_id='old-item'").Scan(&actor, &scope, &quantity); err != nil || actor != "" || scope != "" || quantity != 5 {
+		t.Fatal("migration invented historical actors or changed stock history", err)
+	}
+}
+
 func TestRestaurantStockConcurrentLastPortion(t *testing.T) {
 	orders, input := restaurantStockFixture(t, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -38,7 +38,9 @@ func restaurantInitStockSchema(ctx context.Context, db *sql.DB) error {
 	 CREATE INDEX IF NOT EXISTS restaurant_stock_expiry_idx ON restaurant_stock_reservations(expires_at) WHERE state='held';
 	 CREATE TABLE IF NOT EXISTS restaurant_stock_events (
 	 id bigserial PRIMARY KEY, item_id text NOT NULL, order_number text NOT NULL DEFAULT '', kind text NOT NULL,
-	 quantity bigint NOT NULL, created_at timestamptz NOT NULL DEFAULT now());`)
+	 quantity bigint NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+	 ALTER TABLE restaurant_stock_events ADD COLUMN IF NOT EXISTS actor_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE restaurant_stock_events ADD COLUMN IF NOT EXISTS actor_scope TEXT NOT NULL DEFAULT '';`)
 	return err
 }
 
@@ -128,7 +130,11 @@ func (s *restaurantOrders) SaveStock(ctx context.Context, itemID string, input r
 	if err != nil {
 		return restaurantStockItem{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO restaurant_stock_events(item_id,kind,quantity) VALUES($1,'recount',$2)`, itemID, item.Available-previous.Available); err != nil {
+	actorID, actorScope := "local-admin", "stock:update"
+	if actor, ok := ctx.Value(platformStaffActorKey{}).(platformStaffActor); ok {
+		actorID, actorScope = actor.ID, actor.Scope
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO restaurant_stock_events(item_id,kind,quantity,actor_id,actor_scope) VALUES($1,'recount',$2,$3,$4)`, itemID, item.Available-previous.Available, actorID, actorScope); err != nil {
 		return restaurantStockItem{}, err
 	}
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(sum(quantity),0) FROM restaurant_stock_reservations WHERE item_id=$1 AND state='held'`, itemID).Scan(&item.Held); err != nil {

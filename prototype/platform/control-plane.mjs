@@ -12,7 +12,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffHome, staffOrdersPage, staffChannelsPage } from './staff-pages.mjs';
+import { staffHome, staffOrdersPage, staffChannelsPage, staffStockPage } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -226,6 +226,25 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           return redirect(res,'/checkout/'+checkoutId,303);
         }
       }
+      const managementStock=/^\/manage\/([a-z0-9-]{1,64})\/stock(?:\/([A-Za-z0-9_-]{1,128}))?$/.exec(url.pathname);
+      if(managementStock&&orderClient){
+        const [,tenantId,itemId]=managementStock;
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(`/manage/${tenantId}/stock`));
+        const who=await browser(req);
+        if(url.search)throw problem(400,'invalid_request');
+        if(req.method==='GET'&&!itemId){
+          const membership=await directory.authorize(who.id,tenantId,'stock:read');
+          const [stock,catalog]=await Promise.all([orderClient.stock(tenantId,who.id),core.getMenu(tenantId)]);
+          htmlHeaders(res);res.end(staffStockPage({tenantId,membership,items:stock.items,catalog,csrf:auth.csrfToken(req)}));return;
+        }
+        if(req.method==='POST'&&itemId){
+          const input=await body(req);auth.verifyCsrf(req,input.csrf);
+          if(Object.keys(input).some(key=>!['csrf','version','available','tracked'].includes(key))||!['true','false'].includes(input.tracked)||!/^\d{1,16}$/.test(input.version??'')||!/^\d{1,7}$/.test(input.available??''))throw problem(400,'invalid_request');
+          await directory.authorize(who.id,tenantId,'stock:update');
+          await orderClient.setStock(tenantId,who.id,itemId,{version:Number(input.version),tracked:input.tracked==='true',available:Number(input.available)});
+          return redirect(res,`/manage/${tenantId}/stock`,303);
+        }
+      }
       const managementChannels=/^\/manage\/([a-z0-9-]{1,64})\/channels(?:\/(web|chatgpt|whatsapp_qr|whatsapp_cloud))?$/.exec(url.pathname);
       if(managementChannels&&orderClient){
         const [,tenantId,channel]=managementChannels;
@@ -276,6 +295,13 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const who = await browser(req);
         if (req.method !== 'GET') auth.verifyCsrf(req);
         if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { principal: who, csrfToken: auth.csrfToken(req) });
+        const stockRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/stock(?:\/([A-Za-z0-9_-]{1,128}))?$/.exec(url.pathname);
+        if(stockRoute&&orderClient){
+          if(url.search)throw problem(400,'invalid_request');
+          const [,tenantId,itemId]=stockRoute;
+          if(req.method==='GET'&&!itemId){await directory.authorize(who.id,tenantId,'stock:read');return json(res,200,await orderClient.stock(tenantId,who.id));}
+          if(req.method==='POST'&&itemId){await directory.authorize(who.id,tenantId,'stock:update');return json(res,200,await orderClient.setStock(tenantId,who.id,itemId,await body(req)));}
+        }
         const channelRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/channels(?:\/(web|chatgpt|whatsapp_qr|whatsapp_cloud))?$/.exec(url.pathname);
         if(channelRoute&&orderClient){
           if(url.search)throw problem(400,'invalid_request');
