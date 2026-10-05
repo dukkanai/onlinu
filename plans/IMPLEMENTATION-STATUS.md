@@ -246,3 +246,12 @@ and actual Go↔Node race integration pass. Docker runtime includes the new modu
 No live proxy/network configuration has changed. NAT sharing, per-process limits,
 per-principal fairness, SSE/polling and distributed load acceptance remain open;
 see `prototype/platform/REQUEST-LIMITS.md`. Remote CI for this increment pending.
+
+
+Native Flutter commit `7c57929de5e14195f729f07764110bfdb5c717c1` passed all
+four CI jobs in run `37318712862`, including Windows analysis/all38 tests and
+successful unsigned release compilation with locked plugins. The retained
+`.invalid`-origin artifact is deliberately not a production release. A further
+actual Windows OS-store/native-renderer smoke test is now being added, using
+random disposable synthetic keys only; real OIDC/MFA/device acceptance remains
+separate. No credential enumeration or existing OS-store deletion is performed.

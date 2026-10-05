@@ -187,12 +187,26 @@ jobs:
       - name: Analyze and test native client
         working-directory: prototype/admin_flutter
         run: |
-          dart --suppress-analytics format --output=none --set-exit-if-changed lib test
+          dart --suppress-analytics format --output=none --set-exit-if-changed lib test integration_test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           flutter --suppress-analytics analyze --no-pub
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           flutter --suppress-analytics test --no-pub --reporter expanded
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise Windows OS storage and native renderer
+        working-directory: prototype/admin_flutter
+        timeout-minutes: 12
+        env:
+          ONLINU_SMOKE_SCREENSHOT: ${{ github.workspace }}/prototype/admin_flutter/build/native-smoke/windows-orders.png
+        run: flutter --suppress-analytics test integration_test/windows_smoke_test.dart -d windows --no-pub --reporter expanded
+      - name: Retain synthetic Windows rendering evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-windows-rendering-${{ github.sha }}
+          path: prototype/admin_flutter/build/native-smoke/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Build unsigned native core smoke bundle
         working-directory: prototype/admin_flutter
         # Reserved .invalid origin: build verification, not a deployable release.
