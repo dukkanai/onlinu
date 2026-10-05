@@ -162,3 +162,12 @@ provisioning. Successful increments do not close these release gates.
 - Added category rename/reorder with original-core version validation and atomic actor audit, preserving item assignments and settings.
 - Added staff-only option add/edit/disable forms; narrow current-item merge and final core version check prevent stale overwrites. Stable IDs, maximum 50 options, exact price parsing and historical receipts remain intact.
 - Added full control-plane permission/CSRF/stale/price-snapshot checks and real Chromium option/category editing cases. Local: 593 Go passes, five known sandbox netlink failures, one codec skip; 165 platform, eight tenant, 80 client and 37 deployment tests pass, with vet/build/type-check success. Remote browser regression pending.
+
+### Checkout error HTTP status correction (2026-10-05)
+
+Inspection found that the friendly checkout error renderer wrote HTTP200 before
+attempting to assign the intended error status. It now supplies the status when
+writing headers. An actual Go/control-plane integration assertion checks expired
+HTML confirmation returns409 and its Arabic explanation, while JSON behavior is
+unchanged. Focused real-core regression passes locally; remote verification is
+pending. This does not alter order submission or payment state.

@@ -21,12 +21,12 @@ const cookieName = '__Host-platform_session';
 const bindingName = '__Host-platform_oidc';
 function cookie(name, value, age) { return `${name}=${value}; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}`; }
 function json(res, status, value) { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); }
-function htmlHeaders(res) {
+function htmlHeaders(res,status=200) {
   // Fetch sets Origin:null for non-CORS form POSTs under no-referrer. Preserve
   // the same-origin Origin check without leaking page URLs to payment providers.
   // https://fetch.spec.whatwg.org/#append-a-request-origin-header
   res.setHeader('referrer-policy','same-origin');
-  res.writeHead(200,{'content-type':'text/html; charset=utf-8'});
+  res.writeHead(status,{'content-type':'text/html; charset=utf-8'});
 }
 function redirect(res, target, status=302) { res.writeHead(status, { location: target }); res.end(); }
 function fields(entries) {
@@ -426,7 +426,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       const status = [400,401,403,404,409,413,415,429,503].includes(error.status) ? error.status : 500;
       const code = status === 500 || !/^[a-z_]{1,80}$/.test(error.code ?? '') ? 'request_failed' : error.code;
       const checkoutError=req.url?.startsWith('/checkout/') && req.headers.accept?.includes('text/html') ? checkoutErrorPage(code) : null;
-      if(checkoutError){htmlHeaders(res);res.statusCode=status;res.end(checkoutError);return;}
+      if(checkoutError){htmlHeaders(res,status);res.end(checkoutError);return;}
       json(res, status, { error: code });
     }
   }

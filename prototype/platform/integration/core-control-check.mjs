@@ -188,6 +188,8 @@ try {
   await pool.query("UPDATE platform_core_checkouts SET expires_at=now()-interval '1 minute' WHERE id=$1",[disabledId]);
   assert.equal((await setChannel('chatgpt',true,2)).status,200);
   assert.equal((await disabledConfirm()).data.error,'checkout_expired','Expired unresolved submission cannot create after channel reopens');
+  const expiredHtml=await send('/checkout/'+disabledId+'/confirm',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl,accept:'text/html'},body:{...contact,csrf}});
+  assert.equal(expiredHtml.status,409,'Friendly HTML errors retain their non-success status');assert.match(expiredHtml.data,/انتهت صلاحية/);assert.match(expiredHtml.headers['content-type'],/text\/html/);
   const card=await rpc('prepare_checkout',{...cart,mode:'pickup',expectedTotalMinor:3000,idempotencyKey:'browser-card-checkout'},alice);
   assert.equal(card.isError,undefined);
   const cardPath='/checkout/'+card.structuredContent.checkoutId;
