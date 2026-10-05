@@ -272,3 +272,11 @@ warns that the entire existing draft becomes public. Foreground freshness,
 revocation, duplicate clicks, stale versions and no automatic retry are tested.
 Local121 Flutter tests and actual Dart/Node/Go draft/publication/restore pass.
 Actual Chromium and Windows draft-review screenshot still need their new CI result.
+
+### Appearance verification checkpoint — 2026-10-05 23:22 UTC
+
+Commit c5446aa passed all CI37387124412 jobs. Actual Chromium and Windows
+acceptance passed and `windows-brand-draft-review.png` was visually inspected:
+Arabic RTL, tenant, both versions and the private-draft confirmation are readable
+without clipping. This supersedes the pending appearance notes above. Color/media
+editing and actual customer-template visual preview remain in the original UI.

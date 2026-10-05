@@ -60,3 +60,12 @@ and `windows-brand-draft-review.png` are new remote acceptance checks, not yet
 claimed from local HTTP/widget tests. Native rendering does not implement a
 customer-template visual preview; the original storefront renders the five
 published templates. Color/media editing remains in the original editor.
+
+## Verified checkpoint — 2026-10-05 23:22 UTC
+
+Backend3c43edf passed CI37386151595; browser/native UI c5446aa passed all
+CI37387124412 jobs, including actual Chromium save/cancel/publish/restore and
+Windows renderer/store/build. The Arabic RTL draft-review screenshot was
+inspected and is readable without clipping. Local121 Flutter and217 platform
+test counts correspond to this UI increment. The entire SaaS remains incomplete;
+no production appearance, real credentials or merchant state was changed.
