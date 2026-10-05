@@ -279,7 +279,7 @@ try {
           // Use the same raw HTTP forwarding as the integration helper: keep
           // Host and browser cookies exactly, without fetch header normalization.
           const response=await new Promise((resolve,reject)=>{
-            const upstream=httpRequest(local+url.pathname+url.search,{method:request.method,headers:{...headers,host:'platform.example'}},response=>{
+            const upstream=httpRequest(local+url.pathname+url.search,{method:request.method,localAddress:'127.0.0.3',headers:{...headers,host:'platform.example'}},response=>{
               const chunks=[];response.on('data',chunk=>chunks.push(chunk));response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,body:Buffer.concat(chunks)}));
             });upstream.on('error',reject);upstream.end(request.postData);
           });
