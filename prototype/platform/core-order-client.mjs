@@ -1,0 +1,79 @@
+import { createHash, createPrivateKey, sign } from 'node:crypto';
+import { z } from 'zod';
+import { coreQuoteInput } from './core-adapter.mjs';
+import { problem } from './auth.mjs';
+
+const uuid = z.string().uuid();
+const id = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
+const orderInput = coreQuoteInput.extend({ expectedTotalMinor: z.number().int().min(0).max(100_000_000),
+  notes: z.string().max(1000).optional() }).strict();
+export const coreOrderView = z.object({ number: z.string().regex(/^R[0-9]{8,20}$/),
+  version: z.number().int().positive(), status: z.string().max(40), paymentStatus: z.string().max(40),
+  totalMinor: z.number().int().min(0).max(100_000_000), currency: z.literal('SAR'),
+  mode: z.enum(['pickup','delivery','table']), updatedAt: z.string().datetime({ offset: true }),
+});
+const safeCodes = new Set(['invalid_request','invalid_quantity','invalid_option','phone_required',
+  'address_required','country_required','location_required','outside_delivery_area','invalid_district',
+  'district_unavailable','delivery_minimum','delivery_unavailable','store_closed','mode_unavailable',
+  'item_unavailable','out_of_stock','payment_required','payment_unavailable','price_changed','conflict',
+  'invalid_order_access','platform_unauthorized','not_found']);
+
+export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchImpl = fetch, now = Date.now }) {
+  const source = new URL(issuer);
+  if (source.protocol !== 'https:' || source.origin !== issuer) throw new Error('invalid_service_issuer');
+  const signingKey = privateKey?.type === 'private' ? privateKey : createPrivateKey(privateKey);
+  if (signingKey.asymmetricKeyType !== 'ed25519') throw new Error('ed25519_key_required');
+  if (!Array.isArray(restaurants) || restaurants.length > 1000) throw new Error('invalid_restaurant_routes');
+  const routes = new Map();
+  for (const row of restaurants) {
+    const parsed = z.object({ id, baseUrl: z.string().url() }).strict().parse(row);
+    const url = new URL(parsed.baseUrl);
+    if (!['https:','http:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/'
+        || url.search || url.hash || routes.has(parsed.id) || [...routes.values()].includes(url.origin)) throw new Error('invalid_restaurant_routes');
+    routes.set(parsed.id, url.origin);
+  }
+  async function request(tenantId, subject, method, path, input, idempotencyKey = '') {
+    if (!routes.has(tenantId)) throw problem(404, 'restaurant_not_found');
+    if (!uuid.safeParse(subject).success) throw problem(403, 'invalid_identity');
+    const body = input === undefined ? '' : JSON.stringify(input);
+    const issuedAt = Math.floor(now() / 1000);
+    const claims = Buffer.from(JSON.stringify({ issuer, audience: tenantId, subject,
+      scope: method === 'POST' ? 'orders:write' : 'orders:read', method, path,
+      bodySha256: createHash('sha256').update(body).digest('hex'), idempotencyKey,
+      issuedAt, expiresAt: issuedAt + 60 }));
+    const authorization = `Platform ${claims.toString('base64url')}.${sign(null, claims, signingKey).toString('base64url')}`;
+    let response;
+    try {
+      response = await fetchImpl(routes.get(tenantId) + path, { method, redirect: 'error',
+        signal: AbortSignal.timeout(10_000), headers: { authorization, accept: 'application/json',
+          ...(method === 'POST' ? { 'content-type': 'application/json', 'idempotency-key': idempotencyKey } : {}) },
+        ...(method === 'POST' ? { body } : {}) });
+      const chunks = []; let bytes = 0;
+      for await (const chunk of response.body ?? []) {
+        bytes += chunk.length; if (bytes > 128_000) throw Error('oversized_response'); chunks.push(chunk);
+      }
+      const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if (!response.ok) throw problem([400,401,403,404,409].includes(response.status) ? response.status : 503,
+        safeCodes.has(value?.error) ? value.error : 'restaurant_unavailable');
+      return { tenantId, ...coreOrderView.parse(value) };
+    } catch (error) {
+      if (safeCodes.has(error?.code) || error?.code === 'restaurant_unavailable') throw error;
+      throw problem(503, method === 'POST' ? 'order_outcome_unknown' : 'restaurant_unavailable');
+    }
+  }
+  return Object.freeze({
+    create(tenantId, subject, input, idempotencyKey) {
+      const parsed = orderInput.safeParse(input), key = uuid.safeParse(idempotencyKey);
+      if (!parsed.success || !key.success || idempotencyKey[14] !== '4') throw problem(400, 'invalid_request');
+      return request(tenantId, subject, 'POST', '/platform-api/orders', parsed.data, idempotencyKey);
+    },
+    status(tenantId, subject, number) {
+      if (!/^R[0-9]{8,20}$/.test(number ?? '')) throw problem(400, 'invalid_request');
+      return request(tenantId, subject, 'GET', `/platform-api/orders/${number}`);
+    },
+    recover(tenantId, subject, idempotencyKey) {
+      if (!uuid.safeParse(idempotencyKey).success || idempotencyKey[14] !== '4') throw problem(400, 'invalid_request');
+      return request(tenantId, subject, 'GET', `/platform-api/orders/by-idempotency/${idempotencyKey}`);
+    },
+  });
+}

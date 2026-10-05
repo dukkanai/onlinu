@@ -7,6 +7,8 @@ import { createAuth, problem } from './auth.mjs';
 import { createOidcLogin } from './oidc.mjs';
 import { createCoreAdapter } from './core-adapter.mjs';
 import { createMcpHandler } from './mcp.mjs';
+import { createCoreOrderClient } from './core-order-client.mjs';
+import { createCoreCheckouts } from './core-checkouts.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -30,7 +32,7 @@ async function body(req) {
   return parsed;
 }
 
-export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [] }, { oidcClientAdapter } = {}) {
+export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey }, { oidcClientAdapter } = {}) {
   const base = new URL(baseUrl);
   if (base.protocol !== 'https:' || base.pathname !== '/' || base.username || base.password || base.search || base.hash) throw new Error('control_plane_requires_https_origin');
   const directory = createIdentityDirectory({ pool, trustedIssuers: [new URL(oidc.issuer).href] });
@@ -57,7 +59,12 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       return core.preview(tenantId, input);
     },
   };
-  const mcp = createMcpHandler({ baseUrl: base.origin, authenticate: req => auth.authenticate(req, { bearerOnly: true }), coreAdapter: publicCore });
+  const orderClient = serviceSigningKey ? createCoreOrderClient({ issuer: base.origin, privateKey: serviceSigningKey,
+    restaurants: restaurants.map(({id,baseUrl})=>({id,baseUrl})) }) : null;
+  const checkouts = orderClient ? createCoreCheckouts({ pool, baseUrl: base.origin, core, orderClient,
+    resolvePrincipal: directory.resolve, isTenantActive: async id=>(await directory.published([id])).length===1 }) : null;
+  if(checkouts)await checkouts.init();
+  const mcp = createMcpHandler({ baseUrl: base.origin, authenticate: req => auth.authenticate(req, { bearerOnly: true }), coreAdapter: publicCore, coreCheckouts: checkouts });
   const limits = new Map();
   function rate(req) {
     const now = Date.now(), key = req.socket.remoteAddress;
@@ -83,7 +90,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       const url = new URL(req.url, base);
       if (url.searchParams.has('access_token')) throw problem(400, 'token_in_url_forbidden');
       rate(req);
-      if (req.url === '/health' && req.method === 'GET') { await pool.query('SELECT 1'); return json(res, 200, { status: 'ok', mode: 'core_control_plane', ordersEnabled: false }); }
+      if (req.url === '/health' && req.method === 'GET') { await pool.query('SELECT 1'); return json(res, 200, { status: 'ok', mode: 'core_control_plane', ordersEnabled: !!checkouts }); }
       if (url.pathname === '/mcp') return await mcp(req, res);
       if (req.method === 'GET' && url.pathname === '/.well-known/oauth-protected-resource') return json(res, 200, auth.resourceMetadata);
       if (req.method === 'GET' && url.pathname === '/.well-known/oauth-authorization-server') return json(res, 200, auth.metadata);
@@ -132,6 +139,41 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         auth.verifyCsrf(req); await auth.revoke(auth.browserToken(req));
         res.setHeader('set-cookie', cookie(cookieName, '', 0)); return json(res, 200, { loggedOut: true });
       }
+      const checkoutRoute=/^\/checkout\/([a-f0-9-]{36})(\/confirm)?$/.exec(url.pathname);
+      if(checkoutRoute && checkouts) {
+        const who=await auth.authenticate(req,{cookieOnly:true});
+        if(!who) {
+          if(req.method==='GET')return redirect(res,'/auth/login?returnTo='+encodeURIComponent('/checkout/'+checkoutRoute[1]));
+          throw problem(401,'authentication_required');
+        }
+        if(req.headers.authorization)throw problem(403,'browser_session_required');
+        const checkoutId=checkoutRoute[1];
+        if(req.method==='GET'&&!checkoutRoute[2]) {
+          const checkout=await checkouts.get(who,checkoutId);
+          const csrf=auth.csrfToken(req);
+          const methods=checkout.quote.paymentMethods.map(value=>`<option value="${escape(value)}">${escape(value)}</option>`).join('');
+          const items=(checkout.quote.items??[]).map(item=>`<li>${escape(item.name)} × ${escape(item.quantity)}: ${escape((item.totalMinor/100).toFixed(2))} SAR</li>`).join('');
+          res.writeHead(200,{'content-type':'text/html; charset=utf-8'});
+          if(checkout.state==='confirmed') { res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>طلبك</title><h1>تم إنشاء الطلب ${escape(checkout.orderId)}</h1><p>إنشاء الطلب لا يعني اكتمال الدفع. يمكنك متابعة الحالة من حسابك.</p></html>`);return; }
+          const delivery=checkout.cart.mode==='delivery'?'<fieldset><legend>عنوان التوصيل</legend><label>العنوان التفصيلي <textarea name="addressLine" maxlength="500"></textarea></label><label>العنوان الوطني أو المختصر <input name="nationalAddress" maxlength="300"></label></fieldset>':'';
+          res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>تأكيد الطلب</title><h1>راجع الطلب ثم أكّد</h1><ul>${items}</ul><p>الإجمالي: ${escape((checkout.totalMinor/100).toFixed(2))} SAR، شامل الرسوم والضريبة المعروضة.</p><form method="post" action="/checkout/${checkoutId}/confirm"><input type="hidden" name="csrf" value="${escape(csrf)}"><label>الاسم <input name="customerName" required maxlength="100" autocomplete="name"></label><label>الهاتف <input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>${delivery}<label>طريقة الدفع <select name="paymentMethod">${methods}</select></label><label>مزود الدفع الإلكتروني عند اختياره <input name="paymentProvider" maxlength="40"></label><label>ملاحظات <textarea name="notes" maxlength="1000"></textarea></label><button type="submit">تأكيد وإنشاء الطلب</button></form><p>هذه الخطوة تنشئ الطلب فقط، ولا تثبت سدادًا إلكترونيًا.</p></html>`);return;
+        }
+        if(req.method==='POST'&&checkoutRoute[2]) {
+          const input=await body(req);auth.verifyCsrf(req,input.csrf);
+          const {csrf,...submitted}=input;
+          let contact=submitted;
+          if(req.headers['content-type']?.startsWith('application/x-www-form-urlencoded')) {
+            const allowed=['customerName','phone','paymentMethod','paymentProvider','notes','addressLine','nationalAddress'];
+            if(Object.keys(submitted).some(key=>!allowed.includes(key)))throw problem(400,'invalid_request');
+            const {addressLine,nationalAddress,...rest}=submitted;contact=rest;
+            if(addressLine||nationalAddress)contact.address={country:'SA',...(addressLine?{addressLine}:{}),...(nationalAddress?{nationalAddress}:{})};
+            if(contact.paymentMethod!=='card')contact.paymentProvider='';
+          }
+          const order=await checkouts.confirm(who,checkoutId,contact);
+          if(req.headers.accept?.includes('application/json'))return json(res,200,{order});
+          return redirect(res,'/checkout/'+checkoutId);
+        }
+      }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>منصة المطاعم</title><h1>منصة المطاعم</h1><p>الهوية وإدارة الصلاحيات قيد التكامل.</p><a href="/auth/login">تسجيل الدخول</a></html>'); return;
@@ -155,5 +197,5 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       json(res, status, { error: code });
     }
   }
-  return { handle, auth, directory, login, core: publicCore };
+  return { handle, auth, directory, login, core: publicCore, checkouts };
 }

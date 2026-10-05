@@ -2,6 +2,7 @@ import { McpServer, ProtocolError, SUPPORTED_PROTOCOL_VERSIONS as SDK_LEGACY_VER
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { z } from 'zod';
 import { coreCatalogSchema, coreQuoteSchema, corePreviewInput } from './core-adapter.mjs';
+import { coreOrderView } from './core-order-client.mjs';
 
 export const MCP_PROTOCOL_VERSION = '2026-07-28';
 export const UI_RESOURCE_URI = 'ui://restaurant-prototype/directory.html';
@@ -93,7 +94,7 @@ function safeEventFailure(error) {
  * this module checks customer roles/scopes and the callbacks check ownership.
  * The official v2 SDK performs transport/envelope handling and server/discover.
  */
-export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMenu, quoteCart, prepareCheckout, getOrderStatus, events, uiHtml, coreAdapter, requireCatalogAuth = false, onProtocolExchange = () => {} }) {
+export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMenu, quoteCart, prepareCheckout, getOrderStatus, events, uiHtml, coreAdapter, coreCheckouts, requireCatalogAuth = false, onProtocolExchange = () => {} }) {
   const base = new URL(baseUrl);
   const metadataUrl = new URL('/.well-known/oauth-protected-resource', base).href;
   const eventEnabled = !coreAdapter && ['list', 'subscribe', 'unsubscribe'].every(key => typeof events?.[key] === 'function');
@@ -124,7 +125,7 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
     const modernEvents = eventEnabled && era === 'modern';
     const server = new McpServer({ name: coreAdapter ? 'restaurant-core-catalog' : 'restaurant-saas-synthetic-prototype', version: '0.1.0' }, {
       instructions: coreAdapter
-        ? 'Read-only restaurant core catalog integration. Money is in SAR minor units. Cart previews do not reserve stock, place orders or accept payments. Do not collect customer names, phone numbers or street addresses. If delivery requires location, ask the customer before supplying it. Orders, checkout and events are not available in this integration stage.'
+        ? 'Restaurant core integration. Money is in SAR minor units. Cart previews do not reserve stock, place orders or accept payments. Do not collect customer names, phone numbers or street addresses. If delivery requires location, ask the customer before supplying it. ' + (coreCheckouts ? 'Prepare checkout only creates an owned website handoff. The customer must confirm on the website to place the order; preparing a link is not an order or payment. Order status is private to the connected customer. Events are not yet enabled.' : 'Orders, checkout and events are not available in this integration stage.')
         : 'Synthetic restaurant prototype. All money is SAR minor units. Quote before preparing checkout. Checkout only creates a handoff; a customer must confirm on the website. No real payment, personal details, precise locations, or merchant operations are available through these tools.',
       capabilities: { ...(modernEvents ? { events: {} } : {}) },
     });
@@ -181,6 +182,13 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
       register('quote_cart', 'Preview cart price', 'Authoritative original restaurant pricing, delivery coverage, options and tax. No contact details, order, payment or stock reservation. For delivery, supply the requested area; ask consent before using location.',
         corePreviewInput.extend({ tenantId: identifier }).strict(), coreQuoteSchema.extend({ tenantId: identifier }),
         ({ tenantId, ...input }) => coreAdapter.preview(tenantId, input), { scope: catalogScope });
+      if (coreCheckouts) {
+        register('prepare_checkout', 'Prepare owned checkout', 'Create a private website link for the connected customer to enter contact details and explicitly confirm. No order, stock reservation or payment occurs here. Reuse the same idempotencyKey for the same cart.',
+          corePreviewInput.extend({ tenantId: identifier, expectedTotalMinor: minor, idempotencyKey: identifier.min(8).max(100) }).strict(),
+          outputs.checkout, args => coreCheckouts.prepare(principal, args), { scope: 'orders:write', write: true });
+        register('get_order_status', 'Read my core order', 'Read the status and amount of an original restaurant order owned by the connected customer. No contact details or receipt secrets are returned.',
+          orderArgs, coreOrderView.extend({ tenantId: identifier }), args => coreCheckouts.status(principal, args.tenantId, args.orderId), { scope: 'orders:read' });
+      }
     } else {
     register('search_restaurants', 'Browse synthetic restaurants', 'Find the two synthetic restaurants by name or cuisine. Opens the directory UI; does not access personal data.', searchArgs, outputs.search, args => listRestaurants(args), { ui: true, scope: catalogScope });
     register('get_restaurant_menu', 'Read restaurant menu', 'Get menu items, prices in SAR minor units, and current stock for the selected restaurant.', z.object({ tenantId: identifier }).strict(), outputs.menu, args => getMenu(args), { scope: catalogScope });

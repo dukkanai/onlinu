@@ -46,7 +46,11 @@ five environment-specific media failures and one native codec skip; platform
 Subject-based identity, granular tenant memberships and control-plane HTTP are
 the next increment. They reuse verified OIDC and OAuth/PKCE while excluding
 fixture identities in persistent mode. See `prototype/platform/IDENTITY-CONTROL.md`.
-Owned checkout and production deployment remain incomplete.
+Identity increment a1f6647 passed CI run 37279746306 with 134 platform tests.
+The next increment implements owned original-core checkout and signed requests;
+see `prototype/platform/CORE-ORDERS.md`. Focused real-service tests pass, full
+regression/publication follows. Provider payment handoff and production deployment
+remain incomplete.
 
 ## External acceptance still required
 

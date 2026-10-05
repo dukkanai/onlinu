@@ -25,11 +25,16 @@ type server struct {
 	metaConfigMu sync.RWMutex
 	log          *slog.Logger
 	staticDir    string
+	platformAuth *platformRequestAuth
 }
 
 // newServer monta o provedor de banco (Postgres, 1 banco por sessão no estilo
 // WAHA), abre o banco principal e inicializa o gerenciador de sessões.
 func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, maxCalls int, log *slog.Logger) (*server, error) {
+	platformAuth, err := platformAuthFromEnv()
+	if err != nil {
+		return nil, err
+	}
 	waLogger := waLog.Noop
 	if log.Enabled(ctx, slog.LevelDebug) {
 		waLogger = waLog.Stdout("WA", "DEBUG", true)
@@ -98,5 +103,5 @@ func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, maxCal
 	go payments.Run(ctx)
 
 	initialized = true
-	return &server{ownership: ownership, broker: broker, sessions: mgr, meta: meta, metaCalls: metaCalls, restaurant: restaurant, orders: orders, customers: customers, payments: payments, couriers: couriers, log: log, staticDir: staticDir}, nil
+	return &server{ownership: ownership, broker: broker, sessions: mgr, meta: meta, metaCalls: metaCalls, restaurant: restaurant, orders: orders, customers: customers, payments: payments, couriers: couriers, log: log, staticDir: staticDir, platformAuth: platformAuth}, nil
 }

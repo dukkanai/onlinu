@@ -44,6 +44,7 @@ export const coreQuoteInput = z.object({
     optionIds: z.array(id).max(30).optional(), }).strict()).min(1).max(50),
   address: address.optional(), tableCode: z.string().max(128).optional(),
   paymentMethod: z.string().max(40).optional(), paymentProvider: z.string().max(40).optional(),
+  notes: z.string().max(1000).optional(),
 }).strict();
 export const corePreviewInput = z.object({
   mode: z.enum(['pickup', 'delivery', 'table']), items: coreQuoteInput.shape.items,

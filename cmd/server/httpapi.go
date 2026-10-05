@@ -176,6 +176,7 @@ func (s *server) routes() http.Handler {
 
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 	s.registerRestaurantRoutes(mux)
+	s.registerPlatformOrderRoutes(mux)
 
 	if s.staticDir != "" {
 		if _, err := os.Stat(s.staticDir); err == nil {
