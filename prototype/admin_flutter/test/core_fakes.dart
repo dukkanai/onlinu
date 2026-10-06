@@ -9,6 +9,7 @@ import 'package:restaurant_admin_prototype/core/business_profile.dart';
 import 'package:restaurant_admin_prototype/core/delivery_models.dart';
 import 'package:restaurant_admin_prototype/core/courier_models.dart';
 import 'package:restaurant_admin_prototype/core/service_policy.dart';
+import 'package:restaurant_admin_prototype/core/payment_methods.dart';
 import 'package:restaurant_admin_prototype/core/tax_models.dart';
 import 'package:restaurant_admin_prototype/core/finance_models.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
@@ -323,6 +324,41 @@ class FakeCoreGateway implements CoreGateway {
       'enabled': enabled,
       'rateBps': rateBps,
       'taxNumber': taxNumber
+    };
+  }
+
+  Map<String, dynamic> paymentMethodsData = {
+    'version': 1,
+    'currency': 'SAR',
+    'demo': true,
+    'modes': [
+      for (final key in paymentChoices.keys)
+        {
+          'mode': key,
+          'enabled': true,
+          'methods': [...paymentChoices[key]!]
+        }
+    ]
+  };
+  int paymentMethodsWrites = 0;
+  @override
+  Future<CorePaymentMethods> paymentMethods(String tenant) async =>
+      CorePaymentMethods(paymentMethodsData, tenantId: tenant);
+  @override
+  Future<void> patchPaymentMethods(
+      CorePaymentMethods expected, String mode, List<String> methods) async {
+    expected.validate(mode, methods);
+    paymentMethodsWrites++;
+    paymentMethodsData = {
+      ...paymentMethodsData,
+      'version': expected.version + 1,
+      'modes': [
+        for (final v in paymentMethodsData['modes'])
+          {
+            ...v,
+            if (v['mode'] == mode) 'methods': [...methods]
+          }
+      ]
     };
   }
 

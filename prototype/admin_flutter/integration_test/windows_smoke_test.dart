@@ -380,6 +380,47 @@ void main() {
     expect(c.finance, isNull);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets('Windows configured payment methods require reviewed choices',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile =
+          profileFixture(permissions: ['settings:read', 'settings:update']);
+    final c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الدخول عبر المتصفح'));
+    await tester.pumpAndSettle();
+    final tab = find.widgetWithText(ChoiceChip, 'طرق الدفع');
+    await tester.ensureVisible(tab);
+    await tester.pumpAndSettle();
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    final edit = find.text('مراجعة دفع التوصيل');
+    await tester.ensureVisible(edit);
+    await tester.pumpAndSettle();
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+    final card = find.widgetWithText(CheckboxListTile, 'الدفع الإلكتروني');
+    await tester.ensureVisible(card);
+    await tester.pumpAndSettle();
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+    final review = find.byKey(const ValueKey('payment-review'));
+    await tester.ensureVisible(review);
+    await tester.pumpAndSettle();
+    await tester.tap(review);
+    await tester.pumpAndSettle();
+    expect(api.paymentMethodsWrites, 0);
+    await capture(tester, boundary, 'windows-payment-methods-review.png');
+    await tester.tap(find.text('حفظ طرق الدفع'));
+    await tester.pumpAndSettle();
+    expect(api.paymentMethodsWrites, 1);
+    expect(c.paymentMethods!.mode('delivery').methods, ['cash_on_delivery']);
+    await capture(tester, boundary, 'windows-payment-methods-saved.png');
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('Windows service intake review preserves existing work',
       (tester) async {
     final api = FakeCoreGateway()

@@ -8,6 +8,7 @@ import 'business_profile.dart';
 import 'delivery_models.dart';
 import 'courier_models.dart';
 import 'service_policy.dart';
+import 'payment_methods.dart';
 import 'tax_models.dart';
 import 'finance_models.dart';
 import 'refund_models.dart';
@@ -26,6 +27,7 @@ enum CoreSection {
   courier,
   courierLinks,
   service,
+  paymentMethods,
   tax,
   appearance,
   support
@@ -43,6 +45,7 @@ extension CoreSectionPermission on CoreSection {
         CoreSection.courier => 'courier:read',
         CoreSection.courierLinks => 'couriers:link',
         CoreSection.service => 'settings:read',
+        CoreSection.paymentMethods => 'settings:read',
         CoreSection.tax => 'settings:read',
         CoreSection.appearance => 'settings:read',
         CoreSection.support => 'orders:read'
@@ -64,6 +67,7 @@ class CoreController extends ChangeNotifier {
   CoreBusinessProfile? business;
   CoreDelivery? coverage;
   CoreServicePolicy? service;
+  CorePaymentMethods? paymentMethods;
   CoreTaxConfig? tax;
   CoreSupportQueue? support;
   CoreSupportDetail? supportDetail;
@@ -114,6 +118,7 @@ class CoreController extends ChangeNotifier {
     business = null;
     coverage = null;
     service = null;
+    paymentMethods = null;
     tax = null;
     appearance = null;
     support = null;
@@ -284,6 +289,10 @@ class CoreController extends ChangeNotifier {
         final result = await api.tax(tenant);
         if (!_current(generation)) return;
         tax = result;
+      } else if (section == CoreSection.paymentMethods) {
+        final result = await api.paymentMethods(tenant);
+        if (!_current(generation)) return;
+        paymentMethods = result;
       } else if (section == CoreSection.service) {
         final result = await api.service(tenant);
         if (!_current(generation)) return;
@@ -752,6 +761,35 @@ class CoreController extends ChangeNotifier {
       if (_current(generation))
         message =
             'حُفظت إعدادات الضريبة للطلبات الجديدة. الطلبات السابقة لم تتغير.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
+  Future<void> patchPaymentMethods(
+      CorePaymentMethods expected, String mode, List<String> methods) async {
+    if (!_writeGuard(
+            expected.tenantId, 'settings:update', CoreSection.paymentMethods) ||
+        membership?.can('settings:read') != true) return;
+    if (paymentMethods?.version != expected.version) {
+      message = 'تغيرت طرق الدفع. حدّث البيانات وأعد المراجعة.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.patchPaymentMethods(expected, mode, methods);
+      if (_current(generation)) message = 'حُفظت طرق الدفع للطلبات الجديدة.';
     } catch (error) {
       if (_current(generation)) _failure(error);
     } finally {

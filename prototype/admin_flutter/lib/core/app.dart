@@ -14,6 +14,7 @@ import 'delivery_pane.dart';
 import 'dispatch_editor.dart';
 import 'courier_pane.dart';
 import 'service_pane.dart';
+import 'payment_methods_pane.dart';
 import 'tax_pane.dart';
 import 'finance_dialog.dart';
 
@@ -287,6 +288,17 @@ class CoreScreen extends StatelessWidget {
                                       }),
                           if (member.can('settings:read'))
                             ChoiceChip(
+                                label: const Text('طرق الدفع'),
+                                selected:
+                                    c.section == CoreSection.paymentMethods,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(c.selectSection(
+                                            CoreSection.paymentMethods));
+                                      }),
+                          if (member.can('settings:read'))
+                            ChoiceChip(
                                 label: const Text('الضريبة'),
                                 selected: c.section == CoreSection.tax,
                                 onSelected: c.busy
@@ -400,6 +412,12 @@ class CoreScreen extends StatelessWidget {
                           member?.can('settings:read') == true)
                         ServicePane(
                             key: ValueKey('service-${c.selectedTenant}'),
+                            controller: c),
+                      if (c.section == CoreSection.paymentMethods &&
+                          member?.can('settings:read') == true)
+                        PaymentMethodsPane(
+                            key:
+                                ValueKey('payment-methods-${c.selectedTenant}'),
                             controller: c),
                       if (c.section == CoreSection.tax &&
                           member?.can('settings:read') == true)

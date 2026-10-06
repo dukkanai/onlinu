@@ -769,3 +769,16 @@ choices, review checkboxes and provider-availability warning are legible. The
 runtime-image job was intentionally skipped; its separate accepted checkpoint
 remains `f9a965f`. Flutter payment-method editing and production acceptance remain
 pending. No production settings, provider credentials or real payments changed.
+
+## Native configured payment-method editor — 2026-10-06, validation pending
+
+Flutter now has a typed per-mode view and explicit reviewed editor, with original
+mode-specific choices, stale-version/current-tenant/read-and-write permission
+checks, offline/freshness guards and no automatic mutation retry. A successful
+HTTP acknowledgement must preserve other modes, service flags, currency and demo
+state as well as the reviewed choices and incremented catalogue version; an
+inconsistent reply is uncertain. No provider credentials or real payment action
+are exposed. Model/API/controller/widget regressions, real native TLS save/stale/
+restore and Windows screenshot acceptance are added. Dart 3.5 formatting and diff
+checks pass; local dependency restore has not completed, so analysis/tests/build
+are not claimed passed until remote CI. Native image/device acceptance is pending.

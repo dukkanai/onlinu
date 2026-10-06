@@ -180,6 +180,23 @@ void main() {
     await api.patchService(paused, {'acceptingOrders': true});
     expect((await api.service('restaurant-a')).flags, intake.flags);
 
+    final paymentChoices = await api.paymentMethods('restaurant-a');
+    await api
+        .patchPaymentMethods(paymentChoices, 'delivery', ['cash_on_delivery']);
+    final savedChoices = await api.paymentMethods('restaurant-a');
+    expect(savedChoices.mode('delivery').methods, ['cash_on_delivery']);
+    expect(savedChoices.version, paymentChoices.version + 1);
+    await expectLater(
+        api.patchPaymentMethods(paymentChoices, 'delivery', ['card']),
+        throwsA(isA<CoreException>().having(
+            (e) => e.code, 'stale payment choices', 'catalog_changed')));
+    await api.patchPaymentMethods(
+        savedChoices, 'delivery', paymentChoices.mode('delivery').methods);
+    expect((await api.paymentMethods('restaurant-a')).mode('delivery').methods,
+        paymentChoices.mode('delivery').methods);
+    expect(
+        (await api.detail('restaurant-a', number)).version, unassigned.version);
+
     final beforeBrand = await api.brand('restaurant-a');
     final brandDraft = await api.brandCommand(beforeBrand, 'draft',
         {'storefrontTemplate': 'compact', 'headingFont': 'amiri'});

@@ -6,6 +6,7 @@ import 'business_profile.dart';
 import 'delivery_models.dart';
 import 'courier_models.dart';
 import 'service_policy.dart';
+import 'payment_methods.dart';
 import 'tax_models.dart';
 import 'finance_models.dart';
 import 'refund_models.dart';
@@ -28,6 +29,9 @@ abstract interface class CoreGateway {
   Future<CoreTaxConfig> tax(String tenant);
   Future<void> patchTax(CoreTaxConfig expected,
       {required bool enabled, required int rateBps, required String taxNumber});
+  Future<CorePaymentMethods> paymentMethods(String tenant);
+  Future<void> patchPaymentMethods(
+      CorePaymentMethods expected, String mode, List<String> methods);
   Future<CoreServicePolicy> service(String tenant);
   Future<void> patchService(
       CoreServicePolicy expected, Map<String, bool> changes);
@@ -296,6 +300,44 @@ class CoreApi implements CoreGateway {
         saved.rateBps != rateBps ||
         saved.taxNumber != taxNumber)
       throw const CoreException('order_outcome_unknown', uncertain: true);
+  }
+
+  @override
+  Future<CorePaymentMethods> paymentMethods(String tenant) async {
+    final data = await _request('GET',
+        '/native/api/restaurants/${tenantKey(tenant)}/staff/payment-methods');
+    _tenant(data, tenant);
+    return CorePaymentMethods(data, tenantId: tenant);
+  }
+
+  @override
+  Future<void> patchPaymentMethods(
+      CorePaymentMethods expected, String mode, List<String> methods) async {
+    final choices = List<String>.unmodifiable(methods);
+    expected.validate(mode, choices);
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/payment-methods',
+        body: {
+          'expectedVersion': expected.version,
+          'mode': mode,
+          'methods': choices
+        });
+    try {
+      _tenant(data, expected.tenantId);
+      final saved = CorePaymentMethods(data, tenantId: expected.tenantId);
+      if (saved.version != expected.version + 1 ||
+          saved.currency != expected.currency ||
+          saved.demo != expected.demo ||
+          saved.modes.any((v) {
+            final old = expected.mode(v.mode);
+            final wanted = v.mode == mode ? choices : old.methods;
+            return v.enabled != old.enabled ||
+                v.methods.length != wanted.length ||
+                !v.methods.toSet().containsAll(wanted);
+          })) invalidResponse();
+    } catch (_) {
+      throw const CoreException('order_outcome_unknown', uncertain: true);
+    }
   }
 
   @override
