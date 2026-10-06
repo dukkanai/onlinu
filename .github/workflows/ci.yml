@@ -83,6 +83,9 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: prototype/platform
 
+      - name: Test journal and Docker fixture guards
+        run: node --test prototype/platform/integration/provisioning-docker-guards.test.mjs
+
       - name: Install checksum-pinned Flutter for native HTTP integration
         working-directory: prototype/admin_flutter
         env:
@@ -265,6 +268,22 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime_image }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-test-password
+          POSTGRES_DB: astracalls_identity_test
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres -d astracalls_identity_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      IDENTITY_TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_identity_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
         with:
@@ -273,6 +292,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install isolated journal fixture dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: prototype/platform
       - name: Build the original codec-bearing runtime image
         timeout-minutes: 35
         run: docker build --tag "onlinu-runtime-smoke:$GITHUB_SHA" .
@@ -282,6 +304,8 @@ jobs:
         run: python3 integration/tenant-compose-smoke.py "onlinu-runtime-smoke:$GITHUB_SHA"
       - name: Exercise owned client cancellation against daemon state
         run: node integration/provisioning-cancellation-smoke.mjs "onlinu-runtime-smoke:$GITHUB_SHA"
+      - name: Exercise real journal and disposable Docker tenant lifecycle
+        run: node prototype/platform/integration/provisioning-docker-check.mjs "onlinu-runtime-smoke:$GITHUB_SHA"
       - name: Upload non-secret acceptance report
         if: success()
         uses: actions/upload-artifact@v4
@@ -291,5 +315,6 @@ jobs:
             ${{ runner.temp }}/onlinu-runtime-image-report.json
             ${{ runner.temp }}/onlinu-tenant-compose-report.json
             ${{ runner.temp }}/onlinu-provisioning-cancellation-report.json
+            ${{ runner.temp }}/onlinu-journal-docker-report.json
           if-no-files-found: error
           retention-days: 7

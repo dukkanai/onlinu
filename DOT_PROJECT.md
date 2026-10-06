@@ -615,3 +615,13 @@ that the daemon object still exists. It then removes only that exact verified
 fixture. Three pure guards and 64 deployment tests pass locally. Commit `7dbde99`
 passed all five CI37446321930 jobs; all three runtime-image reports were inspected.
 See `deploy/PROVISIONING-CANCELLATION-SMOKE.md` for the remaining production gates.
+
+## Real journal/Docker lifecycle acceptance preparation
+
+An opt-in fixture now joins the actual identity/provisioning database, compiler,
+preflight, stager, host lock and process transport to disposable Docker tenants.
+It covers success and a lost apply reply, blocks replay and requires actual
+inspection plus explicit reconciliation. Test-only image/path/identity overrides
+remain explicit; no production driver is claimed. Local guards and existing
+regressions pass. Actual Docker acceptance is pending; see
+`deploy/PROVISIONING-JOURNAL-DOCKER-SMOKE.md`.
