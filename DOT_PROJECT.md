@@ -538,5 +538,15 @@ creation, tenant registration or deployment is performed by the renderer; see
 intents, versioned worker leases, uncertain outcomes and evidenced reconciliation
 in the existing identity database. It has no public route or automatic executor,
 and never activates tenants or changes external resources. Local 243 platform
-tests without skips and related Go runtime race checks pass; remote CI is pending.
+tests without skips and related Go runtime race checks pass. Commit `33f15a4`
+passed ordinary CI37427159676; the optional image job was skipped.
 See `prototype/platform/PROVISIONING-JOURNAL.md` for authority and artifact gates.
+
+## Two-tenant rendered Compose acceptance (local increment)
+
+The opt-in image job now includes a two-fixture renderer acceptance script:
+separate databases/media/keys, actual hardening checks, cross-network TCP denial
+and container recreation without changing the neighboring fixture. Only local
+image references and disposable host-file paths override the rendered spec.
+Local 64 Python tests pass; actual Docker acceptance is pending. See
+`deploy/TENANT-COMPOSE-SMOKE.md`. No production executor or deployment is added.

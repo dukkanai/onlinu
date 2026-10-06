@@ -271,11 +271,15 @@ jobs:
         run: docker build --tag "onlinu-runtime-smoke:$GITHUB_SHA" .
       - name: Exercise isolated runtime image
         run: bash integration/runtime-image-smoke.sh "onlinu-runtime-smoke:$GITHUB_SHA"
+      - name: Exercise two isolated rendered tenant fixtures
+        run: python3 integration/tenant-compose-smoke.py "onlinu-runtime-smoke:$GITHUB_SHA"
       - name: Upload non-secret acceptance report
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: onlinu-runtime-image-${{ github.sha }}
-          path: ${{ runner.temp }}/onlinu-runtime-image-report.json
+          path: |
+            ${{ runner.temp }}/onlinu-runtime-image-report.json
+            ${{ runner.temp }}/onlinu-tenant-compose-report.json
           if-no-files-found: error
           retention-days: 7

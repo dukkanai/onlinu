@@ -65,5 +65,7 @@ Local PostgreSQL tests cover idempotency, competing requests and worker claims,
 stale versions, expiry, late callbacks, evidence-required recovery, privilege
 revocation, tenant closure, queued cancellation, rollback and reopening. The
 full platform suite passes 243 tests without skips, and related actual-main Go
-race tests still pass. Remote CI for this increment is pending. These are
+race tests still pass. Commit `33f15a4` passed all four ordinary jobs in
+[CI37427159676](https://github.com/dukkanai/onlinu/actions/runs/37427159676);
+the opt-in image job was intentionally skipped. These are
 synthetic database tests, not live provisioning or deployment acceptance.
