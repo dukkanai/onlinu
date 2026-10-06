@@ -584,3 +584,12 @@ The PostgreSQL/compiler/coordinator fixture uses this concrete lock. It does not
 prove Docker daemon cancellation or replace uncertain-outcome reconciliation.
 See `prototype/platform/PROVISIONING-HOST-LOCK.md`. Commit `e7b6d58` passed
 all four ordinary CI37438055020 jobs; the unchanged runtime-image job was skipped.
+
+## Bounded private process transport (local increment)
+
+`provisioning-process.mjs` provides no-shell, minimal-environment Linux subprocess
+execution for a future fixed-command trusted driver. Cancellation/timeout/output
+overflow stop only the owned process group and await pipe closure; errors do not
+echo diagnostic output. Real synthetic parent/descendant cancellation tests are
+included. Docker daemon cancellation and actual apply/recovery remain separate;
+see `prototype/platform/PROVISIONING-PROCESS.md`. Remote CI is pending.
