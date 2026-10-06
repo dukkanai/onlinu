@@ -225,3 +225,51 @@ test('staging rejects a changed worker or unsafe host directory', async t => {
   await assert.rejects(createProvisioningStage({ journal: f.journal, directory: f.directory, ownerUID: process.getuid() + 1 })
     .stage(f.actor, f.prepared, f.args), { code: 'provisioning_stage_rejected' });
 });
+
+test('stage verification binds exact bytes and preserves current worker lease without writes', async t => {
+  const f = await stageFixture(t), staged = await f.stager.stage(f.actor, f.prepared, f.args);
+  const before = await stat(staged.manifestPath);
+  assert.equal(await f.stager.verify(f.actor, f.prepared, staged, f.args), staged);
+  assert.equal((await stat(staged.manifestPath)).mtimeMs, before.mtimeMs);
+  f.job.version++;
+  assert.equal(await f.stager.verify(f.actor, f.prepared, staged, { ...f.args, expectedVersion: f.job.version }), staged);
+  await assert.rejects(f.stager.verify(f.actor, f.prepared, structuredClone(staged), { ...f.args, expectedVersion: f.job.version }), { code: 'provisioning_stage_rejected' });
+});
+test('stage verification refuses tampered manifests bootstrap and receipt without repairing', async t => {
+  for (const field of ['manifestPath', 'bootstrapPath', 'receipt']) {
+    const f = await stageFixture(t), staged = await f.stager.stage(f.actor, f.prepared, f.args);
+    const path = field === 'receipt' ? join(staged.directory, 'receipt.json') : staged[field];
+    const original = await readFile(path);
+    await chmod(path, 0o600); await writeFile(path, Buffer.concat([original, Buffer.from('changed')]));
+    await chmod(path, field === 'bootstrapPath' ? 0o444 : 0o600);
+    await assert.rejects(f.stager.verify(f.actor, f.prepared, staged, f.args), { code: 'provisioning_stage_rejected' });
+    assert.equal((await readFile(path)).length, original.length + 7);
+  }
+});
+test('stage verification refuses symlink hardlink mode and owner substitution', async t => {
+  for (const kind of ['symlink', 'hardlink', 'mode', 'owner']) {
+    const f = await stageFixture(t), staged = await f.stager.stage(f.actor, f.prepared, f.args);
+    if (kind === 'mode') await chmod(staged.manifestPath, 0o640);
+    else if (kind === 'symlink') {
+      const target = join(staged.directory, 'substitute');
+      await writeFile(target, await readFile(staged.manifestPath), { mode: 0o600 });
+      await unlink(staged.manifestPath); await symlink(target, staged.manifestPath);
+    } else if (kind === 'hardlink') await link(staged.manifestPath, join(staged.directory, 'alias'));
+    const verifier = kind === 'owner' ? createProvisioningStage({ journal: f.journal, directory: f.directory, ownerUID: process.getuid() + 1 }) : f.stager;
+    await assert.rejects(verifier.verify(f.actor, f.prepared, staged, f.args), { code: 'provisioning_stage_rejected' });
+  }
+});
+test('stage verification rechecks authority and rejects changed attempt before returning', async t => {
+  const f = await stageFixture(t), staged = await f.stager.stage(f.actor, f.prepared, f.args);
+  const denied = createProvisioningStage({ directory: '/does-not-exist', journal: { async review() { throw problem(403, 'identity_disabled'); } } });
+  await assert.rejects(denied.verify(f.actor, f.prepared, staged, f.args), { code: 'identity_disabled' });
+  let count = 0;
+  const revoked = createProvisioningStage({ directory: f.directory, journal: { async review() {
+    if (++count === 2) throw problem(403, 'identity_disabled'); return { ...f.job };
+  } } });
+  await assert.rejects(revoked.verify(f.actor, f.prepared, staged, f.args), { code: 'identity_disabled' });
+  assert.equal(count, 2);
+  f.job.workerId = randomUUID();
+  await assert.rejects(f.stager.verify(f.actor, f.prepared, staged, f.args), { code: 'provisioning_stage_rejected' });
+  assert.ok((await stat(staged.manifestPath)).isFile());
+});

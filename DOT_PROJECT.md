@@ -841,3 +841,11 @@ independently rehashed and source/identity-bound. Synthetic local image ID:
 No registry publication, production apply driver, real secret provisioning or
 deployment is implied. Local platform218 passed with12 database skips; actual
 PostgreSQL, Windows/client and full-image validation passed remotely.
+
+Staged provisioning artifacts now require exact, bounded, non-mutating read-back
+under live actor/worker fencing before the fixture consumes them. Original
+in-process handles, private directories, single-link files, owner/mode and exact
+bytes are checked; authority is rechecked afterward and failures retain evidence.
+All18 artifact/stage tests pass locally; remote fixture acceptance is pending.
+See `prototype/platform/PROVISIONING-STAGE.md`. This does not execute production
+or create, rotate or read real secret values.

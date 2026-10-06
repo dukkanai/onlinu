@@ -26,8 +26,33 @@ async function writeNew(path, value, mode) {
   finally { await file.close(); }
 }
 
+async function readExactFile(path, expected, mode, ownerUID) {
+  const beforePath = await lstat(path);
+  const max = Buffer.byteLength(expected);
+  if (!beforePath.isFile() || beforePath.isSymbolicLink() || beforePath.size !== max || max > 262144) throw rejected();
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const before = await file.stat();
+    if (!before.isFile() || before.uid !== ownerUID || before.nlink !== 1 || (before.mode & 0o7777) !== mode
+        || before.size !== max || before.ino !== beforePath.ino || before.dev !== beforePath.dev) throw rejected();
+    const buffer = Buffer.alloc(max + 1);
+    let size = 0;
+    while (size < buffer.length) {
+      const result = await file.read(buffer, size, buffer.length - size, size);
+      if (!result.bytesRead) break;
+      size += result.bytesRead;
+    }
+    const after = await file.stat();
+    const finalPath = await lstat(path);
+    if (size !== max || !buffer.subarray(0, size).equals(Buffer.from(expected))
+        || ['size', 'mode', 'uid', 'nlink', 'ino', 'dev', 'mtimeMs', 'ctimeMs'].some(k => before[k] !== after[k])
+        || finalPath.ino !== after.ino || finalPath.dev !== after.dev || finalPath.isSymbolicLink()) throw rejected();
+  } finally { await file.close(); }
+}
+const stagedArtifacts = new WeakSet();
+
 export function createProvisioningStage({ journal, directory, ownerUID = process.getuid?.() }) {
-  if (process.platform !== 'linux' || !constants.O_NOFOLLOW || !constants.O_DIRECTORY
+  if (process.platform !== 'linux' || !constants.O_NOFOLLOW || !constants.O_DIRECTORY || !constants.O_NONBLOCK
       || typeof journal?.review !== 'function' || typeof directory !== 'string' || !isAbsolute(directory)
       || directory.length > 4096 || !Number.isInteger(ownerUID) || ownerUID < 0 || ownerUID > 0xffffffff)
     throw new Error('invalid_provisioning_stage_configuration');
@@ -69,7 +94,40 @@ export function createProvisioningStage({ journal, directory, ownerUID = process
     if (!sameAttempt(final) || final.version !== current.version) throw rejected();
     // Files remain for inspection even if the final review fails. Never turn a
     // partial stage into automatic deletion/retry or claim that Docker ran.
-    return Object.freeze({ directory: attempt, manifestPath, bootstrapPath, receipt });
+    const result = Object.freeze({ directory: attempt, manifestPath, bootstrapPath, receipt });
+    stagedArtifacts.add(result);
+    return result;
   }
-  return { stage };
+  async function verify(actorId, prepared, staged, input) {
+    if (!isPreparedArtifact(prepared) || !stagedArtifacts.has(staged) || prepared.job.state !== 'claimed') throw rejected();
+    const current = await journal.review(actorId, prepared.job.id, input);
+    const sameAttempt = row => row?.state === 'claimed' && row.id === prepared.job.id
+      && row.tenantId === prepared.job.tenantId && row.planDigest === prepared.job.planDigest
+      && row.expectedTenantVersion === prepared.job.expectedTenantVersion
+      && row.workerId === prepared.job.workerId && row.claimedBy === prepared.job.claimedBy;
+    if (!sameAttempt(current) || !Number.isSafeInteger(staged.receipt.journalVersion)
+        || staged.receipt.journalVersion > current.version) throw rejected();
+    const project = resolve(root, prepared.plan.projectName);
+    const attempt = resolve(project, prepared.job.id + '-' + prepared.job.workerId);
+    const manifestPath = resolve(attempt, 'compose.json'), bootstrapPath = resolve(attempt, 'tenant-bootstrap.sql');
+    const manifest = JSON.stringify(prepared.compose, null, 2) + '\n';
+    const receipt = { schemaVersion: 1, jobId: prepared.job.id, workerId: prepared.job.workerId,
+      tenantId: prepared.job.tenantId, planDigest: prepared.job.planDigest, journalVersion: staged.receipt.journalVersion,
+      manifestSha256: digest(manifest), bootstrapSha256: digest(prepared.bootstrapSQL) };
+    if (staged.directory !== attempt || staged.manifestPath !== manifestPath || staged.bootstrapPath !== bootstrapPath
+        || JSON.stringify(staged.receipt) !== JSON.stringify(receipt)) throw rejected();
+    try {
+      for (const path of [root, project, attempt]) await privateDirectory(path, ownerUID);
+      await readExactFile(manifestPath, manifest, 0o600, ownerUID);
+      await readExactFile(bootstrapPath, prepared.bootstrapSQL, 0o444, ownerUID);
+      await readExactFile(resolve(attempt, 'receipt.json'), JSON.stringify(receipt, null, 2) + '\n', 0o600, ownerUID);
+      for (const path of [root, project, attempt]) await privateDirectory(path, ownerUID);
+    } catch { throw rejected(); }
+    const final = await journal.review(actorId, prepared.job.id, input);
+    if (!sameAttempt(final) || final.version !== current.version) throw rejected();
+    // No filesystem mutation. Only the original in-process stage is returned;
+    // callers cannot smuggle a path or resurrect a stage after restart.
+    return staged;
+  }
+  return { stage, verify };
 }

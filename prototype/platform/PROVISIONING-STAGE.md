@@ -41,3 +41,26 @@ Local platform verification passes 286 tests without skips; related actual-main
 Go race checks pass. Commit `518c637` passed all four ordinary jobs in
 [CI37444321105](https://github.com/dukkanai/onlinu/actions/runs/37444321105);
 the optional unchanged runtime-image job was skipped.
+
+## Live read-back before execution — pending remote acceptance
+
+The stager now exposes a read-only `verify` operation. It accepts only an original
+in-process branded stage and prepared artifact, recomputes the expected paths and
+exact manifest/bootstrap/receipt bytes, and rechecks current actor/worker/tenant
+fencing before and after filesystem reads. A renewed lease version may advance,
+but another attempt cannot inherit an old stage.
+
+Regular single-link files must retain exact owner/modes, lengths and bytes.
+No-follow/nonblocking descriptors and bounded allocation reject symlinks, hard
+links, substituted files and growing data; metadata/inode checks guard the read.
+The private directory chain is rechecked. Failures do not repair, overwrite or
+remove files, execute Docker, or return arbitrary path/diagnostic content.
+Restart recovery cannot forge a stage object: explicit journal reconciliation
+remains separate. The trusted host must still prevent changes between this check
+and Docker consuming files; this is not protection against a compromised host.
+
+Four new test groups cover unchanged read-back, lease renewal, copied handles,
+modified artifacts, filesystem substitution, permissions, changed worker and
+revoked authority. All 18 artifact/staging tests pass locally. The real isolated
+journal/Docker fixture now runs this live read-back before applying its explicit
+synthetic image/path overrides. Remote acceptance of this increment is pending.

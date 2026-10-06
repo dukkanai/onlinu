@@ -173,8 +173,7 @@ export async function runSmoke(image, env = process.env) {
           f.applies++;
           const fence = await checkpoint();
           const staged = await stage.stage(actor.id, prepared, { expectedVersion: fence.version, workerId: fence.workerId });
-          if (hash(await readFile(staged.manifestPath, 'utf8')) !== staged.receipt.manifestSha256
-              || hash(await readFile(staged.bootstrapPath, 'utf8')) !== staged.receipt.bootstrapSha256) throw new Error('fixture_stage_mismatch');
+          await stage.verify(actor.id, prepared, staged, { expectedVersion: fence.version, workerId: fence.workerId });
           const target = join(root, 'fixture-' + number); await mkdir(target, { mode: 0o700 });
           // Explicit CI-only image/path overrides; original staged files remain
           // unchanged. These public synthetic values never represent real keys.
