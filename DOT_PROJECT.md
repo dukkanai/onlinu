@@ -849,3 +849,12 @@ bytes are checked; authority is rechecked afterward and failures retain evidence
 All18 artifact/stage tests pass locally; remote fixture acceptance is pending.
 See `prototype/platform/PROVISIONING-STAGE.md`. This does not execute production
 or create, rotate or read real secret values.
+
+Stage read-back acceptance: `58b00c01abb72e56d2157764b4a0991df52ef878`
+passed all five jobs in CI37543411440, verified 2026-10-06 23:05 UTC. Exact staged
+artifact verification passed in both actual journal/Docker fixture attempts.
+Four runtime reports were inspected and both immutable receipts independently
+rehashed and bound to the exact source and attempt. Synthetic local image ID:
+`sha256:eaeb8373b6ae3c4dfae195bae7c4753625f71d4c7b6c3fd9a7f3e26b7bf3d78e`.
+This is not registry publication or production execution. Local platform222 tests
+passed with12 database skips; remote PostgreSQL and full-runtime gates passed.

@@ -64,3 +64,12 @@ modified artifacts, filesystem substitution, permissions, changed worker and
 revoked authority. All 18 artifact/staging tests pass locally. The real isolated
 journal/Docker fixture now runs this live read-back before applying its explicit
 synthetic image/path overrides. Remote acceptance of this increment is pending.
+
+Stage read-back acceptance: `58b00c01abb72e56d2157764b4a0991df52ef878`
+passed all five jobs in CI37543411440, verified 2026-10-06 23:05 UTC. Exact staged
+artifact verification passed in both actual journal/Docker fixture attempts.
+Four runtime reports were inspected and both immutable receipts independently
+rehashed and bound to the exact source and attempt. Synthetic local image ID:
+`sha256:eaeb8373b6ae3c4dfae195bae7c4753625f71d4c7b6c3fd9a7f3e26b7bf3d78e`.
+This is not registry publication or production execution. Local platform222 tests
+passed with12 database skips; remote PostgreSQL and full-runtime gates passed.
