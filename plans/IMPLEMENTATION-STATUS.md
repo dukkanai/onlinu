@@ -5,10 +5,10 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-06 03:13 UTC
+## Latest verified position — 2026-10-06 03:41 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `ef87ab90318e9f7edb6ccac56c02ed053ceb7aac`, CI [37407109723](https://github.com/dukkanai/onlinu/actions/runs/37407109723), all jobs successful.
+- Latest published and fully verified commit: `d25f00a7ccf0d07c64ac181435fb7561c1d2ec6c`, CI [37409249616](https://github.com/dukkanai/onlinu/actions/runs/37409249616), all four ordinary jobs successful. The separately opt-in runtime-image job was intentionally skipped and is not accepted.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
 - Native category/options/image editing, strict Dart TLS/PKCE integration, rotating refresh and actual Windows forms/store/build passed remote CI (73 Flutter unit/widget tests in the published image commit). Image-review and create-item screenshots were inspected; Arabic layout and corrected form spacing are readable. OS picker selection remains a synthetic injection in rendering tests.
 - Native team roles, granular permissions, alias/enable edits and explicit review/confirmation passed all remote CI jobs: 78 Flutter tests, 196 platform tests and real Dart/Node/Go membership read/update/stale/last-owner checks. Native membership authority cannot inherit separate platform-operator privileges. Windows team screenshots were inspected.
@@ -31,6 +31,8 @@ Existing production/security and external-account approval boundaries remain.
 - Isolated-runtime preparation: opt-in file-backed Go secrets and private startup diagnostics pass local race/subprocess and related original auth/Meta/archive/translation/HTTP integration checks. Raw file values are not exported into child environments. All CI37401147861 jobs passed for the file-backed secret increment. The administrator startup guard and isolated actual-main smoke also passed all CI37405031722 jobs; this includes actual startup, administrator authentication, signed service reads and the unchanged native Windows regression/build. Existing installer configuration is untouched; provisioning and runtime-image acceptance remain open. See `deploy/RUNTIME-SECRETS.md`.
 - Actual-main restricted-role extension `2c4fb7f` passed all CI37406247021 jobs: runtime startup uses a temporary non-superuser CREATEDB role, with flags and owned database checked. No production role change or cross-tenant isolation acceptance occurred.
 - Offline resource planner `ef87ab9` passed all CI37407109723 jobs. Eight pure planner tests and all 45 local deployment/packaging tests pass. It emits non-executable, digest-identified requirements with distinct tenant resources and no Docker, network or secret operations. A provisioning executor is still absent; see `deploy/TENANT-PLAN.md`.
+- Original WhatsApp session-storage migrations under the restricted fixture role passed all CI37408369717 jobs for `1604e9e`; no WhatsApp client or external session was created.
+- Opt-in image acceptance preparation `d25f00a` passed ordinary CI37409249616, including all 49 deployment/packaging tests and fake-Docker cleanup guards. Full root-image build is deliberately disabled by default; external codec execution approval and image acceptance remain pending. See `deploy/RUNTIME-IMAGE-ACCEPTANCE.md`.
 - POS integration is explicitly deferred by the owner’s voice instruction; continue current development without choosing/connecting a vendor.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
 - Historical verification entries below describe their exact commits; they are not a claim that the entire SaaS is complete.

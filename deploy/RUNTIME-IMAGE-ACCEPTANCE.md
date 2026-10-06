@@ -34,9 +34,10 @@ message, real call, payment, provider account or production data is used. A
 successful report records the source commit and local image ID; that image ID is
 not a published registry digest. Raw logs and secret files are not uploaded.
 
-Local evidence so far is limited to shell syntax and four fake-Docker safety
-checks, alongside all 49 deployment/packaging tests. These do not build or run the
-image. The opt-in image job outcome must be recorded before claiming
+Local evidence includes shell syntax and four fake-Docker safety checks,
+alongside all 49 deployment/packaging tests. Ordinary CI37409249616 passed for
+`d25f00a`; the image job was explicitly skipped. These checks do not build or run
+the image. The opt-in image job outcome must be recorded before claiming
 runtime image acceptance. Real calls, provider integration, multi-tenant network
 isolation, production routing, registry publication and release approval remain
 separate gates.

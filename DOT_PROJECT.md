@@ -505,3 +505,10 @@ covered by eight pure tests. All 45 deployment/packaging Python tests pass.
 No Docker/secret/network operations or provisioning worker are added; see
 `deploy/TENANT-PLAN.md` for remaining execution gates. Commit `ef87ab9` passed
 every job in CI37407109723; this does not establish provisioning acceptance.
+
+## Opt-in runtime image acceptance preparation
+
+`d25f00a` passed the four ordinary CI37409249616 jobs. The separate image job
+requires explicit manual input and was intentionally skipped. See
+`deploy/RUNTIME-IMAGE-ACCEPTANCE.md`; external codec execution and full image
+acceptance are pending, with no registry publication or deployment performed.

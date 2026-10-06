@@ -117,4 +117,5 @@ migrate a uniquely owned WhatsApp session-storage database with that restricted
 role. It checks ownership and closes the storage connections before removing
 only the fixture database. No WhatsApp client session, QR pairing, message or
 provider connection is started. The main runtime authentication checks still run.
-Local race tests and vet pass; remote CI for this extension is pending.
+Local race tests and vet pass. Commit `1604e9e` passed all jobs in
+[CI37408369717](https://github.com/dukkanai/onlinu/actions/runs/37408369717).
