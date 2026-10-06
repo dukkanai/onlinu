@@ -14,6 +14,7 @@ import { createProvisioningJournal } from '../provisioning-journal.mjs';
 import { createProvisioningArtifacts } from '../provisioning-artifacts.mjs';
 import { createProvisioningRunner } from '../provisioning-runner.mjs';
 import { createProvisioningStage } from '../provisioning-stage.mjs';
+import { createProvisioningEvidence } from '../provisioning-evidence.mjs';
 import { createProvisioningHostLock } from '../provisioning-host-lock.mjs';
 import { createProvisioningProcess } from '../provisioning-process.mjs';
 import { validateContext } from '../../../integration/provisioning-cancellation-smoke.mjs';
@@ -131,6 +132,8 @@ export async function runSmoke(image, env = process.env) {
     const artifactRoot = join(root, 'artifacts'), stageRoot = join(root, 'staged'), lockRoot = join(root, 'locks');
     for (const path of [artifactRoot, stageRoot, lockRoot]) await mkdir(path, { mode: 0o700 });
     const stage = createProvisioningStage({ journal, directory: stageRoot });
+    const evidenceRoot = join(root, 'evidence'); await mkdir(evidenceRoot, { mode: 0o700 });
+    const evidenceStore = createProvisioningEvidence({ directory: evidenceRoot });
     const hostLock = createProvisioningHostLock({ directory: lockRoot });
     const nonce = randomBytes(6).toString('hex');
     for (let number = 0; number < 2; number++) {
@@ -191,8 +194,16 @@ export async function runSmoke(image, env = process.env) {
               || await status(config.httpPort, '/api/restaurant/catalog', f.key) !== 200
               || await status(config.httpPort, '/api/restaurant/catalog', 'wrong-public-fixture-key') !== 401)
             throw new Error('fixture_runtime_authentication');
-          return { jobId: prepared.job.id, tenantId, planDigest: plan.planDigest,
-            verificationSha256: hash(JSON.stringify({ tenantId, planDigest: plan.planDigest, images, containerIds, healthy: true })) };
+          const reference = await evidenceStore.write({ jobId: prepared.job.id, workerId: prepared.job.workerId,
+            tenantId, planDigest: plan.planDigest, projectName: plan.projectName, sourceCommit: env.GITHUB_SHA, scope: 'fixture',
+            resources: { restaurant: { containerId: containerIds.restaurant, imageId: images.restaurant },
+              postgres: { containerId: containerIds.postgres, imageId: images.postgres } },
+            checks: { ownership: true, healthy: true, authenticated: true, unauthorizedRejected: true } });
+          // Read from a fresh store instance, not an in-memory attestation cache.
+          const stored = await createProvisioningEvidence({ directory: evidenceRoot }).read(reference);
+          if (hash(JSON.stringify(stored) + '\n') !== reference.sha256) throw new Error('fixture_evidence_changed');
+          f.verificationEvidence = { reference, stored };
+          return { jobId: prepared.job.id, tenantId, planDigest: plan.planDigest, verificationSha256: reference.sha256 };
         },
       };
       const runner = createProvisioningRunner({ journal, artifacts, driver });
@@ -229,11 +240,12 @@ export async function runSmoke(image, env = process.env) {
       throw new Error('fixture_journal_final_state');
     report = { sourceCommit: env.GITHUB_SHA, productionDeployed: false, registryPublished: false,
       realCredentialsUsed: false, fixtureCount: 2, localImageIds: fixtures[0].images,
+      verificationEvidence: fixtures.map(f => f.verificationEvidence),
       testOnlyOverrides: ['image references', 'host synthetic secret/config paths', 'synthetic verified identities'],
       checks: ['real-postgresql-journal', 'authoritative-artifact-compiler', 'exclusive-staged-artifacts',
         'linux-host-lock', 'bounded-docker-commands', 'successful-attempt-recorded', 'lost-apply-reply-retained-as-unknown',
         'uncertain-attempt-replay-blocked', 'actual-owned-runtime-inspected-before-reconciliation',
-        'explicit-evidenced-reconciliation', 'reconciliation-under-host-lock', 'one-apply-per-fixture', 'tenant-activation-not-implied'],
+        'explicit-evidenced-reconciliation', 'durable-immutable-verification-receipts', 'fresh-reader-evidence-hash-verification', 'reconciliation-under-host-lock', 'one-apply-per-fixture', 'tenant-activation-not-implied'],
       notVerified: ['production-apply-driver', 'production-registry-digests', 'real-secret-provisioning',
         'external-identity-provider', 'production-routing', 'backup-restore', 'real-calls'] };
   } catch {

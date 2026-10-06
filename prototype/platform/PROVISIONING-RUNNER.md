@@ -80,3 +80,9 @@ the optional unchanged runtime-image job was skipped.
 The next local increment supplies `provisioning-host-lock.mjs` for Linux-local
 exclusion; see `PROVISIONING-HOST-LOCK.md`. It does not supply the remaining
 production driver operations or prove cancellation of Docker daemon effects.
+
+`provisioning-evidence.mjs` now provides an immutable, bounded receipt store for
+a trusted driver's observations. It does not replace that driver's observation
+or authorization obligations. See `PROVISIONING-EVIDENCE.md`. The isolated
+journal/Docker fixture exercises write/read-back before finishing or explicitly
+reconciling an attempt; production apply/verification gates remain unchanged.

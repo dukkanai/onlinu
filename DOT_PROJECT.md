@@ -716,3 +716,16 @@ inspected at 14:08 UTC. Arabic labels and review controls are legible. This
 accepts the location/radius management feature, not production deployment or
 per-kilometre pricing. Full runtime-image acceptance remains separately recorded
 at `147a8c1`; it was intentionally skipped in this run.
+
+## Durable private provisioning evidence — 2026-10-06, CI pending
+
+A bounded immutable filesystem receipt now binds a private driver's job/worker,
+tenant/plan, source commit and actual resource IDs to its observed verification
+checks. It rejects arbitrary diagnostic/secret fields and unsafe filesystem
+substitutions; writes are exclusive and synchronized, reads revalidate canonical
+bytes/hash/binding. The component does not grant authority or independently prove
+health; no production driver, deployment or activation is introduced. The real
+journal/Docker fixture now writes and rereads these receipts and embeds them in
+its retained synthetic report. Ten new filesystem tests plus four fixture guards
+pass; local platform 202 passed / 12 database skips. See
+`prototype/platform/PROVISIONING-EVIDENCE.md`; actual Docker CI is pending.
