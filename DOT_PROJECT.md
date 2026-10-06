@@ -642,3 +642,10 @@ membership between checks and verifies all six pricing/zone transport cases
 (form, browser API, native API) fail without changing the catalogue. Remote
 integration acceptance is pending for this change. Restaurant origin/radius
 editing remains unfinished and is not included in this checkpoint.
+
+Acceptance update: commit `caeb2b5c0f4212340f692e792b6d99beabaaf142`
+passed all four ordinary jobs in CI37465795032 (server, client, control-image,
+native-windows), verified 2026-10-06 13:01 UTC. The opt-in codec-bearing image job
+was intentionally not requested and was skipped. The real core/browser/native
+revocation regressions are accepted for this exact commit; this does not add
+restaurant origin/radius editing or change production deployment readiness.
