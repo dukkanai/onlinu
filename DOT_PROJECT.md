@@ -527,6 +527,7 @@ The offline planner now has an explicit `--compose` mode requiring an exact
 review digest. It emits separated file-secret mounts and dedicated tenant
 resources, with a digest-bound PostgreSQL 16 bootstrap asset. Local 57 Python
 tests and a negative PostgreSQL 17 bootstrap check pass. CI schema validation
-and opt-in positive bootstrap/image checks are pending. No executor, secret
+and opt-in positive bootstrap/image checks passed in CI37424797423 for
+`264157d`; the report was inspected. No executor, secret
 creation, tenant registration or deployment is performed by the renderer; see
 `deploy/TENANT-COMPOSE.md` for the required gates.

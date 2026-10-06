@@ -80,7 +80,10 @@ Unix-socket server used during initialization.
   without interpolation, image resolution or Docker resource changes.
 - The opt-in image smoke now mounts the bootstrap asset and synthetic database
   password, checks restricted role flags and then the real runtime startup.
-  Remote acceptance of these new checks is pending.
+  Commit `264157d` passed all five jobs in
+  [CI37424797423](https://github.com/dukkanai/onlinu/actions/runs/37424797423).
+  The bootstrap/image report was downloaded and inspected; this still does not
+  constitute execution of the generated Compose specification.
 
 Production secret mounting, executor authorization/ownership checks, persistent
 job reconciliation, live port allocation, HTTPS/proxy routing, media ingress for
