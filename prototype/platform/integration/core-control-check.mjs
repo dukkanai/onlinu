@@ -323,7 +323,7 @@ try {
       catch(error){console.error('Synthetic browser navigation diagnostics',new URL(page.url()).pathname,await page.locator('body').innerText(),browserDiagnostics,interceptionErrors);throw error;}
       assert.equal(providerVisits,1);
       await page.goBack();await page.waitForURL(baseUrl+cardPath);
-      assert.match(await page.locator('body').innerText(),/حالة الدفع: pending/);
+      assert.match(await page.locator('body').innerText(),/حالة الدفع: بانتظار تأكيد الدفع/);
       await page.goto(baseUrl+'/manage');
       await page.getByRole('link',{name:'restaurant-a',exact:true}).click();
       await page.waitForURL(baseUrl+'/manage/restaurant-a/orders');
@@ -605,7 +605,7 @@ try {
   assert.equal((await pay(alice.cookie)).headers.location,payment.headers.location);
   const refresh=await send(cardPath+'/refresh-payment',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl},body:{csrf}});
   assert.equal(refresh.status,303);assert.equal(refresh.headers.location,cardPath);
-  assert.match((await send(cardPath,{cookie:alice.cookie})).data,/حالة الدفع: paid/);
+  assert.match((await send(cardPath,{cookie:alice.cookie})).data,/حالة الدفع: مدفوع/);
   if(process.env.CORE_FLUTTER_TEST_BIN){
     await checkNativeDart({app,browserCookie:alice.cookie,principalId:alice.id,orderNumber:order.number,imageBase64:fixture.imageBase64});
     const nativeAdvanced=await send(staffPath+'/'+order.number,{cookie:alice.cookie});
