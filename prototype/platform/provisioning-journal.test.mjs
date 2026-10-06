@@ -5,6 +5,7 @@ import pg from 'pg';
 import { createIdentityDirectory } from './identity-directory.mjs';
 import { createProvisioningJournal } from './provisioning-journal.mjs';
 import { createProvisioningArtifacts } from './provisioning-artifacts.mjs';
+import { createProvisioningRunner } from './provisioning-runner.mjs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -218,6 +219,37 @@ test('durable operator provisioning intents and fenced outcomes', { skip: !proce
     assert.equal((await artifacts.prepare(actor.id, claimed.id, { expectedVersion: claimed.version, workerId: claimed.workerId })).job.workerId, claimed.workerId);
     await pool.query("UPDATE platform_provision_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [claimed.id]);
     await assert.rejects(artifacts.prepare(actor.id, claimed.id, { expectedVersion: claimed.version, workerId: claimed.workerId }), { code: 'provisioning_lease_expired' });
+    let pending = await journal.expire(actor.id, claimed.id, { expectedVersion: claimed.version });
+    pending = await journal.reconcile(actor.id, pending.id, { expectedVersion: pending.version, decision: 'requeue', evidenceDigest: evidence });
+    let locked = false, applies = 0, expireDuringApply = true;
+    const driver = {
+      async withLock(resource, operation) {
+        assert.equal(resource, plan.projectName); assert.equal(locked, false); locked = true;
+        try { return await operation(); } finally { locked = false; }
+      },
+      async inspect(prepared) { assert.ok(locked); assert.equal(prepared.job.id, pending.id); },
+      async apply(_prepared, { checkpoint }) {
+        assert.ok(locked); applies++;
+        if (expireDuringApply) await pool.query("UPDATE platform_provision_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [pending.id]);
+        await checkpoint();
+      },
+      async verify(prepared) {
+        return { jobId: prepared.job.id, tenantId: prepared.job.tenantId,
+          planDigest: prepared.job.planDigest, verificationSha256: evidence };
+      },
+    };
+    const runner = createProvisioningRunner({ journal, artifacts, driver });
+    await assert.rejects(runner.run(actor.id, pending.id, { expectedVersion: pending.version, workerId: randomUUID() }),
+      { code: 'provisioning_outcome_unknown' });
+    pending = await journal.get(actor.id, pending.id);
+    assert.equal(pending.state, 'unknown'); assert.equal(applies, 1); assert.equal(locked, false);
+    await assert.rejects(runner.run(actor.id, pending.id, { expectedVersion: pending.version, workerId: randomUUID() }),
+      { code: 'invalid_provisioning_transition' });
+    pending = await journal.reconcile(actor.id, pending.id, { expectedVersion: pending.version, decision: 'requeue', evidenceDigest: evidence });
+    expireDuringApply = false;
+    const completed = await runner.run(actor.id, pending.id, { expectedVersion: pending.version, workerId: randomUUID() });
+    assert.equal(completed.state, 'succeeded'); assert.equal(applies, 2); assert.equal(locked, false);
+    assert.equal((await journal.get(actor.id, pending.id)).evidenceDigest, completed.evidenceDigest);
     assert.equal((await pool.query("SELECT status FROM platform_tenants WHERE id='artifact-bridge'")).rows[0].status, 'draft');
   });
 

@@ -562,3 +562,13 @@ secret files or executes Docker. Local 255 platform tests pass without skips;
 related actual-main Go race tests pass. Commit `de31ccd` passed all four ordinary
 CI37434333447 jobs; the unchanged optional runtime-image job was skipped.
 See `prototype/platform/PROVISIONING-ARTIFACTS.md` for remaining executor gates.
+
+## Private single-attempt coordinator (local increment)
+
+The private `provisioning-runner.mjs` now sequences reviewed artifacts, a fenced
+journal claim, injected host-lock/inspect/apply/verify operations and a strict
+evidence digest. Ambiguous outcomes require reconciliation; no automatic retry,
+rollback or activation is introduced. The production host driver is intentionally
+absent. See `prototype/platform/PROVISIONING-RUNNER.md` for that trust boundary and
+required subprocess/lock acceptance. Synthetic coordinator and real PostgreSQL/
+compiler integration tests are included; remote acceptance is pending.
