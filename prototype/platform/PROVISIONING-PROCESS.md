@@ -37,4 +37,6 @@ This does not supply the remaining inspect/apply/verify driver.
 
 Local platform verification passes 282 tests without skips, including host-lock
 retention during command timeout, plus related actual-main Go race checks.
-Remote CI for this increment is pending.
+Commit `28709b0` passed all four ordinary jobs in
+[CI37440216640](https://github.com/dukkanai/onlinu/actions/runs/37440216640).
+The optional unchanged runtime-image job was intentionally skipped.

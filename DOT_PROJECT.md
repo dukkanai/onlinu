@@ -592,4 +592,5 @@ execution for a future fixed-command trusted driver. Cancellation/timeout/output
 overflow stop only the owned process group and await pipe closure; errors do not
 echo diagnostic output. Real synthetic parent/descendant cancellation tests are
 included. Docker daemon cancellation and actual apply/recovery remain separate;
-see `prototype/platform/PROVISIONING-PROCESS.md`. Remote CI is pending.
+see `prototype/platform/PROVISIONING-PROCESS.md`. Commit `28709b0` passed all four
+ordinary CI37440216640 jobs; the optional unchanged runtime-image job was skipped.
