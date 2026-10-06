@@ -867,3 +867,32 @@ lost replies never trigger retries or removal. Eight new focused test groups
 pass locally; remote daemon acceptance is pending. See
 `prototype/platform/PROVISIONING-COMPOSE-APPLY.md`. A production manifest/secret
 supplier, public routing, activation and release permission remain separate.
+
+Compose transport acceptance: `5d973314e5f8c794328a96ccd7f89249c3723ce9`
+passed all five jobs in CI37545039166. The already-running job completed after
+the user reported a near-exhausted Actions allowance; no later run was dispatched.
+Four exact-source runtime reports were inspected and both receipt hashes and
+bindings independently checked on 2026-10-06 23:24 UTC. Actual isolated creation,
+lost-reply reconciliation and owned cleanup passed. Synthetic local image ID:
+`sha256:6cc3a1a4d88a26cb434865c671c8b9336a04958e02d5aa7aac856b7732bf62d4`.
+Production manifest/secret supply, routing, activation and release remain open.
+
+## Local Docker trial and CI allowance — 2026-10-06
+
+The owner reported an Actions allowance warning at23:17UTC; its exact kind and
+remaining amount are not yet verified. New hosted dispatches are on hold while
+local tests continue and heavy checks are batched. The existing run above was
+allowed to finish. No runner exists on this repository and no separate owner test
+server is available. No budget, billing or persistent runner access was changed.
+
+At the owner's explicit request, official Docker29.8.2 static and rootless-extra
+archives were downloaded into an isolated workspace tool folder. CLI and daemon
+version commands worked. The official rootless prerequisite check failed on
+missing uidmap/iptables/kernel-module requirements; the environment additionally
+rejects AF_UNIX socket creation with EPERM. Disposable user/mount/network
+namespaces and loopback TCP probes worked, so this is not a blanket lack of
+networking. No security/filter/firewall settings were relaxed or modified.
+No daemon/service or container was started. At the owner's conditional cleanup
+request the complete trial was moved to recoverable OS Trash, verified absent
+from its workspace installation path. Merely restoring these files is not a
+working Docker runtime. Linux also does not replace actual Windows acceptance.

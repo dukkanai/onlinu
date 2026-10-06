@@ -39,3 +39,12 @@ Four apply-transport groups and four additional empty-namespace groups pass
 locally, including lost replies, path changes, revoked authority, wrong context,
 foreign collisions and cancellation. Actual daemon acceptance for this increment
 is pending. No production host or credential was used.
+
+Compose transport acceptance: `5d973314e5f8c794328a96ccd7f89249c3723ce9`
+passed all five jobs in CI37545039166. The already-running job completed after
+the user reported a near-exhausted Actions allowance; no later run was dispatched.
+Four exact-source runtime reports were inspected and both receipt hashes and
+bindings independently checked on 2026-10-06 23:24 UTC. Actual isolated creation,
+lost-reply reconciliation and owned cleanup passed. Synthetic local image ID:
+`sha256:6cc3a1a4d88a26cb434865c671c8b9336a04958e02d5aa7aac856b7732bf62d4`.
+Production manifest/secret supply, routing, activation and release remain open.
