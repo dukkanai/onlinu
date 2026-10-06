@@ -39,6 +39,7 @@ type platformStaffOrderView struct {
 func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(string, func(http.ResponseWriter, *http.Request, []byte, string)) http.HandlerFunc) {
 	s.registerPlatformStaffDeliveryRoutes(mux, wrap)
 	s.registerPlatformStaffServiceRoutes(mux, wrap)
+	s.registerPlatformStaffPaymentMethodsRoutes(mux, wrap)
 	s.registerPlatformStaffTaxRoutes(mux, wrap)
 	s.registerPlatformStaffFinanceRoutes(mux, wrap)
 	s.registerPlatformStaffBrandRoutes(mux, wrap)

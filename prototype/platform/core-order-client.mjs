@@ -83,6 +83,12 @@ const profileFields={name:z.string().min(1).max(120),description:z.string().max(
 const profileView=z.object({version:z.number().int().positive(),...profileFields});
 const profilePatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),...Object.fromEntries(Object.entries(profileFields).map(([key,value])=>[key,value.optional()]))}).strict().refine(value=>Object.keys(value).length>1);
 
+const paymentMode=z.enum(['delivery','pickup','table']);
+const configuredPaymentMethods=z.array(z.enum(['card','cash_on_delivery','cash_before','cash_after'])).max(3);
+const validConfiguredMethods=v=>new Set(v.methods).size===v.methods.length&&v.methods.every(method=>method==='card'||v.mode==='delivery'&&method==='cash_on_delivery'||v.mode==='table'&&['cash_before','cash_after'].includes(method));
+const paymentMethodsPatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),mode:paymentMode,methods:configuredPaymentMethods}).strict().refine(validConfiguredMethods);
+const paymentMethodsView=z.object({version:z.number().int().positive(),currency:z.literal('SAR'),demo:z.boolean(),modes:z.array(z.object({mode:paymentMode,enabled:z.boolean(),methods:configuredPaymentMethods}).refine(v=>validConfiguredMethods(v)&&(!v.enabled||v.methods.length>0))).length(3)}).refine(v=>new Set(v.modes.map(m=>m.mode)).size===3);
+
 const deliveryLocationPatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),origin:z.object({latitude:z.number().min(-90).max(90),longitude:z.number().min(-180).max(180)}).strict().nullable().optional(),radiusKm:z.number().min(0).max(500).optional(),requireLocation:z.boolean().optional()}).strict().refine(v=>Object.keys(v).some(k=>k!=='expectedVersion'));
 const deliveryZone=z.object({districtId:menuId,enabled:z.boolean(),feeMinor:z.number().int().min(0).max(100_000_000).nullable()}).strict();
 const deliveryView=z.object({version:z.number().int().positive(),currency:z.literal('SAR'),mode:z.enum(['flat','district']),feeMinor:z.number().int().min(0).max(100_000_000),minimumMinor:z.number().int().min(0).max(100_000_000),enabled:z.boolean(),acceptingOrders:z.boolean(),requireLocation:z.boolean(),radiusKm:z.number().min(0).max(500),latitude:z.number().min(-90).max(90).nullable().optional(),longitude:z.number().min(-180).max(180).nullable().optional(),zones:z.array(deliveryZone.extend({nameAr:z.string().max(4096),nameEn:z.string().max(4096),cityName:z.string().max(4096),regionName:z.string().max(4096),active:z.boolean()})).max(10000)}).refine(v=>{
@@ -200,6 +206,15 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
       const parsed=z.object({version:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),courierId:z.union([courierId,z.literal('')])}).strict().safeParse(input);
       if(!/^R[0-9]{8,20}$/.test(number??'')||!parsed.success)throw problem(400,'invalid_request');
       return request(tenantId,subject,'POST',`/platform-api/staff/orders/${number}/courier`,parsed.data,'','staff:delivery:assign',coreOrderView.extend({courierId:z.union([courierId,z.literal('')]),courierName:z.string().max(4096),deliveryStatus:z.string().max(40)}));
+    },
+    paymentMethods(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/payment-methods',undefined,'','staff:settings:read',paymentMethodsView);},
+    patchPaymentMethods(tenantId,subject,input){
+      const parsed=paymentMethodsPatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST','/platform-api/staff/payment-methods',parsed.data,'','staff:settings:update',paymentMethodsView).then(result=>{
+        const mode=result.modes.find(v=>v.mode===parsed.data.mode);
+        if(result.version!==parsed.data.expectedVersion+1||JSON.stringify(mode?.methods)!==JSON.stringify(parsed.data.methods))throw problem(503,'order_outcome_unknown');
+        return result;
+      });
     },
     delivery(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/delivery',undefined,'','staff:settings:read',deliveryView,2_000_000);},
     patchDelivery(tenantId,subject,action,input){

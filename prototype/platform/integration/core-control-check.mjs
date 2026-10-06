@@ -299,6 +299,19 @@ try {
   const locationRestored=await send(locationPath,{method:'POST',token:nativeToken,body:{expectedVersion:locationSet.data.version,origin:deliveryBefore.latitude===null?null:{latitude:deliveryBefore.latitude,longitude:deliveryBefore.longitude},radiusKm:deliveryBefore.radiusKm,requireLocation:deliveryBefore.requireLocation}});
   assert.equal(locationRestored.status,200,JSON.stringify(locationRestored.data));
   assert.deepEqual(locationRestored.data,{...deliveryBefore,version:deliveryBefore.version+2});
+  const paymentSettingsPath='/native/api/restaurants/restaurant-a/staff/payment-methods';
+  const paymentSettingsBefore=await send(paymentSettingsPath,{token:nativeToken});
+  assert.equal(paymentSettingsBefore.status,200,JSON.stringify(paymentSettingsBefore.data));
+  assert.equal((await send('/api/restaurants/restaurant-a/staff/payment-methods',{cookie:bob.cookie})).status,403);
+  const initialPaymentMethods=paymentSettingsBefore.data;
+  const paymentSettingsChanged=await send(paymentSettingsPath,{method:'POST',token:nativeToken,body:{expectedVersion:initialPaymentMethods.version,mode:'delivery',methods:['cash_on_delivery']}});
+  assert.equal(paymentSettingsChanged.status,200,JSON.stringify(paymentSettingsChanged.data));
+  assert.deepEqual(paymentSettingsChanged.data.modes.find(v=>v.mode==='delivery').methods,['cash_on_delivery']);
+  assert.equal((await send(paymentSettingsPath,{method:'POST',token:nativeToken,body:{expectedVersion:initialPaymentMethods.version,mode:'delivery',methods:['card']}})).status,409);
+  assert.equal((await send(paymentSettingsPath,{method:'POST',token:nativeToken,body:{expectedVersion:paymentSettingsChanged.data.version,mode:'pickup',methods:['cash_on_delivery']}})).status,400);
+  const paymentSettingsRestored=await send(paymentSettingsPath,{method:'POST',token:nativeToken,body:{expectedVersion:paymentSettingsChanged.data.version,mode:'delivery',methods:initialPaymentMethods.modes.find(v=>v.mode==='delivery').methods}});
+  assert.equal(paymentSettingsRestored.status,200,JSON.stringify(paymentSettingsRestored.data));
+  assert.deepEqual(paymentSettingsRestored.data,{...initialPaymentMethods,version:initialPaymentMethods.version+2});
   if(process.env.CORE_BROWSER_TEST==='1'){
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,

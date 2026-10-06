@@ -738,3 +738,15 @@ checked. Synthetic image ID is
 `sha256:079bdb38d79a5184a104e33e35e3beeaa409efb12b512617b56a208fb3604442`,
 not a published registry digest. Production apply, credential provisioning,
 public routing, recovery and real account acceptance remain separate gates.
+
+## Payment-method management API — 2026-10-06, CI pending
+
+Configured payment choices for one service mode can now be read/patched through
+signed settings-scoped core and browser/native staff APIs, using original
+catalogue versioning, validation and actor audit. Provider credentials/readiness
+and financial/order history are not changed. Configured card remains distinct
+from effective payment availability, enforced by the existing quote path.
+Go input/build/vet and focused Node checks pass; local platform 204 passed with
+12 database skips. Actual PostgreSQL and cross-language acceptance is pending;
+no management form or Flutter editor yet. See
+`prototype/platform/PAYMENT-METHOD-MANAGEMENT.md`.

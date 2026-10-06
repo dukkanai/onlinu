@@ -254,3 +254,23 @@ test('delivery location validation rejects incomplete coordinates and permits ex
  assert.equal(calls,0);
  assert.equal((await client.patchDelivery('restaurant-a',subject,'location',{expectedVersion:4,origin:null,radiusKm:0})).latitude,null);
 });
+
+test('payment-method settings bind signed narrow intent without exposing provider secrets',async()=>{
+ const subject=randomUUID(),patch={expectedVersion:4,mode:'delivery',methods:['card']};
+ const data={version:5,currency:'SAR',demo:true,modes:[{mode:'delivery',enabled:true,methods:['card']},{mode:'pickup',enabled:true,methods:['card']},{mode:'table',enabled:false,methods:[]}]};
+ let response=data,calls=0;
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{
+  calls++;assert.equal(url,'http://127.0.0.1:3001/platform-api/staff/payment-methods');
+  const claims=JSON.parse(Buffer.from(options.headers.authorization.slice(9).split('.')[0],'base64url'));
+  assert.equal(claims.subject,subject);assert.equal(claims.scope,options.method==='GET'?'staff:settings:read':'staff:settings:update');
+  if(options.method==='POST'){assert.deepEqual(JSON.parse(options.body),patch);assert.equal(claims.bodySha256,createHash('sha256').update(options.body).digest('hex'));}
+  return json({...response,providerSecret:'not-for-staff'});
+ }});
+ assert.equal((await client.paymentMethods('restaurant-a',subject)).providerSecret,undefined);
+ await client.patchPaymentMethods('restaurant-a',subject,patch);
+ for(const bad of [{expectedVersion:4,mode:'pickup',methods:['cash_on_delivery']},{...patch,methods:['card','card']},{...patch,methods:null},{...patch,provider:'stripe'},{...patch,mode:'unknown'},{...patch,methods:['cash_after']}])assert.throws(()=>client.patchPaymentMethods('restaurant-a',subject,bad),{code:'invalid_request'});
+ assert.equal(calls,2);
+ for(const value of [{...data,version:4},{...data,modes:[data.modes[1],data.modes[1],data.modes[2]]},{...data,modes:[{...data.modes[0],methods:['cash_on_delivery']},...data.modes.slice(1)]}]){
+  response=value;const before=calls;await assert.rejects(client.patchPaymentMethods('restaurant-a',subject,patch),{code:'order_outcome_unknown'});assert.equal(calls,before+1);
+ }
+});

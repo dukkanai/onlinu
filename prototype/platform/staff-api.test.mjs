@@ -103,3 +103,17 @@ test('delivery writes recheck authority after body parsing and never retry an un
   await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'order_outcome_unknown'});assert.equal(writes,1);
  });
 });
+
+test('payment-method edits require read and write again after body parsing',async()=>{
+ const grants=new Set(['settings:read']);let writes=0,revoke='';
+ const api=createStaffApi({directory:{async authorize(a,t,p){if(!grants.has(p))throw Object.assign(Error(),{code:'forbidden'});}},body:async()=>{if(revoke)grants.delete(revoke);return{expectedVersion:1,mode:'delivery',methods:['card']};},orderClient:{async paymentMethods(){return{};},async patchPaymentMethods(){writes++;return{};}},json:(_,status,data)=>({status,data})});
+ const url=new URL('https://platform.example/api/restaurants/a/staff/payment-methods');
+ assert.equal((await api({method:'GET'},{},{id:'staff'},url)).status,200);
+ await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});
+ for(const permission of ['settings:read','settings:update']){
+  grants.add('settings:read');grants.add('settings:update');revoke=permission;
+  await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(writes,0);
+ }
+ grants.add('settings:read');grants.add('settings:update');revoke='';
+ await api({method:'POST'},{},{id:'staff'},url);assert.equal(writes,1);
+});

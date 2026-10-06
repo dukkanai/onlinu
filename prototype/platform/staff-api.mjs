@@ -16,6 +16,15 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
         if(assignRoute&&orderClient&&req.method==='POST'){
           if(url.search)throw problem(400,'invalid_request');const [,tenantId,number]=assignRoute;await directory.authorize(who.id,tenantId,'delivery:assign');return json(res,200,await orderClient.assignCourier(tenantId,who.id,number,await body(req)));
         }
+        const paymentMethodsRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/payment-methods$/.exec(url.pathname);
+        if(paymentMethodsRoute&&orderClient){
+          const tenantId=paymentMethodsRoute[1];if(url.search||!['GET','POST'].includes(req.method))throw problem(400,'invalid_request');
+          await directory.authorize(who.id,tenantId,'settings:read');
+          if(req.method==='GET')return json(res,200,await orderClient.paymentMethods(tenantId,who.id));
+          await directory.authorize(who.id,tenantId,'settings:update');const input=await body(req);
+          await directory.authorize(who.id,tenantId,'settings:read');await directory.authorize(who.id,tenantId,'settings:update');
+          return json(res,200,await orderClient.patchPaymentMethods(tenantId,who.id,input));
+        }
         const deliveryRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/delivery(?:\/(pricing|zone|location))?$/.exec(url.pathname);
         if(deliveryRoute&&orderClient){
           const [,tenantId,action]=deliveryRoute;if(url.search||!(req.method==='GET'&&!action||req.method==='POST'&&action))throw problem(400,'invalid_request');
