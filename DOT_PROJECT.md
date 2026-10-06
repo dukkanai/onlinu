@@ -811,3 +811,15 @@ groups plus four existing fixture guards pass locally. This prepares the trusted
 executor without production effects or automatic tenant activation; actual Docker
 CI for this increment is pending. See
 `prototype/platform/PROVISIONING-RUNTIME-INSPECTION.md`.
+
+Runtime inspection acceptance: commit
+`9154929f905fab1b2024313c64ae0f5738686651` passed all five jobs in
+CI37540564750, verified 2026-10-06 22:36 UTC. The actual journal/Docker fixture
+passed both successful and unknown-reply reconciliation paths through the new
+snapshot gate. All four runtime reports were downloaded and inspected; both
+immutable receipts were independently rehashed and source/identity-bound. The
+local image ID is
+`sha256:31113c204c1aa85119a6ee26b724ec44a1c338d902d8b2d9ed886f39132a1ee8`;
+this is not a published registry digest. No production driver, real credential,
+public routing, activation or deployment is implied. Local platform tests also
+passed 211 with 12 database skips; remote CI supplied database acceptance.
