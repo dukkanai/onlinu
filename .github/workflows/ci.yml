@@ -57,6 +57,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test non-executing tenant resource planner
+        run: python3 -m unittest discover -s deploy -p 'test_tenant_plan.py' -v
+
       - name: Set up Node for core adapter integration
         uses: actions/setup-node@v4
         with:

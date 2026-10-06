@@ -495,3 +495,12 @@ platform access is configured, and adds an opt-in actual-main smoke using only
 synthetic files and a uniquely owned loopback test database. Local race tests
 pass; commit `9812807` subsequently passed every job in CI37405031722. See
 `deploy/RUNTIME-SECRETS.md` for the exact boundary and test opt-in.
+
+## Offline tenant-resource planning (local increment)
+
+`deploy/tenant_plan.py` accepts strict non-secret tenant configuration and emits
+non-executable, digest-identified resource plans. Distinct per-tenant resources,
+loopback HTTP, pinned image references and restricted DB-role requirements are
+covered by eight pure tests. All 45 deployment/packaging Python tests pass.
+No Docker/secret/network operations or provisioning worker are added; see
+`deploy/TENANT-PLAN.md` for remaining execution gates. Remote CI is pending.
