@@ -17,6 +17,7 @@ import { createProvisioningStage } from '../provisioning-stage.mjs';
 import { createProvisioningEvidence } from '../provisioning-evidence.mjs';
 import { createProvisioningRuntimeProbe } from '../provisioning-runtime-probe.mjs';
 import { createProvisioningComposeApply } from '../provisioning-compose-apply.mjs';
+import { createProvisioningVerification } from '../provisioning-verification.mjs';
 import { createProvisioningHostLock } from '../provisioning-host-lock.mjs';
 import { createProvisioningProcess } from '../provisioning-process.mjs';
 import { validateContext } from '../../../integration/provisioning-cancellation-smoke.mjs';
@@ -200,21 +201,19 @@ export async function runSmoke(image, env = process.env) {
           if (number === 1) throw new Error('intentional_fixture_lost_apply_reply');
         },
         async verify(prepared) {
-          const containerIds = await verifyOwnership(f, true);
-          if (await status(config.httpPort, '/healthz') !== 200
-              || await status(config.httpPort, '/api/restaurant/catalog', f.key) !== 200
-              || await status(config.httpPort, '/api/restaurant/catalog', 'wrong-public-fixture-key') !== 401)
-            throw new Error('fixture_runtime_authentication');
-          const reference = await evidenceStore.write({ jobId: prepared.job.id, workerId: prepared.job.workerId,
-            tenantId, planDigest: plan.planDigest, projectName: plan.projectName, sourceCommit: env.GITHUB_SHA, scope: 'fixture',
-            resources: { restaurant: { containerId: containerIds.restaurant, imageId: images.restaurant },
-              postgres: { containerId: containerIds.postgres, imageId: images.postgres } },
-            checks: { ownership: true, healthy: true, authenticated: true, unauthorizedRejected: true } });
-          // Read from a fresh store instance, not an in-memory attestation cache.
-          const stored = await createProvisioningEvidence({ directory: evidenceRoot }).read(reference);
-          if (hash(JSON.stringify(stored) + '\n') !== reference.sha256) throw new Error('fixture_evidence_changed');
-          f.verificationEvidence = { reference, stored };
-          return { jobId: prepared.job.id, tenantId, planDigest: plan.planDigest, verificationSha256: reference.sha256 };
+          const verification = createProvisioningVerification({ probe: runtimeProbe, evidence: {
+            write: report => evidenceStore.write(report),
+            read: reference => createProvisioningEvidence({ directory: evidenceRoot }).read(reference),
+          }, sourceCommit: env.GITHUB_SHA, scope: 'fixture', authenticate: async ({ port }) => ({
+            authenticated: await status(port, '/healthz') === 200 && await status(port, '/api/restaurant/catalog', f.key) === 200,
+            unauthorizedRejected: await status(port, '/api/restaurant/catalog', 'wrong-public-fixture-key') === 401,
+          }) });
+          const result = await verification.verify({ job: prepared.job,
+            expected: { tenantId, planDigest: plan.planDigest, projectName: plan.projectName,
+              images, httpPort: config.httpPort, compose: f.spec } });
+          f.verificationEvidence = result.evidence;
+          return { jobId: result.jobId, tenantId: result.tenantId, planDigest: result.planDigest,
+            verificationSha256: result.verificationSha256 };
         },
       };
       const runner = createProvisioningRunner({ journal, artifacts, driver });

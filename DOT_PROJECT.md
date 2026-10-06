@@ -920,3 +920,14 @@ The owner-authorized public route resolves the temporary hosted-dispatch hold;
 no paid/larger runner, billing budget or self-hosted registration was configured.
 Local checks and batched acceptance remain preferred. The last accepted code
 checkpoint is still5d97331; visibility/docs changes do not constitute new tests.
+
+## Stable provisioning verification — 2026-10-06, CI pending
+
+A shared private verifier now requires full owned runtime observations before
+and after authenticated/unauthorized HTTP checks, with stable container/image
+IDs, then writes and rereads exact-bound immutable evidence. Copied observations
+prevent a changing runtime from being attested as the original one. Unknown
+attempts can be inspected only through the caller's explicit reconciliation;
+there is no retry/delete/activation. Six new focused groups plus four fixture
+guards pass locally; actual daemon acceptance is pending. See
+`prototype/platform/PROVISIONING-VERIFICATION.md`.
