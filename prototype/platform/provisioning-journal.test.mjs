@@ -7,6 +7,7 @@ import { createProvisioningJournal } from './provisioning-journal.mjs';
 import { createProvisioningArtifacts } from './provisioning-artifacts.mjs';
 import { createProvisioningRunner } from './provisioning-runner.mjs';
 import { createProvisioningHostLock } from './provisioning-host-lock.mjs';
+import { createProvisioningStage } from './provisioning-stage.mjs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -224,6 +225,8 @@ test('durable operator provisioning intents and fenced outcomes', { skip: !proce
     pending = await journal.reconcile(actor.id, pending.id, { expectedVersion: pending.version, decision: 'requeue', evidenceDigest: evidence });
     let locked = false, applies = 0, expireDuringApply = true;
     const hostLock = createProvisioningHostLock({ directory: directoryPath });
+    const stage = createProvisioningStage({ journal, directory: directoryPath });
+    let staged;
     const driver = {
       async withLock(resource, operation) {
         assert.equal(resource, plan.projectName);
@@ -233,10 +236,11 @@ test('durable operator provisioning intents and fenced outcomes', { skip: !proce
         });
       },
       async inspect(prepared) { assert.ok(locked); assert.equal(prepared.job.id, pending.id); },
-      async apply(_prepared, { checkpoint }) {
+      async apply(prepared, { checkpoint }) {
         assert.ok(locked); applies++;
         if (expireDuringApply) await pool.query("UPDATE platform_provision_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [pending.id]);
-        await checkpoint();
+        const fence = await checkpoint();
+        staged = await stage.stage(actor.id, prepared, { expectedVersion: fence.version, workerId: fence.workerId });
       },
       async verify(prepared) {
         return { jobId: prepared.job.id, tenantId: prepared.job.tenantId,
@@ -254,6 +258,8 @@ test('durable operator provisioning intents and fenced outcomes', { skip: !proce
     expireDuringApply = false;
     const completed = await runner.run(actor.id, pending.id, { expectedVersion: pending.version, workerId: randomUUID() });
     assert.equal(completed.state, 'succeeded'); assert.equal(applies, 2); assert.equal(locked, false);
+    assert.equal(staged.receipt.planDigest, plan.planDigest);
+    assert.equal(staged.receipt.jobId, pending.id);
     assert.equal((await journal.get(actor.id, pending.id)).evidenceDigest, completed.evidenceDigest);
     assert.equal((await pool.query("SELECT status FROM platform_tenants WHERE id='artifact-bridge'")).rows[0].status, 'draft');
   });

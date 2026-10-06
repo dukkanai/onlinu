@@ -594,3 +594,13 @@ echo diagnostic output. Real synthetic parent/descendant cancellation tests are
 included. Docker daemon cancellation and actual apply/recovery remain separate;
 see `prototype/platform/PROVISIONING-PROCESS.md`. Commit `28709b0` passed all four
 ordinary CI37440216640 jobs; the optional unchanged runtime-image job was skipped.
+
+## Exclusive reviewed-artifact staging (local increment)
+
+The private artifact bridge now marks its immutable in-process results; a new
+stager rejects arbitrary JSON/lookalikes and requires a current claimed worker.
+It exclusively creates private per-attempt Compose/receipt files plus verified
+public bootstrap SQL, synchronizes them and retains partial evidence on failure.
+Authority and fencing are checked before/after filesystem work. No credential
+value or Docker operation is involved. See
+`prototype/platform/PROVISIONING-STAGE.md`; remote CI is pending.

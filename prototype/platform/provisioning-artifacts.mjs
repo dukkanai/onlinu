@@ -12,6 +12,8 @@ import { problem } from './auth.mjs';
 
 const compiler = fileURLToPath(new URL('../../deploy/tenant_plan.py', import.meta.url));
 const bootstrap = fileURLToPath(new URL('../../deploy/tenant-bootstrap.sql', import.meta.url));
+const preparedArtifacts = new WeakSet();
+export function isPreparedArtifact(value) { return preparedArtifacts.has(value); }
 const limit = 262144;
 const hash = /^[a-f0-9]{64}$/;
 const image = /^[a-z0-9][a-z0-9./:_-]{0,240}@sha256:[a-f0-9]{64}$/;
@@ -130,7 +132,9 @@ export function createProvisioningArtifacts({ journal, artifactDirectory, artifa
         || current.tenantId !== job.tenantId || current.planDigest !== job.planDigest
         || current.expectedTenantVersion !== job.expectedTenantVersion || current.workerId !== job.workerId
         || current.claimedBy !== job.claimedBy) throw problem(409, 'provisioning_changed_during_preflight');
-    return freeze({ job: { ...current }, plan, compose, bootstrapSQL });
+    const prepared = freeze({ job: { ...current }, plan, compose, bootstrapSQL });
+    preparedArtifacts.add(prepared);
+    return prepared;
   }
   return { prepare };
 }

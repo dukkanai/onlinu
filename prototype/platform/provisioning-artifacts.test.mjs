@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, readdir, rm, chmod, unlink, symlink, link, access } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, readdir, rm, chmod, unlink, symlink, link, access, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID, createHash } from 'node:crypto';
 import { createProvisioningArtifacts } from './provisioning-artifacts.mjs';
 import { problem } from './auth.mjs';
+import { createProvisioningStage } from './provisioning-stage.mjs';
 
 const compiler = fileURLToPath(new URL('../../deploy/tenant_plan.py', import.meta.url));
 const bootstrap = fileURLToPath(new URL('../../deploy/tenant-bootstrap.sql', import.meta.url));
@@ -156,4 +157,71 @@ test('compiler ignores Python startup injection and does not modify the artifact
   try { await f.prepare(); }
   finally { if (oldPath === undefined) delete process.env.PYTHONPATH; else process.env.PYTHONPATH = oldPath; }
   await assert.rejects(access(marker));
+});
+
+
+async function stageFixture(t) {
+  const f = await fixture(t);
+  f.job.state = 'claimed'; f.job.workerId = randomUUID(); f.job.claimedBy = f.actor;
+  const prepared = await f.prepare();
+  const directory = await mkdtemp(join(tmpdir(), 'onlinu-stage-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const args = { expectedVersion: f.job.version, workerId: f.job.workerId };
+  return { ...f, prepared, directory, args, stager: createProvisioningStage({ journal: f.journal, directory }) };
+}
+
+test('reviewed staging writes exact public artifacts exclusively and preserves their hashes', async t => {
+  const f = await stageFixture(t);
+  const result = await f.stager.stage(f.actor, f.prepared, f.args);
+  assert.ok(Object.isFrozen(result)); assert.ok(Object.isFrozen(result.receipt));
+  const raw = await readFile(result.manifestPath, 'utf8');
+  assert.deepEqual(JSON.parse(raw), f.prepared.compose);
+  assert.equal(createHash('sha256').update(raw).digest('hex'), result.receipt.manifestSha256);
+  assert.equal(await readFile(result.bootstrapPath, 'utf8'), f.prepared.bootstrapSQL);
+  assert.equal((await stat(result.manifestPath)).mode & 0o777, 0o600);
+  assert.equal((await stat(result.bootstrapPath)).mode & 0o777, 0o444);
+  assert.deepEqual((await readdir(result.directory)).sort(), ['compose.json', 'receipt.json', 'tenant-bootstrap.sql']);
+  await assert.rejects(f.stager.stage(f.actor, f.prepared, f.args), { code: 'provisioning_stage_rejected' });
+  assert.equal(await readFile(result.manifestPath, 'utf8'), raw, 'retry cannot overwrite evidence');
+});
+
+test('staging rejects unbranded or queued objects before writing any files', async t => {
+  const f = await stageFixture(t);
+  await assert.rejects(f.stager.stage(f.actor, structuredClone(f.prepared), f.args), { code: 'provisioning_stage_rejected' });
+  f.job.state = 'queued'; f.job.workerId = null; f.job.claimedBy = null;
+  await assert.rejects(f.stager.stage(f.actor, await f.prepare(), f.args), { code: 'provisioning_stage_rejected' });
+  assert.deepEqual(await readdir(f.directory), []);
+});
+
+test('staging checks live authority before filesystem access and retains evidence after later revocation', async t => {
+  const f = await stageFixture(t);
+  const denied = createProvisioningStage({ directory: '/does-not-exist', journal: {
+    async review() { throw problem(403, 'identity_disabled'); },
+  } });
+  await assert.rejects(denied.stage(f.actor, f.prepared, f.args), { code: 'identity_disabled' });
+  let calls = 0;
+  const revoked = createProvisioningStage({ directory: f.directory, journal: {
+    async review() { if (++calls === 2) throw problem(403, 'identity_disabled'); return { ...f.job }; },
+  } });
+  await assert.rejects(revoked.stage(f.actor, f.prepared, f.args), { code: 'identity_disabled' });
+  const project = join(f.directory, f.prepared.plan.projectName);
+  const attempt = join(project, f.job.id + '-' + f.job.workerId);
+  assert.deepEqual((await readdir(attempt)).sort(), ['compose.json', 'receipt.json', 'tenant-bootstrap.sql']);
+  await assert.rejects(f.stager.stage(f.actor, f.prepared, f.args), { code: 'provisioning_stage_rejected' });
+});
+
+test('staging rejects a changed worker or unsafe host directory', async t => {
+  const f = await stageFixture(t);
+  const changed = createProvisioningStage({ directory: f.directory, journal: {
+    async review() { return { ...f.job, workerId: randomUUID() }; },
+  } });
+  await assert.rejects(changed.stage(f.actor, f.prepared, f.args), { code: 'provisioning_stage_rejected' });
+  await chmod(f.directory, 0o755);
+  await assert.rejects(f.stager.stage(f.actor, f.prepared, f.args), { code: 'provisioning_stage_rejected' });
+  await chmod(f.directory, 0o700);
+  const alias = join(f.directory, 'alias'); await symlink(f.directory, alias);
+  await assert.rejects(createProvisioningStage({ journal: f.journal, directory: alias }).stage(f.actor, f.prepared, f.args),
+    { code: 'provisioning_stage_rejected' });
+  await assert.rejects(createProvisioningStage({ journal: f.journal, directory: f.directory, ownerUID: process.getuid() + 1 })
+    .stage(f.actor, f.prepared, f.args), { code: 'provisioning_stage_rejected' });
 });
