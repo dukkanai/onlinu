@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# Synthetic acceptance on an ephemeral GitHub runner only; not a deploy script.
+set -euo pipefail
+[[ "${GITHUB_ACTIONS:-}" == true && "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ && "${GITHUB_SHA:-}" =~ ^[a-f0-9]{40}$ && "${RUNNER_TEMP:-}" == /* ]] || {
+  echo 'This test requires an ephemeral GitHub Actions runner.' >&2; exit 2;
+}
+image="${1:?runtime image required}"
+[[ "$image" == "onlinu-runtime-smoke:$GITHUB_SHA" ]] || { echo 'Unexpected test image.' >&2; exit 2; }
+# Never inherit an explicitly configured remote Docker daemon.
+unset DOCKER_HOST DOCKER_CONTEXT
+prefix="onlinu-image-smoke-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+network="$prefix-network"
+postgres="$prefix-postgres"
+runtime="$prefix-runtime"
+media="$prefix-media"
+root="$(mktemp -d "$RUNNER_TEMP/onlinu-image-smoke.XXXXXXXX")"
+owned_runtime=false
+owned_postgres=false
+owned_media=false
+owned_network=false
+cleanup() {
+  # These are the exact test-owned names, never enumerated production resources.
+  if [[ "$owned_runtime" == true ]]; then docker rm -f "$runtime" >/dev/null 2>&1 || true; fi
+  if [[ "$owned_postgres" == true ]]; then docker rm -f "$postgres" >/dev/null 2>&1 || true; fi
+  if [[ "$owned_media" == true ]]; then docker volume rm "$media" >/dev/null 2>&1 || true; fi
+  if [[ "$owned_network" == true ]]; then docker network rm "$network" >/dev/null 2>&1 || true; fi
+  # Only generated files in the mktemp-owned directory; no recursive deletion.
+  rm -f "$root/admin-key" "$root/runtime-pg-url" "$root/pg-bootstrap" "$root/response"
+  rmdir "$root" 2>/dev/null || true
+}
+trap cleanup EXIT
+for container in "$postgres" "$runtime"; do
+  if docker container inspect "$container" >/dev/null 2>&1; then
+    echo 'Test resource already exists; refusing ownership assumption.' >&2; exit 2
+  fi
+done
+if docker network inspect "$network" >/dev/null 2>&1 || docker volume inspect "$media" >/dev/null 2>&1; then
+  echo 'Test resource already exists; refusing ownership assumption.' >&2; exit 2
+fi
+# Values below are disposable test fixtures, never supplied production keys.
+printf '%s\n' 'synthetic-image-administrator' > "$root/admin-key"
+printf '%s\n' 'synthetic-image-bootstrap' > "$root/pg-bootstrap"
+printf '%s\n' 'postgres://runtime_fixture:synthetic-runtime-password@fixture-db:5432/postgres?sslmode=disable' > "$root/runtime-pg-url"
+chmod 755 "$root"
+chmod 444 "$root/admin-key" "$root/runtime-pg-url" "$root/pg-bootstrap"
+docker network create --internal "$network" >/dev/null
+owned_network=true
+docker volume create "$media" >/dev/null
+owned_media=true
+docker create --name "$postgres" --network "$network" --network-alias fixture-db \
+  --mount "type=bind,source=$root/pg-bootstrap,target=/run/secrets/pg-bootstrap,readonly" \
+  --env POSTGRES_PASSWORD_FILE=/run/secrets/pg-bootstrap \
+  --health-cmd 'pg_isready -U postgres -d postgres' --health-interval 2s --health-timeout 2s --health-retries 30 \
+  postgres:16 >/dev/null
+owned_postgres=true
+docker start "$postgres" >/dev/null
+for attempt in $(seq 1 60); do
+  if [[ "$(docker inspect --format '{{.State.Health.Status}}' "$postgres")" == healthy ]]; then break; fi
+  sleep 2
+done
+[[ "$(docker inspect --format '{{.State.Health.Status}}' "$postgres")" == healthy ]] || { echo 'Fixture PostgreSQL did not become healthy.' >&2; exit 1; }
+docker exec -i "$postgres" psql -U postgres -d postgres -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+CREATE ROLE runtime_fixture LOGIN NOSUPERUSER NOCREATEROLE CREATEDB NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-runtime-password';
+SQL
+# Inspect shipped codec linkage without making any call or provider request.
+docker run --rm --network none --entrypoint /bin/sh "$image" -c \
+  'test -r /usr/local/lib/libopus_mlow.so && ldd /usr/local/bin/wacalls > /tmp/linkage && ! grep "not found" /tmp/linkage'
+docker create --name "$runtime" --network "$network" \
+  --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+  --tmpfs /tmp:rw,noexec,nosuid,size=128m,mode=1777 \
+  --mount "type=volume,source=$media,target=/data/recordings" \
+  --mount "type=bind,source=$root/admin-key,target=/run/secrets/admin-key,readonly" \
+  --mount "type=bind,source=$root/runtime-pg-url,target=/run/secrets/runtime-pg-url,readonly" \
+  --env WACALLS_API_KEY_FILE=/run/secrets/admin-key \
+  --env WACALLS_PG_URL_FILE=/run/secrets/runtime-pg-url \
+  --env WACALLS_PLATFORM_ISSUER=https://platform.example.invalid \
+  --env WACALLS_PLATFORM_TENANT_ID=runtime-image-fixture \
+  --env WACALLS_PLATFORM_PUBLIC_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8= \
+  --env WACALLS_PUBLIC_BASE_URL=https://restaurant.example.invalid \
+  --publish 127.0.0.1::8080 "$image" >/dev/null
+owned_runtime=true
+docker start "$runtime" >/dev/null
+port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort}}' "$runtime")"
+[[ "$port" =~ ^[0-9]+$ ]] || { echo 'No loopback test port.' >&2; exit 1; }
+base="http://127.0.0.1:$port"
+healthy=false
+for attempt in $(seq 1 60); do
+  if curl --noproxy '*' --fail --silent --max-time 2 "$base/healthz" > "$root/response" && grep -qx ok "$root/response"; then healthy=true; break; fi
+  sleep 2
+done
+[[ "$healthy" == true ]] || { echo 'Runtime image did not become healthy.' >&2; exit 1; }
+[[ "$(docker inspect --format '{{.Config.User}}' "$runtime")" == '10001:10001' ]]
+[[ "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$runtime")" == true ]]
+[[ "$(curl --noproxy '*' --silent --max-time 5 --output /dev/null --write-out '%{http_code}' "$base/api/restaurant/catalog")" == 401 ]]
+[[ "$(curl --noproxy '*' --silent --max-time 5 --output /dev/null --write-out '%{http_code}' --header 'X-API-Key: synthetic-image-administrator' "$base/api/restaurant/catalog")" == 200 ]]
+[[ "$(docker exec "$postgres" psql -U postgres -d postgres -Atc "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='wacalls_main'")" == runtime_fixture ]]
+# Do not upload raw runtime logs: assert fixture values were not disclosed.
+if docker logs "$runtime" 2>&1 | grep -Eq 'synthetic-image-administrator|synthetic-runtime-password|synthetic-image-bootstrap|postgres://'; then
+  echo 'Runtime logs disclosed fixture credentials.' >&2; exit 1
+fi
+image_id="$(docker image inspect --format '{{.Id}}' "$image")"
+python3 - "$RUNNER_TEMP/onlinu-runtime-image-report.json" "$GITHUB_SHA" "$image_id" <<'PY'
+import json, sys
+with open(sys.argv[1], 'w', encoding='utf-8') as output:
+    json.dump({'sourceCommit': sys.argv[2], 'localImageId': sys.argv[3],
+               'registryPublished': False, 'productionDeployed': False,
+               'checks': ['codec-linkage', 'uid-10001', 'readonly-root', 'file-backed-secrets',
+                          'health', 'administrator-authentication', 'restricted-database-owner',
+                          'no-fixture-secret-in-runtime-log'],
+               'notVerified': ['real-calls', 'provider-accounts', 'production-routing',
+                               'multi-tenant-isolation', 'registry-digest']}, output, indent=2)
+PY

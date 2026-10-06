@@ -2,6 +2,12 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      runtime_image:
+        description: Run separately approved codec-bearing runtime image acceptance
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -57,8 +63,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test non-executing tenant resource planner
-        run: python3 -m unittest discover -s deploy -p 'test_tenant_plan.py' -v
+      - name: Test deployment planning and safety guards
+        run: python3 -m unittest discover -s deploy -p 'test_*.py' -v
 
       - name: Set up Node for core adapter integration
         uses: actions/setup-node@v4
@@ -246,5 +252,27 @@ jobs:
         with:
           name: onlinu-windows-unsigned-smoke-${{ github.sha }}
           path: prototype/admin_flutter/build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 7
+
+  runtime-image:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime_image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the original codec-bearing runtime image
+        timeout-minutes: 35
+        run: docker build --tag "onlinu-runtime-smoke:$GITHUB_SHA" .
+      - name: Exercise isolated runtime image
+        run: bash integration/runtime-image-smoke.sh "onlinu-runtime-smoke:$GITHUB_SHA"
+      - name: Upload non-secret acceptance report
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-runtime-image-${{ github.sha }}
+          path: ${{ runner.temp }}/onlinu-runtime-image-report.json
           if-no-files-found: error
           retention-days: 7
