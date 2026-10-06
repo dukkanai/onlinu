@@ -750,3 +750,12 @@ Go input/build/vet and focused Node checks pass; local platform 204 passed with
 12 database skips. Actual PostgreSQL and cross-language acceptance is pending;
 no management form or Flutter editor yet. See
 `prototype/platform/PAYMENT-METHOD-MANAGEMENT.md`.
+
+Payment-method API acceptance: corrected fixture commit `25c8067` passed all
+four ordinary CI37485775619 jobs. The shared fixture's default card-availability
+stub was explicitly disabled for the unconfigured-provider test; production
+behavior was unchanged. Browser management forms are now added with explicit
+review, current read/write authority, strict checkbox parsing and availability
+warnings. Local page tests and platform 206 passed / 12 database skips; actual
+Chromium rendering/mutations and revocation checks await CI. Flutter editor is
+not yet included.

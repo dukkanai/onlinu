@@ -312,6 +312,28 @@ try {
   const paymentSettingsRestored=await send(paymentSettingsPath,{method:'POST',token:nativeToken,body:{expectedVersion:paymentSettingsChanged.data.version,mode:'delivery',methods:initialPaymentMethods.modes.find(v=>v.mode==='delivery').methods}});
   assert.equal(paymentSettingsRestored.status,200,JSON.stringify(paymentSettingsRestored.data));
   assert.deepEqual(paymentSettingsRestored.data,{...initialPaymentMethods,version:initialPaymentMethods.version+2});
+  for(const transport of ['form','api','native'])for(const grant of ['settings:read','settings:update']){
+    let revoked=false;
+    app.directory.authorize=async(...args)=>{
+      const result=await originalAuthorize(...args);
+      if(!revoked&&args[0]===alice.id&&args[1]==='restaurant-a'&&args[2]===grant){
+        await pool.query('UPDATE platform_memberships SET permissions=permissions-$3::text WHERE tenant_id=$1 AND principal_id=$2',['restaurant-a',alice.id,grant]);revoked=true;
+      }
+      return result;
+    };
+    try{
+      const version=paymentSettingsRestored.data.version;
+      const response=transport==='form'
+        ?await send('/manage/restaurant-a/payment-methods',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl,'content-type':'application/x-www-form-urlencoded'},raw:new URLSearchParams({csrf,reviewed:'yes',expectedVersion:String(version),mode:'delivery',method_card:'yes'}).toString()})
+        :await send((transport==='native'?'/native':'')+'/api/restaurants/restaurant-a/staff/payment-methods',{method:'POST',...(transport==='native'?{token:nativeToken}:{cookie:alice.cookie,headers:{origin:baseUrl,'x-csrf-token':csrf}}),body:{expectedVersion:version,mode:'delivery',methods:['card']}});
+      assert.equal(revoked,true);assert.equal(response.status,403,JSON.stringify({transport,grant,response}));
+    }finally{
+      app.directory.authorize=originalAuthorize;
+      await pool.query('UPDATE platform_memberships SET permissions=$3::jsonb WHERE tenant_id=$1 AND principal_id=$2',['restaurant-a',alice.id,JSON.stringify(deliveryPermissions)]);
+    }
+    assert.deepEqual((await send(paymentSettingsPath,{token:nativeToken})).data,paymentSettingsRestored.data);
+  }
+  assert.equal((await send('/manage/restaurant-a/payment-methods',{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl,'content-type':'application/x-www-form-urlencoded'},raw:new URLSearchParams({csrf,expectedVersion:String(paymentSettingsRestored.data.version),mode:'delivery',method_card:'yes'}).toString()})).status,400);
   if(process.env.CORE_BROWSER_TEST==='1'){
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,
@@ -519,6 +541,29 @@ try {
       await page.locator(`input[name="expectedVersion"][value="${zoneState.version+3}"]`).first().waitFor({state:'attached'});
       const browserCleared=(await send('/api/restaurants/restaurant-a/staff/delivery',{cookie:alice.cookie})).data;
       assert.equal(browserCleared.latitude,null);assert.equal(browserCleared.longitude,null);assert.equal(browserCleared.radiusKm,0);assert.equal(browserCleared.requireLocation,false);
+
+      await page.goto(baseUrl+'/manage/restaurant-a/payment-methods');
+      assert.match(await page.locator('body').innerText(),/ليست دليلًا على اتصال مزود دفع/);
+      const deliveryPayments=page.locator('form').filter({has:page.locator('input[name="mode"][value="delivery"]')});
+      const paymentFormVersion=Number(await deliveryPayments.locator('input[name="expectedVersion"]').inputValue());
+      await deliveryPayments.getByLabel('الدفع الإلكتروني',{exact:true}).uncheck();
+      await deliveryPayments.getByLabel('الدفع النقدي عند التوصيل',{exact:true}).check();
+      await deliveryPayments.getByLabel('راجعت أثر طرق الدفع على الطلبات الجديدة',{exact:true}).check();
+      await deliveryPayments.getByRole('button',{name:'حفظ طرق الدفع',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${paymentFormVersion+1}"]`).first().waitFor({state:'attached'});
+      const browserPaymentState=(await send(paymentSettingsPath,{token:nativeToken})).data;
+      assert.deepEqual(browserPaymentState.modes.find(v=>v.mode==='delivery').methods,['cash_on_delivery']);
+      if(process.env.CORE_PAYMENT_METHODS_SCREENSHOT){
+        const fs=await import('node:fs/promises'),path=await import('node:path');await fs.mkdir(path.dirname(process.env.CORE_PAYMENT_METHODS_SCREENSHOT),{recursive:true});
+        await page.screenshot({path:process.env.CORE_PAYMENT_METHODS_SCREENSHOT,fullPage:true});
+      }
+      const originalDeliveryMethods=initialPaymentMethods.modes.find(v=>v.mode==='delivery').methods;
+      await deliveryPayments.getByLabel('الدفع الإلكتروني',{exact:true}).setChecked(originalDeliveryMethods.includes('card'));
+      await deliveryPayments.getByLabel('الدفع النقدي عند التوصيل',{exact:true}).setChecked(originalDeliveryMethods.includes('cash_on_delivery'));
+      await deliveryPayments.getByLabel('راجعت أثر طرق الدفع على الطلبات الجديدة',{exact:true}).check();
+      await deliveryPayments.getByRole('button',{name:'حفظ طرق الدفع',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${paymentFormVersion+2}"]`).first().waitFor({state:'attached'});
+      assert.deepEqual((await send(paymentSettingsPath,{token:nativeToken})).data.modes.find(v=>v.mode==='delivery').methods,originalDeliveryMethods);
 
       await page.goto(baseUrl+'/manage/restaurant-a/orders/'+order.number+'/finance');
       assert.match(await page.locator('body').innerText(),/المبلغ المحصل المؤكد/);assert.equal(await page.locator('form').count(),0);

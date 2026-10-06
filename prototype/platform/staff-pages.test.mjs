@@ -168,3 +168,18 @@ test('delivery location editor requires review and write authority and hides uns
  assert.doesNotMatch(staffDeliveryPage(older),/action="\/manage\/a\/delivery\/location"/);
  assert.match(staffDeliveryPage({...args,data:{...args.data,latitude:null,longitude:null}}),/name="latitude" value=""/);
 });
+
+test('payment-method form keeps intent explicit and rejects foreign methods and hidden extra state',async()=>{
+ const {paymentMethodsForm}=await import('./staff-pages.mjs');
+ const input={csrf:'x',expectedVersion:'4',reviewed:'yes',mode:'delivery',method_cash_on_delivery:'yes',method_card:'yes'};
+ assert.deepEqual(paymentMethodsForm(input),{expectedVersion:4,mode:'delivery',methods:['cash_on_delivery','card']});
+ for(const diff of [{reviewed:undefined},{mode:'constructor'},{mode:'pickup'},{method_card:'false'},{provider:'stripe'},{expectedVersion:'1e2'},{expectedVersion:'9007199254740991'},{method_cash_after:'yes'}])assert.equal(paymentMethodsForm({...input,...diff}),null);
+ assert.deepEqual(paymentMethodsForm({csrf:'x',expectedVersion:'4',reviewed:'yes',mode:'pickup'}),{expectedVersion:4,mode:'pickup',methods:[]});
+});
+
+test('payment settings page distinguishes configured methods from live availability and hides unauthorized writes',async()=>{
+ const {staffPaymentMethodsPage}=await import('./staff-pages.mjs');
+ const args={tenantId:'<tenant>',csrf:'<secret>',canUpdate:true,data:{version:4,currency:'SAR',demo:true,modes:[{mode:'delivery',enabled:true,methods:['cash_on_delivery','card']},{mode:'pickup',enabled:false,methods:[]},{mode:'table',enabled:true,methods:['cash_after']}]}};
+ const html=staffPaymentMethodsPage(args);assert.match(html,/&lt;tenant&gt;/);assert.match(html,/&lt;secret&gt;/);assert.match(html,/ليست دليلًا على اتصال مزود دفع/);assert.match(html,/لا يُحصّل مالًا/);assert.match(html,/name="reviewed" value="yes" required/);assert.equal((html.match(/>حفظ طرق الدفع</g)||[]).length,3);
+ const readOnly=staffPaymentMethodsPage({...args,canUpdate:false});assert.doesNotMatch(readOnly,/>حفظ طرق الدفع</);assert.match(readOnly,/disabled/);
+});

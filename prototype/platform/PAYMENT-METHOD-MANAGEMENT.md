@@ -39,3 +39,18 @@ The test now explicitly clears that callback for its unconfigured-provider
 scenario, then re-enables a synthetic callback to check the positive case.
 Production availability logic and assertions are unchanged. The other three
 ordinary jobs passed; corrected database/aggregate acceptance is pending.
+
+Corrected API commit `25c8067c217fc65fe6e4f66d9b13a9bacb2f395f` passed all four
+ordinary jobs in CI37485775619, verified 2026-10-06 15:28 UTC. The full runtime
+image job was intentionally skipped. PostgreSQL historical-order/availability/
+audit tests and signed cross-language API mutations passed.
+
+The browser management follow-on adds one reviewed form per service mode and a
+settings-scoped navigation link. It labels configured choices separately from
+provider availability and warns that disabling cash can leave checkout
+unavailable. Invalid/foreign checkbox fields and unreviewed requests are rejected;
+read/write grants are checked again after parsing. Local page/form tests pass,
+and the broader local platform suite has 206 passed with 12 database skips.
+Actual Chromium save/restore and six read/write-revocation transport cases await
+remote CI; a synthetic screenshot is retained for visual review. Flutter editing
+is still pending.

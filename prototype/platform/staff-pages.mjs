@@ -6,7 +6,7 @@ const label=value=>escape(labels[value]??value);
 const page=(title,body)=>`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title><h1>${escape(title)}</h1>${body}</html>`;
 
 export function staffHome(principal,{coreEnabled=true,nativeEnabled=false}={}){
-  const sections=[['orders:read','orders',''],['orders:read','support','دعم '],['menu:read','menu','منيو '],['stock:read','stock','مخزون '],['channels:manage','channels','قنوات '],['members:manage','members','فريق '],['settings:read','profile','بيانات '],['settings:read','delivery','توصيل '],['settings:read','service','استقبال '],['settings:read','brand','مظهر '],['settings:read','tax','ضريبة ']].filter(([,path])=>coreEnabled||path==='members');
+  const sections=[['orders:read','orders',''],['orders:read','support','دعم '],['menu:read','menu','منيو '],['stock:read','stock','مخزون '],['channels:manage','channels','قنوات '],['members:manage','members','فريق '],['settings:read','profile','بيانات '],['settings:read','delivery','توصيل '],['settings:read','service','استقبال '],['settings:read','brand','مظهر '],['settings:read','tax','ضريبة '],['settings:read','payment-methods','طرق الدفع ']].filter(([,path])=>coreEnabled||path==='members');
   const memberships=principal.memberships.filter(member=>sections.some(([permission])=>member.permissions.includes(permission)));
   const rows=memberships.map(member=>{
     const links=sections.filter(([permission])=>member.permissions.includes(permission)).map(([,path,prefix])=>`<a href="/manage/${escape(member.tenantId)}/${path}">${escape(prefix+member.tenantId)}</a>`).join(' · ');
@@ -116,6 +116,21 @@ export function deliveryLocationForm(input){
   origin={latitude,longitude};
  }else if(radiusKm>0)return null;
  return {expectedVersion:Number(input.expectedVersion),origin,radiusKm,requireLocation:input.requireLocation==='true'};
+}
+
+const paymentChoices={delivery:['cash_on_delivery','card'],pickup:['card'],table:['cash_before','cash_after','card']};
+const paymentLabels={card:'الدفع الإلكتروني',cash_on_delivery:'الدفع النقدي عند التوصيل',cash_before:'الدفع النقدي قبل الخدمة',cash_after:'الدفع النقدي بعد الخدمة'};
+const serviceModeLabels={delivery:'التوصيل',pickup:'الاستلام',table:'الطاولات'};
+export function paymentMethodsForm(input){
+ if(!Object.hasOwn(paymentChoices,input.mode)||input.reviewed!=='yes'||typeof input.expectedVersion!=='string'||!/^[1-9][0-9]{0,15}$/.test(input.expectedVersion))return null;
+ const version=Number(input.expectedVersion);if(!Number.isSafeInteger(version)||version>=Number.MAX_SAFE_INTEGER)return null;
+ const options=paymentChoices[input.mode],fields=options.map(m=>'method_'+m),allowed=['csrf','mode','expectedVersion','reviewed',...fields];
+ if(Object.keys(input).some(k=>!allowed.includes(k))||fields.some(k=>input[k]!==undefined&&input[k]!=='yes'))return null;
+ return {expectedVersion:version,mode:input.mode,methods:options.filter(m=>input['method_'+m]==='yes')};
+}
+export function staffPaymentMethodsPage({tenantId,data,canUpdate,csrf}){
+ const forms=data.modes.map(row=>`<section><h2>${escape(serviceModeLabels[row.mode])}</h2><p>الخدمة ${row.enabled?'مفعّلة':'متوقفة'}.</p><form method="post" action="/manage/${escape(tenantId)}/payment-methods"><input type="hidden" name="csrf" value="${escape(csrf)}"><input type="hidden" name="expectedVersion" value="${data.version}"><input type="hidden" name="mode" value="${row.mode}">${paymentChoices[row.mode].map(method=>`<p><label><input type="checkbox" name="method_${method}" value="yes" ${row.methods.includes(method)?'checked':''} ${canUpdate?'':'disabled'}>${escape(paymentLabels[method])}</label></p>`).join('')}${canUpdate?'<p><label><input type="checkbox" name="reviewed" value="yes" required>راجعت أثر طرق الدفع على الطلبات الجديدة</label></p><button>حفظ طرق الدفع</button>':''}</form></section>`).join('');
+ return page('طرق الدفع المهيأة',`<p>${escape(tenantId)} · ${data.demo?'وضع تجريبي':'وضع غير تجريبي'} · ${escape(data.currency)}</p><p>هذه خيارات الدفع المهيأة وليست دليلًا على اتصال مزود دفع. الدفع الإلكتروني يظهر للعميل فقط عند توفر مزود مؤهل للعملة ووضع التشغيل. تعطيل النقد مع عدم توفر مزود إلكتروني قد يمنع الطلبات الجديدة.</p><p>الخدمة المفعّلة تحتاج طريقة واحدة على الأقل. التغيير لا يُحصّل مالًا ولا يعدّل الطلبات السابقة أو مفاتيح مزودي الدفع.</p>${forms}<a href="/manage">رجوع</a>`);
 }
 
 export function staffDeliveryPage({tenantId,data,regions,cities,districts,region='',city='',search='',pageIndex=0,canUpdate,csrf}){

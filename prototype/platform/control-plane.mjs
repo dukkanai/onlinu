@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts, coreSupportInput } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { deliveryLocationForm,staffTaxPage,staffSupportPage,staffBrandPage,brandFormChoices,brandFormLabels,staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { paymentMethodsForm,staffPaymentMethodsPage,deliveryLocationForm,staffTaxPage,staffSupportPage,staffBrandPage,brandFormChoices,brandFormLabels,staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -288,6 +288,24 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         if(input.reviewed!=='yes'||typeof input.courierId!=='string'||input.courierId===''||Object.keys(input).some(k=>!['csrf','version','courierId','reviewed'].includes(k)))throw problem(400,'invalid_request');
         await orderClient.assignCourier(tenantId,who.id,number,{version:Number(input.version),courierId:input.courierId==='__remove__'?'':input.courierId});
         return redirect(res,'/manage/'+tenantId+'/orders/'+number,303);
+      }
+      const managementPaymentMethods=/^\/manage\/([a-z0-9-]{1,64})\/payment-methods$/.exec(url.pathname);
+      if(managementPaymentMethods&&orderClient){
+        const tenantId=managementPaymentMethods[1];
+        if(req.headers.authorization)throw problem(403,'browser_session_required');
+        if(url.search||!['GET','POST'].includes(req.method))throw problem(400,'invalid_request');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname));
+        const who=await browser(req),membership=await directory.authorize(who.id,tenantId,'settings:read');
+        if(req.method==='GET'){
+          const data=await orderClient.paymentMethods(tenantId,who.id);
+          htmlHeaders(res);res.end(staffPaymentMethodsPage({tenantId,data,canUpdate:membership.permissions.includes('settings:update'),csrf:auth.csrfToken(req)}));return;
+        }
+        await directory.authorize(who.id,tenantId,'settings:update');
+        const input=await body(req);auth.verifyCsrf(req,input.csrf);
+        const patch=paymentMethodsForm(input);if(!patch)throw problem(400,'invalid_request');
+        await directory.authorize(who.id,tenantId,'settings:read');await directory.authorize(who.id,tenantId,'settings:update');
+        await orderClient.patchPaymentMethods(tenantId,who.id,patch);
+        return redirect(res,'/manage/'+tenantId+'/payment-methods',303);
       }
       const managementDelivery=/^\/manage\/([a-z0-9-]{1,64})\/delivery(?:\/(pricing|zone|location))?$/.exec(url.pathname);
       if(managementDelivery&&orderClient){

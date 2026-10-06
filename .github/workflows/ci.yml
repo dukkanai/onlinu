@@ -61,6 +61,7 @@ jobs:
       TEST_RUNTIME_MAIN: "1"
       CORE_BROWSER_TEST: "1"
       CORE_DELIVERY_SCREENSHOT: ${{ github.workspace }}/artifacts/delivery-location/browser.png
+      CORE_PAYMENT_METHODS_SCREENSHOT: ${{ github.workspace }}/artifacts/payment-methods/browser.png
     steps:
       - uses: actions/checkout@v4
 
@@ -176,6 +177,15 @@ jobs:
         with:
           name: onlinu-delivery-location-${{ github.sha }}
           path: artifacts/delivery-location/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Preserve synthetic payment-method rendering
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-payment-methods-${{ github.sha }}
+          path: artifacts/payment-methods/*.png
           if-no-files-found: ignore
           retention-days: 7
 
