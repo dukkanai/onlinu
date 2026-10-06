@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -90,7 +89,7 @@ func newMetaManager(ctx context.Context, db *sql.DB) (*metaManager, error) {
 	m := &metaManager{db: db, graph: &metaGraphClient{}, accounts: map[string]metaAccount{}, locked: map[string]bool{}}
 	// A missing/unusable key disables only this provider, not existing QR
 	// connections. Never regenerate a key over an existing encrypted database.
-	m.aead, _ = newMetaCipher(os.Getenv("WACALLS_META_ENCRYPTION_KEY"))
+	m.aead, _ = newMetaCipher(runtimeSecret("WACALLS_META_ENCRYPTION_KEY"))
 	_, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS meta_accounts (
 		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL,

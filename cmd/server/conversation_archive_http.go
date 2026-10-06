@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -17,7 +16,7 @@ func archiveActor(r *http.Request) string {
 	return "admin:" + hex.EncodeToString(sum[:6])
 }
 func archiveMasterAuthorized(r *http.Request) bool {
-	want := os.Getenv("WACALLS_API_KEY")
+	want := runtimeSecret("WACALLS_API_KEY")
 	got := r.Header.Get("X-API-Key")
 	return want != "" && got != "" && subtle.ConstantTimeCompare([]byte(want), []byte(got)) == 1
 }

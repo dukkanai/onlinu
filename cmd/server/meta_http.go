@@ -15,7 +15,7 @@ import (
 )
 
 func (s *server) metaAvailable(w http.ResponseWriter) bool {
-	if s.meta == nil || s.metaCalls == nil || os.Getenv("WACALLS_API_KEY") == "" {
+	if s.meta == nil || s.metaCalls == nil || runtimeSecret("WACALLS_API_KEY") == "" {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Official accounts require API authentication and server configuration."})
 		return false
 	}

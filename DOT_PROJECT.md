@@ -475,3 +475,14 @@ Dart TLS/PKCE, Chromium tax review and Windows renderer/store/unsigned build pas
 The Arabic Windows tax-review screenshot was inspected and is readable. No real
 merchant registration/rate or production change occurred. Whole-product work
 remains open, including provisioning/billing, WhatsApp and external release gates.
+
+## Runtime secret-file preparation (local increment)
+
+`deploy/RUNTIME-SECRETS.md` documents five opt-in Go secret-file settings, private
+startup errors, immutable in-memory loading and no raw-value export to child
+process environments. Existing environment configuration remains supported; the
+installer and production configuration are unchanged. Actual main-help tests
+prevent a configured database URL from appearing as a flag default. Related
+original auth/Meta/archive/translation/restaurant and Node/Dart regressions pass
+locally; remote acceptance remains pending. This is preparation for isolated
+provisioning, not evidence that a provisioner or deployment has run.

@@ -25,7 +25,7 @@ func restaurantSessionCookieName() string {
 	// Cookies ignore ports. Independent installations on the same host must
 	// not overwrite each other's login cookie. Every installer generates a
 	// separate high-entropy master key; expose only its domain-separated hash.
-	digest := sha256.Sum256([]byte("restaurant-cookie-namespace\x00" + os.Getenv("WACALLS_API_KEY")))
+	digest := sha256.Sum256([]byte("restaurant-cookie-namespace\x00" + runtimeSecret("WACALLS_API_KEY")))
 	return restaurantCookieName + "_" + hex.EncodeToString(digest[:8])
 }
 
@@ -177,7 +177,7 @@ func (s *server) registerRestaurantRoutes(mux *http.ServeMux) {
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Referrer-Policy", "no-referrer")
 			if admin {
-				key := os.Getenv("WACALLS_API_KEY")
+				key := runtimeSecret("WACALLS_API_KEY")
 				got := r.Header.Get("X-API-Key")
 				expectedHash, gotHash := sha256.Sum256([]byte(key)), sha256.Sum256([]byte(got))
 				if key == "" || got == "" || subtle.ConstantTimeCompare(expectedHash[:], gotHash[:]) != 1 {

@@ -42,12 +42,18 @@ func newDBProvider(ctx context.Context, rawURL, ns string, waLogger waLog.Logger
 	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("WACALLS_PG_URL inválida: %w", err)
+		return nil, fmt.Errorf("WACALLS_PG_URL inválida")
 	}
 	admin, err := sql.Open("pgx", rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("abrir conexão admin: %w", err)
+		return nil, fmt.Errorf("cannot initialize PostgreSQL connection configuration")
 	}
+	ready := false
+	defer func() {
+		if !ready {
+			_ = admin.Close()
+		}
+	}()
 	// O Postgres pode subir depois do nosso container (Swarm não espera healthcheck).
 	// Tenta por ~60s antes de desistir, em vez de crashar de cara.
 	var pingErr error
@@ -55,7 +61,7 @@ func newDBProvider(ctx context.Context, rawURL, ns string, waLogger waLog.Logger
 		if pingErr = admin.PingContext(ctx); pingErr == nil {
 			break
 		}
-		log.Warn("aguardando Postgres ficar disponível", "host", u.Host, "tentativa", i+1)
+		log.Warn("aguardando Postgres ficar disponível", "tentativa", i+1)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -63,12 +69,13 @@ func newDBProvider(ctx context.Context, rawURL, ns string, waLogger waLog.Logger
 		}
 	}
 	if pingErr != nil {
-		return nil, fmt.Errorf("ping no Postgres (%s): %w", u.Host, pingErr)
+		return nil, fmt.Errorf("PostgreSQL connection unavailable after startup retries")
 	}
 	p := &dbProvider{base: u, ns: ns, waLogger: waLogger, log: log, admin: admin}
 	if err := p.ensureDatabase(ctx, p.mainDBName()); err != nil {
 		return nil, fmt.Errorf("garantir banco principal: %w", err)
 	}
+	ready = true
 	return p, nil
 }
 

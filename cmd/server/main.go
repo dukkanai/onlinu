@@ -32,12 +32,19 @@ func envStr(key, def string) string {
 }
 
 func main() {
+	fileSecrets, secretErr := readRuntimeSecretFiles(os.Getenv)
+	if secretErr != nil {
+		slog.Error("invalid runtime secret configuration", "err", secretErr)
+		os.Exit(1)
+	}
+	// Keep file-backed values in memory, not in the environment inherited by children.
+	loadedRuntimeFileSecrets.Store(&runtimeFileSecrets{values: fileSecrets})
 	addr := flag.String("addr", ":8080", "HTTP listen address")
 	// Storage: Postgres (1 banco por sessão, estilo WAHA). URL de manutenção em
 	// WACALLS_PG_URL (ex.: postgres://user:pass@host:5432/postgres?sslmode=disable);
 	// o usuário precisa de permissão CREATE DATABASE. WACALLS_PG_NAMESPACE = prefixo
 	// dos bancos (default "wacalls" -> wacalls_main + wacalls_<id>).
-	pgURL := flag.String("pg-url", os.Getenv("WACALLS_PG_URL"), "Postgres maintenance URL")
+	pgURL := flag.String("pg-url", "", "Postgres maintenance URL (defaults to configured runtime secret)")
 	pgNS := flag.String("pg-namespace", envStr("WACALLS_PG_NAMESPACE", "wacalls"), "prefix for per-session databases")
 	staticDir := flag.String("static", "client/dist", "static client directory (optional)")
 	debug := flag.Bool("debug", false, "verbose logging")
@@ -45,6 +52,15 @@ func main() {
 	// a flag -max-calls-per-session ainda sobrescreve se passada.
 	maxCalls := flag.Int("max-calls-per-session", envInt("WACALLS_MAX_CALLS", 8), "max concurrent calls per session (0 = unlimited)")
 	flag.Parse()
+	pgURLExplicit := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "pg-url" {
+			pgURLExplicit = true
+		}
+	})
+	if !pgURLExplicit {
+		*pgURL = runtimeSecret("WACALLS_PG_URL")
+	}
 
 	level := slog.LevelInfo
 	if *debug {

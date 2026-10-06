@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -21,7 +20,7 @@ var translationLanguage = regexp.MustCompile(`^[a-z]{2,3}(-[A-Z]{2})?$`)
 
 func translationEnabled() bool {
 	// This endpoint creates billable sessions: never expose it without API auth.
-	return os.Getenv("OPENAI_API_KEY") != "" && os.Getenv("WACALLS_API_KEY") != ""
+	return runtimeSecret("OPENAI_API_KEY") != "" && runtimeSecret("WACALLS_API_KEY") != ""
 }
 
 // ownsTranslationCall uses the existing operator identity AND API authentication.
@@ -95,7 +94,7 @@ func (s *server) handleTranslation(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
 	sum := sha256.Sum256([]byte(sid + ":" + owner))
-	answer, err := negotiateTranslation(ctx, http.DefaultClient, "https://api.openai.com/v1", os.Getenv("OPENAI_API_KEY"), hex.EncodeToString(sum[:]), body.Language, body.SDP)
+	answer, err := negotiateTranslation(ctx, http.DefaultClient, "https://api.openai.com/v1", runtimeSecret("OPENAI_API_KEY"), hex.EncodeToString(sum[:]), body.Language, body.SDP)
 	if err != nil {
 		// Do not return provider bodies, credentials, SDP, or transcripts in errors.
 		s.log.Warn("translation setup failed", "call", id, "direction", body.Direction, "err", err)

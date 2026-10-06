@@ -184,8 +184,8 @@ func (s *server) routes() http.Handler {
 		}
 	}
 	var handler http.Handler = s.routeMeta(mux)
-	if key := os.Getenv("WACALLS_API_KEY"); key != "" {
-		handler = withAuth(handler, key, os.Getenv("WACALLS_WIDGET_KEY"))
+	if key := runtimeSecret("WACALLS_API_KEY"); key != "" {
+		handler = withAuth(handler, key, runtimeSecret("WACALLS_WIDGET_KEY"))
 	}
 	return withCORS(handler)
 }

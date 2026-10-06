@@ -13,7 +13,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
@@ -93,7 +92,7 @@ func (s *server) handleArchiveSummary(w http.ResponseWriter, r *http.Request) {
 		writeRestaurantError(w, err)
 		return
 	}
-	if !p.AIEnabled || !p.NoticeAccepted || os.Getenv("OPENAI_API_KEY") == "" {
+	if !p.AIEnabled || !p.NoticeAccepted || runtimeSecret("OPENAI_API_KEY") == "" {
 		writeRestaurantError(w, restaurantFail(409, "archive_ai_disabled"))
 		return
 	}
@@ -182,7 +181,7 @@ func (s *server) handleArchiveSummary(w http.ResponseWriter, r *http.Request) {
 		defer releaseCancel()
 		_, _ = store.db.ExecContext(releaseCtx, `UPDATE conversation_archive SET ai_lease_until=NULL,ai_lease_token='' WHERE id=$1 AND ai_lease_token=$2`, c.ID, leaseToken)
 	}()
-	text, err := requestArchiveSummary(ctx, archiveAIClient, os.Getenv("OPENAI_API_KEY"), p.AIModel, string(input))
+	text, err := requestArchiveSummary(ctx, archiveAIClient, runtimeSecret("OPENAI_API_KEY"), p.AIModel, string(input))
 	if err != nil {
 		writeRestaurantError(w, err)
 		return

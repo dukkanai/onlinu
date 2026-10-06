@@ -1,0 +1,74 @@
+# File-backed restaurant runtime secrets
+
+The Go restaurant runtime now supports explicitly configured, read-only secret
+files as an alternative to its existing environment values. This prepares later
+isolated deployment tooling; it does not provision a tenant, create credentials,
+rotate a key, change permissions or deploy anything by itself. The current offline
+installer remains compatible with its existing `.env` configuration.
+
+## Supported names
+
+| Existing variable | Optional file variable | Purpose |
+| --- | --- | --- |
+| `WACALLS_API_KEY` | `WACALLS_API_KEY_FILE` | Existing tenant administrator/API authentication and cookie namespace |
+| `WACALLS_PG_URL` | `WACALLS_PG_URL_FILE` | Existing PostgreSQL maintenance connection used by the per-session database provider |
+| `WACALLS_META_ENCRYPTION_KEY` | `WACALLS_META_ENCRYPTION_KEY_FILE` | Existing encryption key for persisted Meta credentials |
+| `WACALLS_WIDGET_KEY` | `WACALLS_WIDGET_KEY_FILE` | Existing limited widget authentication |
+| `OPENAI_API_KEY` | `OPENAI_API_KEY_FILE` | Optional existing translation/archive AI provider access |
+
+These are names, not requests to paste credentials into chat or Git. Supply
+existing credentials only through the approved private deployment handoff.
+The central Node control plane has its own separately documented file settings;
+its private service-signing key must not be installed in restaurant containers.
+
+## Startup contract
+
+- A nonempty environment value together with its `_FILE` setting is rejected.
+  Missing, empty, non-regular, symlinked, oversized or invalid text files also fail
+  startup. Configuration failure never falls back to unauthenticated startup.
+- Files must be UTF-8 single-line values, at most 64 KiB. Terminal CR/LF is removed;
+  meaningful spaces are preserved. NUL or interior CR/LF is rejected. The original
+  consumer still validates its own credential/connection format.
+- All declared sources are validated before any file-backed value is installed.
+  Error messages name only the supported setting, not its path, contents or wrapped
+  filesystem error. Reads are bounded even if a file grows after its metadata check.
+- File-backed values are cached in process memory at startup. They are not copied
+  into `os.Environ` or automatically placed as raw values in child-process
+  environments. This is not protection against code with access to the same secret
+  mount, process memory or host administrator privileges.
+- Existing environment-only behavior remains supported. An explicitly supplied
+  `-pg-url` still overrides the configured default, including an explicit empty
+  value. CLI help no longer prints a configured database URL as a flag default.
+- PostgreSQL connection setup errors do not echo the raw URL or driver parse error.
+  Failed startup closes its provisional connection pool. This is a narrow startup
+  diagnostic improvement, not a claim that every historical log path is audited.
+
+Mount only the intended existing secret files, read-only and accessible to the
+runtime's existing UID 10001. Any real credential, mount-permission, network or
+production change remains a separate approved operation. No automatic key
+replacement or file permission changes are performed. Keep the existing Meta
+key: replacing it can make stored credentials unreadable. File changes take
+effect only after a separately controlled restart.
+
+## Database isolation constraint
+
+The original provider creates a main database and one database per WhatsApp
+session. It requires `CREATEDB`. A future isolated deployment must retain that
+capability within the restaurant's dedicated PostgreSQL instance while avoiding
+superuser access and any access to another tenant's database/network. Merely
+removing `CREATEDB` from a shared role would break original functionality.
+This constraint is not proof that provisioning is implemented or accepted.
+
+## Local evidence — 2026-10-06
+
+Race-enabled tests cover source ambiguity, bounded reads, missing/invalid files,
+symlink denial, meaningful spaces, all-or-nothing validation and private errors.
+Isolated subprocesses exercise actual `main` help and explicit empty override,
+and verify file-backed translation/archive guards and cookie isolation without
+exporting raw values. Malformed PostgreSQL URL diagnostics are checked for leaks.
+
+Related original authentication, Meta configuration, translation, archive,
+restaurant HTTP and core/customer/tax Node/Dart integration regressions pass with
+synthetic PostgreSQL. Platform tests pass (230); full remote CI and runtime image
+acceptance for this new increment must still be recorded separately. No real
+provider request, production credential read/rotation or deployment occurred.
