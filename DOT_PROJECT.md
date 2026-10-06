@@ -531,3 +531,12 @@ and opt-in positive bootstrap/image checks passed in CI37424797423 for
 `264157d`; the report was inspected. No executor, secret
 creation, tenant registration or deployment is performed by the renderer; see
 `deploy/TENANT-COMPOSE.md` for the required gates.
+
+## Private provisioning journal (local increment)
+
+`prototype/platform/provisioning-journal.mjs` records operator-only initial
+intents, versioned worker leases, uncertain outcomes and evidenced reconciliation
+in the existing identity database. It has no public route or automatic executor,
+and never activates tenants or changes external resources. Local 243 platform
+tests without skips and related Go runtime race checks pass; remote CI is pending.
+See `prototype/platform/PROVISIONING-JOURNAL.md` for authority and artifact gates.
