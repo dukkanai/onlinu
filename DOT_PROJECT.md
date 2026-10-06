@@ -410,3 +410,15 @@ including archived cancellations, without automatic POST replay. Local PostgreSQ
 Node/Go HTTP, 226 platform tests, React 80/build and Go vet pass; remote browser
 and full regression acceptance remain pending. Unknown never-arrived writes stay
 blocked for reconciliation rather than silently duplicating a customer request.
+
+
+## Verified customer support checkpoint — 2026-10-06 00:44 UTC
+
+`f1046f5ed6a8d8ec81a529cf560a0056b4ba3a8f` passed every job in
+[CI37394646960](https://github.com/dukkanai/onlinu/actions/runs/37394646960).
+This adds actual Chromium customer review/cancel/checked confirmation to the
+local original-core and PostgreSQL evidence. The Arabic browser screenshot was
+inspected and is readable. Windows 130-test regression, native renderer/store
+and unsigned build also passed; platform 226 and React 80 tests pass.
+Unknown-outcome reconciliation tooling, remaining full-product features and
+production/external-account acceptance remain open. No production deployment.

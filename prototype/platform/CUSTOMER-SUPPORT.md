@@ -52,7 +52,7 @@ access model, including suspended-tenant settlement and expired checkout links.
 New orders still require an active tenant. This does not complete the separate
 closed-tenant retention, operational settlement and deprovisioning policy.
 
-## Verification checkpoint — local, 2026-10-06
+## Verification checkpoint — 2026-10-06 00:44 UTC
 
 - 226 platform tests with actual PostgreSQL, no skips; private hash-only intent,
   owner/scope denial, concurrent first dispatch, lost reply, ambiguous absence,
@@ -66,7 +66,12 @@ closed-tenant retention, operational settlement and deprovisioning policy.
   native baseline has 130 tests. Remote CI reruns native regression/build too.
 - Actual Chromium review, inert cancel, unchecked confirmation and checked
   cancellation are included in the remote integration test; a synthetic review
-  screenshot is retained. Those remote checks are still pending for this change.
+  screenshot is retained. All jobs in [CI37394646960](https://github.com/dukkanai/onlinu/actions/runs/37394646960)
+  passed on `f1046f5ed6a8d8ec81a529cf560a0056b4ba3a8f`, including Chromium
+  and Windows regressions/build. The Arabic browser review screenshot was inspected:
+  tenant/order/version, amount, checked review and refund warning are readable.
+  The central browser pages still use basic functional styling; this is not final
+  customer visual-design acceptance.
 
 Initial local fixture used pickup with cash-on-delivery, which the original core
 correctly rejected. The fixture now uses delivery and its original cash method;
