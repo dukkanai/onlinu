@@ -800,3 +800,14 @@ legible. This accepts native configured payment-method management, not provider
 connection, real charging, mobile-device acceptance or production deployment.
 Full runtime image was intentionally skipped; its separate checkpoint remains
 `f9a965f`. No production account or configuration changed.
+
+## Shared provisioning runtime inspection — 2026-10-06, CI pending
+
+A private pure observation gate now checks complete owned container, mount,
+network and volume snapshots before the journal/Docker fixture can emit healthy
+runtime evidence. Foreign resources, extra attachments/mounts, image/port drift
+and known inline credentials fail closed with redacted errors. Five new test
+groups plus four existing fixture guards pass locally. This prepares the trusted
+executor without production effects or automatic tenant activation; actual Docker
+CI for this increment is pending. See
+`prototype/platform/PROVISIONING-RUNTIME-INSPECTION.md`.

@@ -15,6 +15,7 @@ import { createProvisioningArtifacts } from '../provisioning-artifacts.mjs';
 import { createProvisioningRunner } from '../provisioning-runner.mjs';
 import { createProvisioningStage } from '../provisioning-stage.mjs';
 import { createProvisioningEvidence } from '../provisioning-evidence.mjs';
+import { inspectProvisionedRuntime } from '../provisioning-runtime-inspection.mjs';
 import { createProvisioningHostLock } from '../provisioning-host-lock.mjs';
 import { createProvisioningProcess } from '../provisioning-process.mjs';
 import { validateContext } from '../../../integration/provisioning-cancellation-smoke.mjs';
@@ -97,8 +98,10 @@ export async function runSmoke(image, env = process.env) {
     const current = await ids(f);
     if (current.length > 2 || (requireHealthy && current.length !== 2)) throw new Error('fixture_container_count');
     const seen = new Set(), observed = {};
+    const snapshot = { containers: [], networks: [], volumes: [] };
     for (const id of current) {
       const info = await inspect(id);
+      snapshot.containers.push(info);
       owned(info.Config?.Labels, f);
       const service = info.Config.Labels['com.docker.compose.service'];
       if (!['postgres', 'restaurant'].includes(service) || seen.has(service)) throw new Error('fixture_service_mismatch');
@@ -108,10 +111,15 @@ export async function runSmoke(image, env = process.env) {
     for (const [type, field] of [['volume', 'volumes'], ['network', 'networks']]) {
       const existing = await names(type);
       for (const resource of Object.values(f.spec[field])) {
-        if (existing.has(resource.name)) owned((await inspect(resource.name, type)).Labels, f);
+        if (existing.has(resource.name)) {
+          const info = await inspect(resource.name, type);
+          owned(info.Labels, f); snapshot[field].push(info);
+        }
         else if (requireHealthy) throw new Error('fixture_resource_missing');
       }
     }
+    if (requireHealthy) inspectProvisionedRuntime({ tenantId: f.config.tenantId, planDigest: f.plan.planDigest,
+      projectName: f.plan.projectName, images: f.images, httpPort: f.config.httpPort, compose: f.spec }, snapshot);
     return { restaurant: observed.restaurant, postgres: observed.postgres };
   }
   try {
