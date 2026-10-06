@@ -386,3 +386,17 @@ order updates; existing memberships do not gain it automatically. Approval of a
 paid cancellation creates only the original unauthorised refund intent and marks
 card payment for review, without dispatching money. Browser/native forms and
 remote acceptance must be recorded independently of backend unit/HTTP tests.
+
+
+## Verified support checkpoint — 2026-10-06 00:21 UTC
+
+`e3465916fe4b5cf905a96f6cba0ebcd413962df2` passed every job in
+[CI37392724013](https://github.com/dukkanai/onlinu/actions/runs/37392724013).
+Staff cancellation/complaint queue and reviewed decisions now include tested
+browser and Flutter interfaces, with 130 Flutter and 222 platform tests, actual
+Dart TLS/PKCE through Node/original Go, checked Chromium complaint resolution,
+Windows decision rendering/store/build and full server/client checks. The Arabic
+Windows review screenshot was inspected. Paid-card cancellation remains payment
+review and creates only the original unauthorised refund intent; no real payout
+or production operation occurred. Full product completion remains open. POS is
+still a later option, per the owner's instruction.

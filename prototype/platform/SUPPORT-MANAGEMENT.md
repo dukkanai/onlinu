@@ -36,11 +36,11 @@ synthetic isolated restaurant/customer identities and fake captured funds.
 The original-core queue/detail/decision bridge and shared staff API are implemented.
 A partial pending-support index supports the bounded queue; it is additive and
 must be reviewed as part of any later production migration/rollout. Local tests
-cover101 open orders, queue advancement, explicit rejection/approval, request-ID
+cover 101 open orders, queue advancement, explicit rejection/approval, request-ID
 and version binding, no automatic payout, audit/refund rollback and privacy.
 Current role tests prove that kitchen order-update does not grant support management,
 old memberships remain unchanged on initialization, and explicit owner upgrade is
-required. Browser/native support forms and their remote acceptance remain pending.
+required. Browser/native support forms were validated in the later checkpoint below.
 
 Actual Node-signed original Go queue/decision/resolution now passes locally, along
 with 220 platform tests, the existing 121 Flutter tests, React 80/build and Go vet.
@@ -48,7 +48,7 @@ This is a backend checkpoint, not native/browser support UI acceptance. The
 original `review` payment status on paid-card cancellation was verified rather
 than replacing it with a new payment-state rule.
 
-## Browser/native UI increment — 2026-10-06 (remote checks pending)
+## Browser/native UI increment — 2026-10-06 (verified)
 
 The browser and Flutter core client expose the bounded queue plus an exact-order
 lookup for known orders beyond the current page. Selected detail shows the
@@ -68,8 +68,11 @@ PostgreSQL/race regressions and actual Dart TLS/PKCE through Node/original Go.
 The fixture checks suspended-tenant settlement and independently denies refund
 authorization to the support-only manager. Browser-session HTTP checks cover CSRF,
 role isolation, review, unchecked and stale execution, and receipt privacy. The
-new Chromium checked-complaint flow and Windows review screenshot/build remain
-remote CI checks; do not infer them from the local HTTP/widget results.
+new Chromium checked-complaint flow and Windows review/decision/build passed
+CI [37392724013](https://github.com/dukkanai/onlinu/actions/runs/37392724013)
+on `e3465916fe4b5cf905a96f6cba0ebcd413962df2`, along with every other job.
+The native Arabic support-decision screenshot was inspected and its reviewed
+facts, checked confirmation and no-money-dispatch warning are readable.
 
 Selected-detail response budget is 512 KB, bounded by 20 history records and 10
 complaints. A multilingual-history regression verifies that valid Unicode text
