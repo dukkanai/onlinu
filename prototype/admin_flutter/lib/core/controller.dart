@@ -8,6 +8,7 @@ import 'business_profile.dart';
 import 'delivery_models.dart';
 import 'courier_models.dart';
 import 'service_policy.dart';
+import 'tax_models.dart';
 import 'finance_models.dart';
 import 'refund_models.dart';
 import 'brand_models.dart';
@@ -25,6 +26,7 @@ enum CoreSection {
   courier,
   courierLinks,
   service,
+  tax,
   appearance,
   support
 }
@@ -41,6 +43,7 @@ extension CoreSectionPermission on CoreSection {
         CoreSection.courier => 'courier:read',
         CoreSection.courierLinks => 'couriers:link',
         CoreSection.service => 'settings:read',
+        CoreSection.tax => 'settings:read',
         CoreSection.appearance => 'settings:read',
         CoreSection.support => 'orders:read'
       };
@@ -61,6 +64,7 @@ class CoreController extends ChangeNotifier {
   CoreBusinessProfile? business;
   CoreDelivery? coverage;
   CoreServicePolicy? service;
+  CoreTaxConfig? tax;
   CoreSupportQueue? support;
   CoreSupportDetail? supportDetail;
   int _supportGeneration = 0;
@@ -110,6 +114,7 @@ class CoreController extends ChangeNotifier {
     business = null;
     coverage = null;
     service = null;
+    tax = null;
     appearance = null;
     support = null;
     supportDetail = null;
@@ -275,6 +280,10 @@ class CoreController extends ChangeNotifier {
         final result = await api.brand(tenant);
         if (!_current(generation)) return;
         appearance = result;
+      } else if (section == CoreSection.tax) {
+        final result = await api.tax(tenant);
+        if (!_current(generation)) return;
+        tax = result;
       } else if (section == CoreSection.service) {
         final result = await api.service(tenant);
         if (!_current(generation)) return;
@@ -702,6 +711,47 @@ class CoreController extends ChangeNotifier {
             : action == 'publish'
                 ? 'نُشرت المسودة في واجهة العملاء.'
                 : 'استُعيد المظهر المنشور السابق.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
+  Future<void> patchTax(CoreTaxConfig expected,
+      {required bool enabled,
+      required int rateBps,
+      required String taxNumber}) async {
+    if (!_writeGuard(expected.tenantId, 'settings:update', CoreSection.tax))
+      return;
+    if (tax?.version != expected.version) {
+      message = 'تغيرت إعدادات الضريبة. حدّث البيانات وأعد المراجعة.';
+      _emit();
+      return;
+    }
+    try {
+      expected.validate(
+          enabled: enabled, rateBps: rateBps, taxNumber: taxNumber);
+    } catch (error) {
+      message = errorMessage(error);
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.patchTax(expected,
+          enabled: enabled, rateBps: rateBps, taxNumber: taxNumber);
+      if (_current(generation))
+        message =
+            'حُفظت إعدادات الضريبة للطلبات الجديدة. الطلبات السابقة لم تتغير.';
     } catch (error) {
       if (_current(generation)) _failure(error);
     } finally {

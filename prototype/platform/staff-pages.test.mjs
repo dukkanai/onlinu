@@ -141,3 +141,9 @@ test('support pages keep queue reasons private and require explicit reviewed dec
  const manage=staffSupportPage({tenantId:'a',data,canManage:true,csrf:'test'});assert.match(manage,/مراجعة الموافقة/);assert.match(manage,/name="approve" value="false"/);assert.doesNotMatch(manage,/\/execute/);
  const review=staffSupportPage({tenantId:'a',data,csrf:'test',review:{id,action:'decide',approve:false,reason:'Synthetic rejected'}});assert.match(review,/name="reviewed" value="yes" required/);assert.match(review,/name="approve" value="false"/);assert.match(review,/إلغاء مراجعة الدعم/);
 });
+
+test('tax review escapes registration text, displays inclusive semantics and separates execution',async()=>{
+ const {staffTaxPage}=await import('./staff-pages.mjs');const data={version:2,enabled:true,rateBps:1500,taxNumber:'<synthetic>',currency:'SAR',pricesIncludeTax:true};
+ const readonly=staffTaxPage({tenantId:'a',data,csrf:'token'});assert.doesNotMatch(readonly,/<form/);assert.match(readonly,/&lt;synthetic&gt;/);
+ const review=staffTaxPage({tenantId:'a',data,csrf:'token',canUpdate:true,review:{expectedVersion:2,enabled:false,rateBps:0,taxNumber:'<synthetic>'}});assert.match(review,/name="reviewed" value="yes" required/);assert.match(review,/الأسعار المسجلة شاملة/);assert.match(review,/value="false"/);assert.doesNotMatch(review,/<synthetic>/);
+});

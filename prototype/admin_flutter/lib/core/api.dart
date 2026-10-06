@@ -6,6 +6,7 @@ import 'business_profile.dart';
 import 'delivery_models.dart';
 import 'courier_models.dart';
 import 'service_policy.dart';
+import 'tax_models.dart';
 import 'finance_models.dart';
 import 'refund_models.dart';
 import 'brand_models.dart';
@@ -24,6 +25,9 @@ abstract interface class CoreGateway {
       {bool cash = false});
   Future<void> courierAvailability(
       CoreCourierWork expected, String availability);
+  Future<CoreTaxConfig> tax(String tenant);
+  Future<void> patchTax(CoreTaxConfig expected,
+      {required bool enabled, required int rateBps, required String taxNumber});
   Future<CoreServicePolicy> service(String tenant);
   Future<void> patchService(
       CoreServicePolicy expected, Map<String, bool> changes);
@@ -258,6 +262,38 @@ class CoreApi implements CoreGateway {
     final value = CoreFinance(data, tenantId: tenant);
     if (value.number != number) invalidResponse();
     return value;
+  }
+
+  @override
+  Future<CoreTaxConfig> tax(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/tax');
+    _tenant(data, tenant);
+    return CoreTaxConfig(data, tenantId: tenant);
+  }
+
+  @override
+  Future<void> patchTax(CoreTaxConfig expected,
+      {required bool enabled,
+      required int rateBps,
+      required String taxNumber}) async {
+    expected.validate(enabled: enabled, rateBps: rateBps, taxNumber: taxNumber);
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/tax',
+        body: {
+          'expectedVersion': expected.version,
+          'reviewed': true,
+          'enabled': enabled,
+          'rateBps': rateBps,
+          'taxNumber': taxNumber
+        });
+    _tenant(data, expected.tenantId);
+    final saved = CoreTaxConfig(data, tenantId: expected.tenantId);
+    if (saved.version != expected.version + 1 ||
+        saved.enabled != enabled ||
+        saved.rateBps != rateBps ||
+        saved.taxNumber != taxNumber)
+      throw const CoreException('order_outcome_unknown', uncertain: true);
   }
 
   @override

@@ -101,3 +101,13 @@ was still fading over navigation after the checked input. A later fixture-focus
 correction and Arabic machine-state labels are being checked separately (local
 227 platform tests and original Node/Go/HTTP regressions pass). Financial review
 is never relabelled as confirmed refunded.
+
+
+### Verified Arabic review capture — 2026-10-06 01:20 UTC
+
+The label/focus change `117a72e` initially exposed two old browser assertions
+expecting raw English payment states. Test-only correction `a9a0147b06af0670b165e8326974dda72101c896`
+passed every job in [CI37397669126](https://github.com/dukkanai/onlinu/actions/runs/37397669126).
+The final Arabic retry-review screenshot was inspected: known states and automatic
+cancellation explanation are translated, and the transient validation bubble no
+longer obscures navigation. Platform 227 and unchanged Flutter 130 checks pass.

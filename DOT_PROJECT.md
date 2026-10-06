@@ -444,3 +444,23 @@ refresh/resubmit stays read-only. The original idempotency ledger prevents
 duplicate logical requests. A subsequent Arabic status-label and screenshot
 focus correction passes local 227 platform and original Node/Go/HTTP checks;
 remote verification for that later correction remains pending.
+
+## Original tax management bridge (local increment)
+
+`prototype/platform/TAX-MANAGEMENT.md` documents the reviewed three-field bridge
+for original gross-inclusive tax configuration. Browser/native forms retain
+current permissions/version and explicit confirmation. Original catalog validation,
+financial snapshots, prices and actor-audit rollback remain authoritative. Local
+original PostgreSQL/Node/Go and actual Dart TLS checks pass; new Chromium/Windows
+review acceptance is still pending. No real tax rate or registration was chosen.
+
+
+## Verified Arabic customer support review — 2026-10-06 01:20 UTC
+
+`a9a0147b06af0670b165e8326974dda72101c896` passed every job in
+[CI37397669126](https://github.com/dukkanai/onlinu/actions/runs/37397669126).
+Two old English-state browser expectations were updated after intentional Arabic
+labels; no payment rule changed. The retry screenshot was inspected with readable
+Arabic states and unobscured navigation. The later tax increment remains separate:
+local 136 Flutter/230 platform/React 80 tests, analyzer, vet/build and actual Dart
+TLS through Node/original Go pass; new tax Chromium/Windows CI remains pending.

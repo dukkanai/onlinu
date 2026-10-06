@@ -237,6 +237,46 @@ void main() {
     expect(c.supportDetail, isNull);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets('Windows reviewed tax configuration keeps explicit confirmation',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile =
+          profileFixture(permissions: ['settings:read', 'settings:update']);
+    api.session.restoreAvailable = true;
+    final c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    Future<void> tap(Finder f) async {
+      await tester.ensureVisible(f);
+      await tester.pumpAndSettle();
+      await tester.tap(f);
+      await tester.pumpAndSettle();
+    }
+
+    await tap(find.widgetWithText(ChoiceChip, 'الضريبة'));
+    await tap(find.text('مراجعة إعدادات الضريبة'));
+    await tap(find.widgetWithText(SwitchListTile, 'تفعيل حساب الضريبة'));
+    await tester.enterText(
+        find.widgetWithText(TextField, 'رقم التسجيل الضريبي'),
+        'SYNTHETIC-NOT-A-TAX-ID');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'حفظ إعدادات الضريبة'))
+            .onPressed,
+        isNull);
+    await tap(find.byType(CheckboxListTile));
+    await capture(tester, boundary, 'windows-tax-review.png');
+    await tap(find.text('حفظ إعدادات الضريبة'));
+    expect(api.taxWrites, 1);
+    expect(c.tax!.enabled, true);
+    expect(c.tax!.rateBps, 1500);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('Windows appearance draft review and separate publication',
       (tester) async {
     final api = BrandGateway()..session.restoreAvailable = true,

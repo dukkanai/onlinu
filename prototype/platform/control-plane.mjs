@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts, coreSupportInput } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffSupportPage,staffBrandPage,brandFormChoices,brandFormLabels,staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { staffTaxPage,staffSupportPage,staffBrandPage,brandFormChoices,brandFormLabels,staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -393,6 +393,24 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         }
         if(input.reviewed!=='yes')throw problem(400,'invalid_request');
         try{await orderClient.supportCommand(tenantId,who.id,number,id,action,command);}catch(error){if(error?.code==='order_outcome_unknown'||error?.status>=500)return redirect(res,path+'?outcome=unknown',303);throw error;}
+        return redirect(res,path,303);
+      }
+      const managementTax=/^\/manage\/([a-z0-9-]{1,64})\/tax(?:\/(review|execute))?$/.exec(url.pathname);
+      if(managementTax&&orderClient&&['GET','POST'].includes(req.method)){
+        const [,tenantId,stage]=managementTax,path='/manage/'+tenantId+'/tax';
+        if(req.headers.authorization||url.search&&!(req.method==='GET'&&!stage&&url.search==='?outcome=unknown'))throw problem(403,'browser_session_required');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(path));
+        const who=await browser(req),membership=await directory.authorize(who.id,tenantId,'settings:read');
+        if(req.method==='GET'&&!stage){const data=await orderClient.tax(tenantId,who.id);htmlHeaders(res);res.end(staffTaxPage({tenantId,data,csrf:auth.csrfToken(req),canUpdate:membership.permissions.includes('settings:update'),outcome:url.searchParams.get('outcome')}));return;}
+        if(req.method!=='POST'||!stage)throw problem(404,'not_found');
+        await directory.authorize(who.id,tenantId,'settings:update');const input=await body(req);auth.verifyCsrf(req,input.csrf);
+        await directory.authorize(who.id,tenantId,'settings:read');await directory.authorize(who.id,tenantId,'settings:update');
+        const rateBps=menuPriceMinor(input.rate),expectedVersion=Number(input.expectedVersion);
+        if(Object.keys(input).some(k=>!['csrf','expectedVersion','enabled','rate','taxNumber','reviewed'].includes(k))||!/^\d{1,16}$/.test(String(input.expectedVersion))||!Number.isSafeInteger(expectedVersion)||expectedVersion<1||rateBps===null||rateBps>10000||!['true','false'].includes(input.enabled)||typeof input.taxNumber!=='string'||Array.from(input.taxNumber).length>80||/[\x00-\x1f\x7f]/.test(input.taxNumber)||input.enabled==='true'&&!input.taxNumber.trim())throw problem(400,'invalid_request');
+        const command={expectedVersion,reviewed:true,enabled:input.enabled==='true',rateBps,taxNumber:input.taxNumber};
+        if(stage==='review'){const data=await orderClient.tax(tenantId,who.id);if(data.version!==expectedVersion)throw problem(409,'catalog_changed');htmlHeaders(res);res.end(staffTaxPage({tenantId,data,csrf:auth.csrfToken(req),canUpdate:true,review:command}));return;}
+        if(input.reviewed!=='yes')throw problem(400,'invalid_request');
+        try{await orderClient.patchTax(tenantId,who.id,command);}catch(error){if(error.code==='order_outcome_unknown'||error.status>=500)return redirect(res,path+'?outcome=unknown',303);throw error;}
         return redirect(res,path,303);
       }
       const managementService=/^\/manage\/([a-z0-9-]{1,64})\/service$/.exec(url.pathname);

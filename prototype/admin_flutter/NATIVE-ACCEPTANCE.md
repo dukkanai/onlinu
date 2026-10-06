@@ -295,3 +295,12 @@ suspended-tenant settlement, no refund authority, late/closed/duplicate/stale
 requests and revoked-grant masking. Existing native refund tests also pass after
 allowing its independently protected dialog from the support section. Actual
 Chromium and `windows-support-decision-review.png` still need the new CI result.
+
+## Tax configuration increment — local, 2026-10-06
+
+136 Flutter unit/widget tests and analyzer pass. New cases cover exact Arabic
+basis-point parsing, full reviewed transport tuple, wrong-result detection,
+stale/background protection, private-field masking, inert cancel and unknown
+write recovery. Actual Dart TLS/PKCE → Node → original Go tax update/stale/restore
+passes against synthetic PostgreSQL. New Windows review capture/build and Chromium
+flow remain remote checks for the tax increment; prior CI does not cover it.

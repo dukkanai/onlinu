@@ -218,3 +218,11 @@ test('customer support ambiguous replies never replay and foreign recovery canno
   await assert.rejects(wrong.customerSupportCommand('restaurant-a',subject,view.number,'cancellation',key,{version:1,reviewed:true,reason:'Synthetic'}),{code:'order_outcome_unknown'});
  }
 });
+
+test('tax transport requires reviewed full tuple and scopes and never trusts mismatched saved values',async()=>{
+ const subject=randomUUID(),input={expectedVersion:1,reviewed:true,enabled:false,rateBps:0,taxNumber:''};let calls=0;
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{calls++;assert.ok(url.endsWith('/platform-api/staff/tax'));const claims=JSON.parse(Buffer.from(options.headers.authorization.slice(9).split('.')[0],'base64url'));assert.equal(claims.scope,'staff:tax:update');assert.deepEqual(JSON.parse(options.body),input);return json({version:2,enabled:false,rateBps:0,taxNumber:'',currency:'SAR',pricesIncludeTax:true,secret:'discard'});}});
+ assert.equal((await client.patchTax('restaurant-a',subject,input)).secret,undefined);
+ assert.throws(()=>client.patchTax('restaurant-a',subject,{...input,reviewed:false}),{code:'invalid_request'});assert.throws(()=>client.patchTax('restaurant-a',subject,{...input,enabled:true}),{code:'invalid_request'});assert.equal(calls,1);
+ const wrong=createCoreOrderClient({...config,fetchImpl:async()=>json({version:2,enabled:false,rateBps:1500,taxNumber:'',currency:'SAR',pricesIncludeTax:true})});await assert.rejects(wrong.patchTax('restaurant-a',subject,input),{code:'order_outcome_unknown'});
+});

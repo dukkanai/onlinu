@@ -9,6 +9,7 @@ import 'package:restaurant_admin_prototype/core/business_profile.dart';
 import 'package:restaurant_admin_prototype/core/delivery_models.dart';
 import 'package:restaurant_admin_prototype/core/courier_models.dart';
 import 'package:restaurant_admin_prototype/core/service_policy.dart';
+import 'package:restaurant_admin_prototype/core/tax_models.dart';
 import 'package:restaurant_admin_prototype/core/finance_models.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
 import 'package:restaurant_admin_prototype/core/models.dart';
@@ -297,6 +298,33 @@ class FakeCoreGateway implements CoreGateway {
         'refunds': [],
         'limit': 100
       }, tenantId: tenant);
+
+  Map<String, dynamic> taxData = {
+    'version': 1,
+    'enabled': false,
+    'rateBps': 1500,
+    'taxNumber': '',
+    'currency': 'SAR',
+    'pricesIncludeTax': true
+  };
+  int taxWrites = 0;
+  @override
+  Future<CoreTaxConfig> tax(String tenant) async =>
+      CoreTaxConfig(taxData, tenantId: tenant);
+  @override
+  Future<void> patchTax(CoreTaxConfig expected,
+      {required bool enabled,
+      required int rateBps,
+      required String taxNumber}) async {
+    taxWrites++;
+    taxData = {
+      ...taxData,
+      'version': expected.version + 1,
+      'enabled': enabled,
+      'rateBps': rateBps,
+      'taxNumber': taxNumber
+    };
+  }
 
   Map<String, dynamic> serviceData = {
     'version': 1,

@@ -14,6 +14,7 @@ import 'delivery_pane.dart';
 import 'dispatch_editor.dart';
 import 'courier_pane.dart';
 import 'service_pane.dart';
+import 'tax_pane.dart';
 import 'finance_dialog.dart';
 
 class CoreApp extends StatefulWidget {
@@ -284,6 +285,16 @@ class CoreScreen extends StatelessWidget {
                                         unawaited(c.selectSection(
                                             CoreSection.service));
                                       }),
+                          if (member.can('settings:read'))
+                            ChoiceChip(
+                                label: const Text('الضريبة'),
+                                selected: c.section == CoreSection.tax,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(
+                                            c.selectSection(CoreSection.tax));
+                                      }),
                           if (member.can('courier:read'))
                             ChoiceChip(
                                 label: const Text('مهامي كمندوب'),
@@ -389,6 +400,11 @@ class CoreScreen extends StatelessWidget {
                           member?.can('settings:read') == true)
                         ServicePane(
                             key: ValueKey('service-${c.selectedTenant}'),
+                            controller: c),
+                      if (c.section == CoreSection.tax &&
+                          member?.can('settings:read') == true)
+                        TaxPane(
+                            key: ValueKey('tax-${c.selectedTenant}'),
                             controller: c),
                       if (c.section == CoreSection.courier &&
                           member?.can('courier:read') == true)

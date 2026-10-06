@@ -77,3 +77,10 @@ test('order-update alone never authorizes cancellation decisions and support gra
  grants.add('support:manage');revoke=true;await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(calls,0);
  grants.add('support:manage');revoke=false;assert.equal((await api({method:'POST'},{},{id:'staff'},url)).status,200);assert.equal(calls,1);
 });
+
+test('tax writes require read and update again after body parsing',async()=>{
+ const grants=new Set(['settings:read']);let writes=0,revoke=false;
+ const api=createStaffApi({directory:{async authorize(a,t,p){if(!grants.has(p))throw Object.assign(Error(),{code:'forbidden'});}},body:async()=>{if(revoke)grants.delete('settings:read');return{reviewed:true};},orderClient:{async tax(){return{};},async patchTax(){writes++;return{};}},json:(_,status,data)=>({status,data})});
+ const url=new URL('https://platform.example/api/restaurants/a/staff/tax');assert.equal((await api({method:'GET'},{},{id:'staff'},url)).status,200);
+ await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});grants.add('settings:update');revoke=true;await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(writes,0);revoke=false;grants.add('settings:read');await api({method:'POST'},{},{id:'staff'},url);assert.equal(writes,1);
+});

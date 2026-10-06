@@ -62,6 +62,8 @@ const brandView=z.object({...brandEditFields,template:z.enum(['classic','warm','
 const brandState=z.object({version:brandVersion,catalogVersion:brandVersion,live:brandView,draft:brandView.nullable(),hasPrevious:z.boolean()});
 const brandReview=z.object({version:brandVersion,catalogVersion:brandVersion,reviewed:z.literal(true)}).strict();
 const brandPatch=brandReview.extend(Object.fromEntries(Object.entries(brandEditFields).map(([key,value])=>[key,value.optional()]))).strict().refine(v=>Object.keys(v).length>3);
+const taxView=z.object({version:z.number().int().positive(),enabled:z.boolean(),rateBps:z.number().int().min(0).max(10000),taxNumber:z.string().max(320),currency:z.literal('SAR'),pricesIncludeTax:z.literal(true)});
+const taxPatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),reviewed:z.literal(true),enabled:z.boolean(),rateBps:z.number().int().min(0).max(10000),taxNumber:z.string().max(320).refine(text=>Array.from(text).length<=80)}).strict().refine(value=>!value.enabled||!!value.taxNumber.trim());
 const supportCancellation=z.object({id:uuid,status:z.enum(['requested','approved','rejected']),reason:z.string().max(4000),decisionReason:z.string().max(4000),requestedAt:z.string().datetime({offset:true}),decidedAt:z.string().datetime({offset:true}).optional(),requestedBeforePreparation:z.boolean()});
 const supportComplaint=z.object({id:uuid,status:z.enum(['open','resolved']),reason:z.string().max(4000),resolution:z.string().max(4000),requestedAt:z.string().datetime({offset:true}),resolvedAt:z.string().datetime({offset:true}).optional()});
 const supportSummary=coreOrderView.extend({cancellationPending:z.boolean(),openComplaints:z.number().int().min(0).max(10)});
@@ -139,6 +141,8 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    tax(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/tax',undefined,'','staff:tax:read',taxView);},
+    patchTax(tenantId,subject,input){const parsed=taxPatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/tax',parsed.data,'','staff:tax:update',taxView).then(value=>{if(value.version!==parsed.data.expectedVersion+1||value.enabled!==parsed.data.enabled||value.rateBps!==parsed.data.rateBps||value.taxNumber!==parsed.data.taxNumber)throw problem(503,'order_outcome_unknown');return value;});},
     async customerSupport(tenantId,subject,number){
       const value=await request(tenantId,subject,'GET',customerSupportPath(number),undefined,'','customer:support:read',customerSupportDetail,512_000);
       if(value.number!==number)throw problem(503,'restaurant_unavailable');return value;

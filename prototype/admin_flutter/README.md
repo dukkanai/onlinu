@@ -209,3 +209,11 @@ Flutter لا يغني عن قبول NVDA على جهاز فعلي. التحلي�
 السبب ومراجعة القرار وتأكيده. الموافقة قد تنشئ طلب استرداد غير مصرح؛ لا ترسل
 أموالًا. فتح السجل المالي ومعالجة الاسترداد يظلان مرتبطين بصلاحياتهما المنفصلة.
 يعرض آخر 20 إلغاء تاريخيًا ويبين إن كان السجل المعروض مختصرًا، دون حذف التاريخ.
+
+### Reviewed tax configuration (local increment)
+
+The tax section exposes only the original enabled flag, exact rate and registration
+text under current settings grants. Gross menu prices and historical snapshots
+are preserved. Changes require explicit review; stale/background/revoked forms
+cannot write, and an unknown response triggers a read, not replay. This is not
+legal-rate validation or certified invoicing. See `../platform/TAX-MANAGEMENT.md`.
