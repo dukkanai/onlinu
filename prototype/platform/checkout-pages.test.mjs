@@ -16,3 +16,14 @@ test('review failures explain recovery without claiming a failed order was not c
  assert.match(checkoutErrorPage('order_outcome_unknown'),/لا تنشئ طلبًا آخر/);
  assert.equal(checkoutErrorPage('<script>'),null);
 });
+
+test('customer support review escapes messages and uncertain outcomes block new forms',async()=>{
+ const {checkoutSupportPage}=await import('./checkout-pages.mjs');
+ const order={number:'R12345678',version:3,totalMinor:3500,status:'preparing',paymentStatus:'paid',demo:true,cancellation:null,complaints:[],cancellationHistory:[],historyTruncated:false};
+ const args={checkoutId:'synthetic',tenantId:'a',order,csrf:'token',requestId:'request'};
+ const initial=checkoutSupportPage(args);assert.match(initial,/مراجعة طلب إلغاء/);assert.match(initial,/مراجعة إرسال شكوى/);assert.doesNotMatch(initial,/\/execute/);
+ const review=checkoutSupportPage({...args,review:{kind:'cancellation',requestId:'request',version:3,reason:'<script>private</script>'}});
+ assert.doesNotMatch(review,/<script>/);assert.match(review,/&lt;script&gt;/);assert.match(review,/name="reviewed" value="yes" required/);assert.match(review,/لا يعني اكتمال الاسترداد/);
+ const pending=checkoutSupportPage({...args,pending:{kind:'complaint',requestId:'unknown'}});assert.doesNotMatch(pending,/<form/);assert.match(pending,/نتيجة الإرسال لم تتأكد/);
+ const terminal=checkoutSupportPage({...args,order:{...order,status:'cancelled'}});assert.doesNotMatch(terminal,/مراجعة طلب إلغاء/);assert.match(terminal,/مراجعة إرسال شكوى/);
+});

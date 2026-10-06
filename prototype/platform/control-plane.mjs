@@ -3,7 +3,7 @@ import {createStaffApi} from './staff-api.mjs';
 import {createNativeStaff} from './native-staff.mjs';
 import {createCoreMedia,publicMenuImages} from './core-media.mjs';
 import { randomUUID } from 'node:crypto';
-import { checkoutSummary, checkoutErrorPage } from './checkout-pages.mjs';
+import { checkoutSummary, checkoutErrorPage, checkoutSupportPage } from './checkout-pages.mjs';
 /** Real subject-based identity and staff control API, separate from demo routes.
  * Deployment still needs approved HTTPS/OIDC configuration. No public bootstrap,
  * Docker socket or production provisioning is exposed by this module. Payment
@@ -15,7 +15,7 @@ import { createOidcLogin } from './oidc.mjs';
 import { createCoreAdapter } from './core-adapter.mjs';
 import { createMcpHandler } from './mcp.mjs';
 import { createCoreOrderClient, paymentFormSources } from './core-order-client.mjs';
-import { createCoreCheckouts } from './core-checkouts.mjs';
+import { createCoreCheckouts, coreSupportInput } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
 import { staffSupportPage,staffBrandPage,brandFormChoices,brandFormLabels,staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
@@ -181,6 +181,37 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         auth.verifyCsrf(req); await auth.revoke(auth.browserToken(req));
         res.setHeader('set-cookie', cookie(cookieName, '', 0)); return json(res, 200, { loggedOut: true });
       }
+
+      const customerSupportRoute=/^\/checkout\/([a-f0-9-]{36})\/support(?:\/(review|execute))?$/.exec(url.pathname);
+      if(customerSupportRoute&&checkouts&&['GET','POST'].includes(req.method)){
+        const [,checkoutId,action]=customerSupportRoute;
+        if(req.headers.authorization||url.search)throw problem(403,'browser_session_required');
+        const who=await auth.authenticate(req,{cookieOnly:true});
+        if(!who){if(req.method==='GET')return redirect(res,'/auth/login?returnTo='+encodeURIComponent('/checkout/'+checkoutId));throw problem(401,'authentication_required');}
+        const checkout=await checkouts.get(who,checkoutId);
+        if(checkout.state!=='confirmed')throw problem(409,'order_not_confirmed');
+        if(req.method==='GET'&&!action){
+          const state=await checkouts.support(who,checkoutId);htmlHeaders(res);
+          res.end(checkoutSupportPage({checkoutId,tenantId:checkout.tenantId,...state,csrf:auth.csrfToken(req),requestId:randomUUID()}));return;
+        }
+        if(req.method==='POST'&&action){
+          const input=await body(req);auth.verifyCsrf(req,input.csrf);
+          if(Object.keys(input).some(key=>!['csrf','requestId','kind','version','reason','reviewed'].includes(key))||!/^\d+$/.test(String(input.version))||action==='execute'&&input.reviewed!=='yes')throw problem(400,'invalid_request');
+          const parsed=coreSupportInput.safeParse({requestId:input.requestId,kind:input.kind,version:Number(input.version),reason:input.reason,reviewed:true});
+          if(!parsed.success)throw problem(400,'invalid_request');
+          if(action==='review'){
+            const state=await checkouts.support(who,checkoutId);
+            if(state.pending)throw problem(409,'support_request_pending');
+            if(state.order.version!==parsed.data.version)throw problem(409,'conflict');
+            if(parsed.data.kind==='complaint'&&state.order.complaints.length>=10||parsed.data.kind==='cancellation'&&(['completed','cancelled'].includes(state.order.status)||state.order.cancellation&&state.order.cancellation.status!=='rejected'))throw problem(409,'invalid_status');
+            htmlHeaders(res);res.end(checkoutSupportPage({checkoutId,tenantId:checkout.tenantId,...state,csrf:auth.csrfToken(req),review:parsed.data}));return;
+          }
+          try{await checkouts.submitSupport(who,checkoutId,parsed.data);}
+          catch(error){if(error.status>=500)return redirect(res,'/checkout/'+checkoutId+'/support',303);throw error;}
+          return redirect(res,'/checkout/'+checkoutId+'/support',303);
+        }
+        throw problem(404,'not_found');
+      }
       const checkoutRoute=/^\/checkout\/([a-f0-9-]{36})(?:\/(confirm|payment|refresh-payment))?$/.exec(url.pathname);
       if(checkoutRoute && checkouts) {
         // Browsers also apply form-action to the payment POST's redirect target.
@@ -204,7 +235,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
             const pay=order.paymentMethod==='card'&&['unpaid','pending'].includes(order.paymentStatus)?button('payment','الانتقال لصفحة الدفع'):'';
             const refresh=order.paymentMethod==='card'?button('refresh-payment','التحقق من حالة الدفع'):'';
             htmlHeaders(res);
-            res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>طلبك</title><h1>طلب ${escape(order.number)}</h1><p>حالة الطلب: ${escape(order.status)}</p><p>حالة الدفع: ${escape(order.paymentStatus)}</p>${checkoutSummary(order)}${pay}${refresh}<p>لا يعتبر الدفع مكتملًا إلا بعد التحقق لدى مزود الدفع.</p></html>`);return;
+            res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>طلبك</title><h1>طلب ${escape(order.number)}</h1><p>حالة الطلب: ${escape(order.status)}</p><p>حالة الدفع: ${escape(order.paymentStatus)}</p>${checkoutSummary(order)}${pay}${refresh}<p><a href="/checkout/${checkoutId}/support">متابعة الإلغاء والشكاوى</a></p><p>لا يعتبر الدفع مكتملًا إلا بعد التحقق لدى مزود الدفع.</p></html>`);return;
           }
           const providers=(await core.payments(checkout.tenantId)).providers.filter(row=>['stripe','moyasar','tap','paytabs','geidea','myfatoorah'].includes(row.id));
           const providerOptions=providers.map(row=>`<option value="${escape(row.id)}">${escape(row.name)}${row.mode==='test'?' (اختبار)':''}</option>`).join('');

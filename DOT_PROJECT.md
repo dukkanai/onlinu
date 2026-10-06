@@ -400,3 +400,13 @@ Windows review screenshot was inspected. Paid-card cancellation remains payment
 review and creates only the original unauthorised refund intent; no real payout
 or production operation occurred. Full product completion remains open. POS is
 still a later option, per the owner's instruction.
+
+## Customer-owned support handoff (local increment)
+
+`prototype/platform/CUSTOMER-SUPPORT.md` records the confirmed-checkout customer
+cancellation/complaint UI, separate signed ownership, explicit review and durable
+hash-only dispatch claims. Same-key recovery reads the original support ledger,
+including archived cancellations, without automatic POST replay. Local PostgreSQL,
+Node/Go HTTP, 226 platform tests, React 80/build and Go vet pass; remote browser
+and full regression acceptance remain pending. Unknown never-arrived writes stay
+blocked for reconciliation rather than silently duplicating a customer request.

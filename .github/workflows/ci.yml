@@ -141,6 +141,15 @@ jobs:
       - name: Test installer and source packaging
         run: python3 -m unittest discover -s deploy -p 'test_*.py'
 
+      - name: Preserve synthetic customer support rendering
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-customer-support-${{ github.sha }}
+          path: artifacts/customer-support/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
   client:
     name: client
     runs-on: ubuntu-latest

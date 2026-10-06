@@ -66,6 +66,13 @@ const supportCancellation=z.object({id:uuid,status:z.enum(['requested','approved
 const supportComplaint=z.object({id:uuid,status:z.enum(['open','resolved']),reason:z.string().max(4000),resolution:z.string().max(4000),requestedAt:z.string().datetime({offset:true}),resolvedAt:z.string().datetime({offset:true}).optional()});
 const supportSummary=coreOrderView.extend({cancellationPending:z.boolean(),openComplaints:z.number().int().min(0).max(10)});
 const supportDetail=supportSummary.extend({demo:z.boolean(),cancellation:supportCancellation.nullable(),complaints:z.array(supportComplaint).max(10),cancellationHistory:z.array(supportCancellation).max(20),historyLimit:z.literal(20),historyTruncated:z.boolean()});
+const customerSupportDetail=coreOrderView.extend({demo:z.boolean(),cancellation:supportCancellation.nullable(),complaints:z.array(supportComplaint).max(10),cancellationHistory:z.array(supportCancellation).max(20),historyLimit:z.literal(20),historyTruncated:z.boolean()});
+const customerSupportReceipt=z.object({order:customerSupportDetail,requestId:uuid,kind:z.enum(['cancellation','complaint']),recorded:z.boolean()});
+const customerSupportCommand=z.object({version:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),reviewed:z.literal(true),reason:z.string().trim().min(1).max(4000).refine(text=>Array.from(text).length<=1000)}).strict();
+function customerSupportPath(number,kind,key){
+  if(!/^R[0-9]{8,20}$/.test(number??'')||kind!==undefined&&!['cancellation','complaint'].includes(kind)||key!==undefined&&!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(key))throw problem(400,'invalid_request');
+  return '/platform-api/customer-support/'+number+(kind?'/'+kind:'')+(key?'/'+key:'');
+}
 const supportCommand=z.object({version:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),reviewed:z.literal(true),approve:z.boolean().optional(),reason:z.string().trim().min(1).max(4000)}).strict();
 const serviceFields={acceptingOrders:z.boolean(),deliveryEnabled:z.boolean(),pickupEnabled:z.boolean(),tableEnabled:z.boolean()};
 const serviceView=z.object({version:z.number().int().positive(),...serviceFields});
@@ -132,6 +139,23 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     }
   }
   return Object.freeze({
+    async customerSupport(tenantId,subject,number){
+      const value=await request(tenantId,subject,'GET',customerSupportPath(number),undefined,'','customer:support:read',customerSupportDetail,512_000);
+      if(value.number!==number)throw problem(503,'restaurant_unavailable');return value;
+    },
+    async customerSupportRecovery(tenantId,subject,number,kind,key){
+      const path=customerSupportPath(number,kind,key);
+      if(!kind||!key)throw problem(400,'invalid_request');
+      const value=await request(tenantId,subject,'GET',path,undefined,'','customer:support:read',customerSupportReceipt,512_000);
+      if(value.order.number!==number||value.requestId!==key||value.kind!==kind)throw problem(503,'restaurant_unavailable');return value;
+    },
+    customerSupportCommand(tenantId,subject,number,kind,key,input){
+      customerSupportPath(number,kind,key);const parsed=customerSupportCommand.safeParse(input);
+      if(!kind||!key||!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST',customerSupportPath(number,kind),parsed.data,key,'customer:support:write',customerSupportReceipt,512_000).then(value=>{
+        if(value.order.number!==number||value.requestId!==key||value.kind!==kind||!value.recorded||value.order.version<=parsed.data.version)throw problem(503,'order_outcome_unknown');return value;
+      });
+    },
     async refund(tenantId,subject,number,refundId){const value=await request(tenantId,subject,'GET',refundPath(number,refundId),undefined,'','staff:refunds:read',refundDetail);if(value.number!==number||value.id!==refundId)throw problem(503,'restaurant_unavailable');return value;},
     refundCommand(tenantId,subject,number,refundId,action,input){
       const path=refundPath(number,refundId),parsed=refundCommand.safeParse(input);

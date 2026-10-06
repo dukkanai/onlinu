@@ -115,6 +115,64 @@ test('owned core handoffs are durable, private and idempotent across ambiguous o
     await assert.rejects(store.prepare(alice,prepare(randomUUID())),{code:'tenant_unavailable'});
     await directory.setTenantStatus(alice.id,'a',{status:'active',expectedVersion:3});
   });
+  await t.test('support claims are private, owner-bound and never replay an uncertain write',async()=>{
+    const checkout=await store.prepare(alice,prepare(randomUUID()));await store.confirm(alice,checkout.checkoutId,contact);
+    const row=orders.get(checkout.checkoutId),receipts=new Map();let writes=0,lose=false,failBefore=false,knownReject=false;
+    const detail=()=>({...row,demo:false,cancellation:null,complaints:[],cancellationHistory:[],historyLimit:20,historyTruncated:false});
+    client.customerSupport=async(tenant,subject,number)=>{assert.equal(subject,alice.id);assert.equal(number,row.number);return detail();};
+    client.customerSupportRecovery=async(tenant,subject,number,kind,key)=>{assert.equal(subject,alice.id);assert.equal(number,row.number);return{order:detail(),kind,requestId:key,recorded:receipts.has(key)};};
+    client.customerSupportCommand=async(tenant,subject,number,kind,key,input)=>{
+      assert.equal(subject,alice.id);assert.equal(number,row.number);writes++;
+      if(knownReject)throw Object.assign(Error('stale'),{status:409,code:'conflict'});
+      if(failBefore)throw Object.assign(Error('unknown'),{status:503,code:'order_outcome_unknown'});
+      row.version++;receipts.set(key,true);
+      if(lose)throw Object.assign(Error('lost'),{status:503,code:'order_outcome_unknown'});
+      return{order:detail(),kind,requestId:key,recorded:true};
+    };
+    const value={requestId:randomUUID(),kind:'complaint',version:row.version,reviewed:true,reason:'Synthetic private support text'};
+    await assert.rejects(store.submitSupport(bob,checkout.checkoutId,value),{code:'not_found'});
+    await assert.rejects(store.support(bob,checkout.checkoutId),{code:'not_found'});
+    await assert.rejects(store.submitSupport({...alice,scopes:['orders:read']},checkout.checkoutId,value),{code:'insufficient_scope'});
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,{...value,reviewed:false}),{code:'invalid_request'});
+    assert.equal(writes,0);
+    lose=true;await assert.rejects(store.submitSupport(alice,checkout.checkoutId,value),{code:'order_outcome_unknown'});lose=false;
+    const pending=(await pool.query('SELECT * FROM platform_core_support_intents WHERE checkout_id=$1',[checkout.checkoutId])).rows[0];
+    assert.equal(pending.state,'dispatching');assert.equal(JSON.stringify(pending).includes(value.reason),false);
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,{...value,reason:'different'}),{code:'confirmation_conflict'});
+    const results=await Promise.all(Array.from({length:5},()=>store.submitSupport(alice,checkout.checkoutId,value)));
+    assert.ok(results.every(result=>result.recorded));assert.equal(writes,1);
+    assert.equal((await store.support(alice,checkout.checkoutId)).pending,null);
+    const rejected={...value,requestId:randomUUID(),version:row.version};knownReject=true;
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,rejected),{code:'conflict'});knownReject=false;
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,rejected),{code:'support_request_rejected'});
+    const ambiguous={...value,requestId:randomUUID(),version:row.version};failBefore=true;
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,ambiguous),{code:'order_outcome_unknown'});failBefore=false;
+    const count=writes;
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,ambiguous),{code:'order_outcome_unknown'});
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,{...ambiguous,requestId:randomUUID()}),{code:'support_request_pending'});
+    assert.equal(writes,count);assert.deepEqual((await store.support(alice,checkout.checkoutId)).pending,{requestId:ambiguous.requestId,kind:'complaint'});
+    // Original service can finish after the response timed out; later reads settle
+    // the same durable key without a second submission or saved private reason.
+    receipts.set(ambiguous.requestId,true);assert.equal((await store.support(alice,checkout.checkoutId)).pending,null);
+    const concurrent={...value,requestId:randomUUID(),version:row.version};
+    const beforeConcurrent=writes;
+    await Promise.allSettled(Array.from({length:8},()=>store.submitSupport(alice,checkout.checkoutId,concurrent)));
+    assert.equal(writes,beforeConcurrent+1);assert.equal((await store.support(alice,checkout.checkoutId)).pending,null);
+    const databaseFailure={...value,requestId:randomUUID(),version:row.version};
+    await pool.query(`CREATE FUNCTION reject_support_recorded() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.state='recorded' THEN RAISE EXCEPTION 'synthetic persistence failure'; END IF;RETURN NEW;END $$;
+      CREATE TRIGGER reject_support_recorded BEFORE UPDATE ON platform_core_support_intents FOR EACH ROW EXECUTE FUNCTION reject_support_recorded()`);
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,databaseFailure));const afterFailedSave=writes;
+    await pool.query('DROP TRIGGER reject_support_recorded ON platform_core_support_intents');
+    assert.equal((await store.submitSupport(alice,checkout.checkoutId,databaseFailure)).recorded,true);assert.equal(writes,afterFailedSave);
+    await pool.query(`CREATE FUNCTION reject_support_claim() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      RAISE EXCEPTION 'synthetic claim failure'; END $$;
+      CREATE TRIGGER reject_support_claim BEFORE INSERT ON platform_core_support_intents FOR EACH ROW EXECUTE FUNCTION reject_support_claim()`);
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,{...value,requestId:randomUUID(),version:row.version}));assert.equal(writes,afterFailedSave);
+    await pool.query('DROP TRIGGER reject_support_claim ON platform_core_support_intents');
+    await pool.query("UPDATE platform_core_checkouts SET expires_at=now()-interval '1 day' WHERE id=$1",[checkout.checkoutId]);
+    assert.equal((await store.support(alice,checkout.checkoutId)).order.number,row.number);
+  });
   await t.test('disabled principal cannot read or confirm using a retained grant',async()=>{
     const pending=await store.prepare(alice,prepare(randomUUID()));
     await pool.query('UPDATE platform_identities SET enabled=FALSE WHERE id=$1',[alice.id]);

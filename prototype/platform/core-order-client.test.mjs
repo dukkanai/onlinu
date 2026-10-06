@@ -179,3 +179,42 @@ test('bounded support history accepts valid multilingual original messages beyon
  assert.ok(Buffer.byteLength(JSON.stringify(data))>128000);
  const client=createCoreOrderClient({...config,fetchImpl:async()=>json(data)});const result=await client.supportDetail('restaurant-a',randomUUID(),view.number);assert.equal(result.cancellationHistory.length,20);assert.equal(result.cancellationHistory[0].reason,reason);
 });
+
+test('customer support envelopes bind owned request facts and strip unrelated private fields',async()=>{
+ const subject=randomUUID(),key=randomUUID();let calls=0;
+ const detail={...view,version:2,demo:false,cancellation:null,complaints:[],cancellationHistory:[],historyLimit:20,historyTruncated:false};
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{
+  calls++;const claims=JSON.parse(Buffer.from(options.headers.authorization.slice(9).split('.')[0],'base64url'));
+  assert.equal(claims.subject,subject);assert.equal(claims.audience,'restaurant-a');
+  if(options.method==='POST'){
+   assert.equal(url,'http://127.0.0.1:3001/platform-api/customer-support/'+view.number+'/complaint');
+   assert.equal(claims.scope,'customer:support:write');assert.equal(claims.idempotencyKey,key);
+   assert.deepEqual(JSON.parse(options.body),{version:1,reviewed:true,reason:'Synthetic reason'});
+  }else assert.equal(claims.scope,'customer:support:read');
+  if(url.endsWith('/'+view.number))return json({...detail,trackingToken:'secret',customerName:'private'});
+  return json({order:{...detail,phone:'private'},kind:'complaint',requestId:key,recorded:true});
+ }});
+ assert.equal((await client.customerSupport('restaurant-a',subject,view.number)).trackingToken,undefined);
+ const input={version:1,reviewed:true,reason:'Synthetic reason'};
+ const receipt=await client.customerSupportCommand('restaurant-a',subject,view.number,'complaint',key,input);
+ assert.equal(receipt.order.phone,undefined);assert.equal(receipt.recorded,true);
+ assert.equal((await client.customerSupportRecovery('restaurant-a',subject,view.number,'complaint',key)).requestId,key);
+ assert.equal(calls,3);
+ assert.throws(()=>client.customerSupportCommand('restaurant-a',subject,view.number,'complaint',key,{...input,reviewed:false}),{code:'invalid_request'});
+ assert.throws(()=>client.customerSupportCommand('restaurant-a',subject,view.number,'complaint',key,{...input,reason:'ع'.repeat(1001)}),{code:'invalid_request'});
+ assert.throws(()=>client.customerSupportCommand('restaurant-a',subject,view.number,'decide',key,input),{code:'invalid_request'});
+ assert.equal(calls,3);
+});
+
+test('customer support ambiguous replies never replay and foreign recovery cannot confirm success',async()=>{
+ const subject=randomUUID(),key=randomUUID();let calls=0;
+ const client=createCoreOrderClient({...config,fetchImpl:async()=>{calls++;throw Error('lost response');}});
+ await assert.rejects(client.customerSupportCommand('restaurant-a',subject,view.number,'cancellation',key,{version:1,reviewed:true,reason:'Synthetic'}),{code:'order_outcome_unknown'});
+ assert.equal(calls,1);
+ const detail={...view,version:2,demo:false,cancellation:null,complaints:[],cancellationHistory:[],historyLimit:20,historyTruncated:false};
+ for(const change of [{requestId:randomUUID()},{kind:'complaint'},{order:{...detail,number:'R99999999'}}]){
+  const wrong=createCoreOrderClient({...config,fetchImpl:async()=>json({order:detail,requestId:key,kind:'cancellation',recorded:true,...change})});
+  await assert.rejects(wrong.customerSupportRecovery('restaurant-a',subject,view.number,'cancellation',key),{code:'restaurant_unavailable'});
+  await assert.rejects(wrong.customerSupportCommand('restaurant-a',subject,view.number,'cancellation',key,{version:1,reviewed:true,reason:'Synthetic'}),{code:'order_outcome_unknown'});
+ }
+});

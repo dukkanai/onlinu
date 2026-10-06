@@ -185,7 +185,7 @@ func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
 				return
 			}
 			limit := 240
-			if scope == "orders:write" || scope == "staff:media:write" {
+			if scope == "orders:write" || scope == "customer:support:write" || scope == "staff:media:write" {
 				limit = 30
 			}
 			if !limiter.allow(owner+":"+scope, limit) {
@@ -206,6 +206,7 @@ func (s *server) registerPlatformOrderRoutes(mux *http.ServeMux) {
 			next(w, r, body, owner)
 		}
 	}
+	s.registerPlatformCustomerSupportRoutes(mux, wrap)
 	s.registerPlatformStaffOrderRoutes(mux, wrap)
 	s.registerPlatformChannelRoutes(mux, wrap)
 	mux.HandleFunc("POST /platform-api/orders", wrap("orders:write", func(w http.ResponseWriter, r *http.Request, body []byte, owner string) {
