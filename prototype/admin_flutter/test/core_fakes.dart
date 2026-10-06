@@ -354,7 +354,7 @@ class FakeCoreGateway implements CoreGateway {
       'version': expected.version + 1,
       'modes': [
         for (final v in paymentMethodsData['modes'])
-          {
+          <String, dynamic>{
             ...v,
             if (v['mode'] == mode) 'methods': [...methods]
           }

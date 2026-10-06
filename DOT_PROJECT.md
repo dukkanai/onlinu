@@ -782,3 +782,9 @@ are exposed. Model/API/controller/widget regressions, real native TLS save/stale
 restore and Windows screenshot acceptance are added. Dart 3.5 formatting and diff
 checks pass; local dependency restore has not completed, so analysis/tests/build
 are not claimed passed until remote CI. Native image/device acceptance is pending.
+
+Native first run CI37502537453 passed analysis but exposed two failures in the
+new API/widget fixture: a map rebuilt from a dynamic list lost its string-keyed
+runtime type, so the strict response parser correctly rejected it. The fixture
+now explicitly rebuilds `Map<String, dynamic>`; production parsing and test
+assertions remain unchanged. The native aggregate is not yet accepted.
