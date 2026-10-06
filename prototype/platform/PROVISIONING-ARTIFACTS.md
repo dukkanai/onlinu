@@ -61,5 +61,8 @@ creation, deployment or tenant activation is implemented here.
 The local platform suite passes 255 tests with no skips, including the actual
 Python compiler, negative filesystem/configuration cases, sanitized subprocess
 environment and PostgreSQL journal integration. Related actual-main Go race
-checks also pass. Remote CI for this increment is pending. These synthetic tests
-do not establish production provisioning acceptance.
+checks also pass. Commit `de31ccd` passed all four ordinary jobs in
+[CI37434333447](https://github.com/dukkanai/onlinu/actions/runs/37434333447),
+including Windows. The optional runtime-image job was intentionally skipped;
+the previously accepted image/Compose implementation was unchanged. These
+synthetic tests do not establish production provisioning acceptance.

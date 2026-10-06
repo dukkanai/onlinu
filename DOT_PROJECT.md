@@ -559,5 +559,6 @@ strict offline resource compilation, matching tenant/digest and approved release
 policy before returning immutable Compose plus verified bootstrap bytes. It
 rechecks authority and worker fencing before/after compilation and never reads
 secret files or executes Docker. Local 255 platform tests pass without skips;
-related actual-main Go race tests pass. Remote CI is pending for this increment.
+related actual-main Go race tests pass. Commit `de31ccd` passed all four ordinary
+CI37434333447 jobs; the unchanged optional runtime-image job was skipped.
 See `prototype/platform/PROVISIONING-ARTIFACTS.md` for remaining executor gates.
