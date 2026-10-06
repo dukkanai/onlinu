@@ -93,5 +93,7 @@ file-backed key, signed service reads, and credential-free logs. It does not ope
 a WhatsApp session or make provider calls. The fixture uses the test cluster
 maintenance role; it does not prove least-privilege production role isolation.
 
-The new guard and actual-main smoke pass local race tests. CI is configured to
-run the smoke; remote acceptance of this next increment is still pending.
+The new guard and actual-main smoke pass local race tests. Commit `9812807`
+passed all jobs in [CI37405031722](https://github.com/dukkanai/onlinu/actions/runs/37405031722),
+including the enabled actual-main smoke. This is not production deployment or
+acceptance of a container image, tenant isolation or external providers.

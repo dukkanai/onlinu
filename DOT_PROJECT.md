@@ -493,5 +493,5 @@ File-backed secret commit `38c60fe` passed all CI37401147861 jobs. The following
 local increment requires original administrator authentication whenever signed
 platform access is configured, and adds an opt-in actual-main smoke using only
 synthetic files and a uniquely owned loopback test database. Local race tests
-pass; remote verification of the guard and smoke is pending. See
+pass; commit `9812807` subsequently passed every job in CI37405031722. See
 `deploy/RUNTIME-SECRETS.md` for the exact boundary and test opt-in.
