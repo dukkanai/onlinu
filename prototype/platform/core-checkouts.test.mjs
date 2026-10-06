@@ -150,10 +150,13 @@ test('owned core handoffs are durable, private and idempotent across ambiguous o
     const count=writes;
     await assert.rejects(store.submitSupport(alice,checkout.checkoutId,ambiguous),{code:'order_outcome_unknown'});
     await assert.rejects(store.submitSupport(alice,checkout.checkoutId,{...ambiguous,requestId:randomUUID()}),{code:'support_request_pending'});
-    assert.equal(writes,count);assert.deepEqual((await store.support(alice,checkout.checkoutId)).pending,{requestId:ambiguous.requestId,kind:'complaint'});
-    // Original service can finish after the response timed out; later reads settle
-    // the same durable key without a second submission or saved private reason.
-    receipts.set(ambiguous.requestId,true);assert.equal((await store.support(alice,checkout.checkoutId)).pending,null);
+    assert.equal(writes,count);assert.deepEqual((await store.support(alice,checkout.checkoutId)).pending,{requestId:ambiguous.requestId,kind:'complaint',version:ambiguous.version});
+    await assert.rejects(store.reviewSupportRetry(alice,checkout.checkoutId,{...ambiguous,reason:'different'}),{code:'confirmation_conflict'});
+    assert.equal((await store.reviewSupportRetry(alice,checkout.checkoutId,ambiguous)).recorded,false);assert.equal(writes,count);
+    const retried=await store.submitSupport(alice,checkout.checkoutId,ambiguous,true);assert.equal(retried.recorded,true);assert.equal(writes,count+1);
+    assert.equal((await store.submitSupport(alice,checkout.checkoutId,ambiguous,true)).recorded,true);assert.equal(writes,count+1);
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,{...ambiguous,requestId:randomUUID()},true),{code:'confirmation_conflict'});
+    assert.equal((await store.support(alice,checkout.checkoutId)).pending,null);
     const concurrent={...value,requestId:randomUUID(),version:row.version};
     const beforeConcurrent=writes;
     await Promise.allSettled(Array.from({length:8},()=>store.submitSupport(alice,checkout.checkoutId,concurrent)));
@@ -172,6 +175,11 @@ test('owned core handoffs are durable, private and idempotent across ambiguous o
     await pool.query('DROP TRIGGER reject_support_claim ON platform_core_support_intents');
     await pool.query("UPDATE platform_core_checkouts SET expires_at=now()-interval '1 day' WHERE id=$1",[checkout.checkoutId]);
     assert.equal((await store.support(alice,checkout.checkoutId)).order.number,row.number);
+    const legacy={...value,requestId:randomUUID(),version:row.version};
+    await pool.query("INSERT INTO platform_core_support_intents(checkout_id,request_id,kind,request_hash,state) VALUES($1,$2,'complaint','legacy-hash','dispatching')",[checkout.checkoutId,legacy.requestId]);
+    assert.equal((await store.support(alice,checkout.checkoutId)).pending.version,undefined);
+    await assert.rejects(store.submitSupport(alice,checkout.checkoutId,legacy,true),{code:'confirmation_conflict'});
+    assert.equal(writes,afterFailedSave);
   });
   await t.test('disabled principal cannot read or confirm using a retained grant',async()=>{
     const pending=await store.prepare(alice,prepare(randomUUID()));

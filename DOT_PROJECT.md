@@ -422,3 +422,14 @@ inspected and is readable. Windows 130-test regression, native renderer/store
 and unsigned build also passed; platform 226 and React 80 tests pass.
 Unknown-outcome reconciliation tooling, remaining full-product features and
 production/external-account acceptance remain open. No production deployment.
+
+
+## Explicit customer support recovery retry (local increment)
+
+The customer can separately review and confirm retrying an unresolved support
+request with its original stable ID, kind, version and reason hash. Normal
+resubmission/refresh stays read-only; the original row-locked ledger prevents
+duplicate logical requests. Reasons are not newly persisted centrally. Legacy
+rows without original review version stay blocked rather than guessing it.
+Local 226 platform and original Node/Go/HTTP regression checks pass; remote
+Chromium retry confirmation and full CI are pending for this later increment.

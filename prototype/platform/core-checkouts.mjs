@@ -51,7 +51,8 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
       kind TEXT NOT NULL CHECK(kind IN ('cancellation','complaint')), request_hash TEXT NOT NULL,
       state TEXT NOT NULL CHECK(state IN ('dispatching','recorded','rejected')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(checkout_id,request_id)
-    ); CREATE UNIQUE INDEX IF NOT EXISTS platform_core_support_one_pending
+    ); ALTER TABLE platform_core_support_intents ADD COLUMN IF NOT EXISTS review_version BIGINT;
+    CREATE UNIQUE INDEX IF NOT EXISTS platform_core_support_one_pending
       ON platform_core_support_intents(checkout_id) WHERE state='dispatching'`);
   }
   function summary(row) {
@@ -174,26 +175,48 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     const {rows}=await pool.query("SELECT * FROM platform_core_support_intents WHERE checkout_id=$1 AND state='dispatching'",[row.id]);
     if(rows[0]){
       const recovered=await recoverSupport(row,rows[0]);
-      return {order:recovered.order,pending:recovered.recorded?null:{requestId:rows[0].request_id,kind:rows[0].kind}};
+      return {order:recovered.order,pending:recovered.recorded?null:{requestId:rows[0].request_id,kind:rows[0].kind,...(rows[0].review_version?{version:Number(rows[0].review_version)}:{})}};
     }
     return {order:await orderClient.customerSupport(row.tenant_id,who.id,row.order_number),pending:null};
   }
-  async function submitSupport(identity,checkoutId,value) {
+  async function reviewedSupportIntent(identity,checkoutId,value) {
+    const {row}=await confirmedSupportOwner(identity,checkoutId,'orders:write'),input=parse(coreSupportInput,value);
+    const {rows}=await pool.query('SELECT * FROM platform_core_support_intents WHERE checkout_id=$1 AND request_id=$2',[row.id,input.requestId]);
+    const intent=rows[0];
+    if(!intent||!intent.review_version||Number(intent.review_version)!==input.version||intent.request_hash!==digest(input))throw problem(409,'confirmation_conflict');
+    if(intent.state==='rejected')throw problem(409,'support_request_rejected');
+    return {row,input,intent};
+  }
+  async function reviewSupportRetry(identity,checkoutId,value) {
+    const {row,intent}=await reviewedSupportIntent(identity,checkoutId,value);
+    return recoverSupport(row,intent);
+  }
+  async function submitSupport(identity,checkoutId,value,explicitRetry=false) {
     const {row}=await confirmedSupportOwner(identity,checkoutId,'orders:write');
     const input=parse(coreSupportInput,value);
     const {requestId,kind,...command}=input,requestHash=digest(input);
-    // Persist only a hash, never the customer's free-text reason. The partial
-    // unique index prevents an alternative key from bypassing an unknown write.
-    const inserted=await pool.query(`INSERT INTO platform_core_support_intents(checkout_id,request_id,kind,request_hash,state)
-      VALUES($1,$2,$3,$4,'dispatching') ON CONFLICT DO NOTHING RETURNING request_id`,[row.id,requestId,kind,requestHash]);
-    if(!inserted.rows.length){
-      const {rows}=await pool.query('SELECT * FROM platform_core_support_intents WHERE checkout_id=$1 AND request_id=$2',[row.id,requestId]);
-      if(!rows[0])throw problem(409,'support_request_pending');
-      if(rows[0].request_hash!==requestHash)throw problem(409,'confirmation_conflict');
-      if(rows[0].state==='rejected')throw problem(409,'support_request_rejected');
-      const recovered=await recoverSupport(row,rows[0]);
-      if(!recovered.recorded)throw problem(503,'order_outcome_unknown');
-      return recovered;
+    let existing;
+    if(explicitRetry){existing=(await reviewedSupportIntent(identity,checkoutId,input)).intent;}
+    else {
+      // Persist only a hash and review version, never free-text reason. A partial
+      // unique index prevents an alternative key bypassing an unknown write.
+      const inserted=await pool.query(`INSERT INTO platform_core_support_intents(checkout_id,request_id,kind,request_hash,state,review_version)
+        VALUES($1,$2,$3,$4,'dispatching',$5) ON CONFLICT DO NOTHING RETURNING request_id`,[row.id,requestId,kind,requestHash,input.version]);
+      if(!inserted.rows.length){
+        const {rows}=await pool.query('SELECT * FROM platform_core_support_intents WHERE checkout_id=$1 AND request_id=$2',[row.id,requestId]);
+        existing=rows[0];
+        if(!existing)throw problem(409,'support_request_pending');
+      }
+    }
+    if(existing){
+      if(existing.request_hash!==requestHash)throw problem(409,'confirmation_conflict');
+      if(existing.state==='rejected')throw problem(409,'support_request_rejected');
+      const recovered=await recoverSupport(row,existing);
+      if(recovered.recorded)return recovered;
+      if(!explicitRetry)throw problem(503,'order_outcome_unknown');
+      // This is a separately reviewed human retry, never a refresh or implicit
+      // fallback. The original core's row lock and durable key serialize even
+      // overlapping deliveries. The original version/reason cannot be replaced.
     }
     let result;
     try {
@@ -207,5 +230,5 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     await pool.query("UPDATE platform_core_support_intents SET state='recorded' WHERE checkout_id=$1 AND request_id=$2",[row.id,requestId]);
     return result;
   }
-  return { init, prepare, get, confirm, status, details, payment, support, submitSupport };
+  return { init, prepare, get, confirm, status, details, payment, support, submitSupport, reviewSupportRetry };
 }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {randomBytes,randomUUID} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createServer,request as httpRequest} from 'node:http';
 import pg from 'pg';
 import {mkdir} from 'node:fs/promises';
@@ -44,8 +44,30 @@ export async function checkCustomerSupportUI(fixture){
   const cancelled=await app.checkouts.support(customer,checkout.checkoutId);assert.equal(cancelled.order.status,'cancelled');assert.equal(cancelled.order.cancellation.status,'approved');assert.equal(cancelled.order.paymentStatus,'unpaid');
   const complaint={...input,kind:'complaint',requestId:randomUUID(),version:cancelled.order.version,reason:'Synthetic private complaint',reviewed:'yes'};
   await app.directory.setTenantStatus(owner.id,'restaurant-a',{status:'suspended',expectedVersion:2});
-  assert.equal((await send(path+'/review',{body:complaint})).status,200);
+  const frozen={requestId:complaint.requestId,kind:complaint.kind,version:complaint.version,reason:complaint.reason,reviewed:true};
+  const canonical=Object.fromEntries(Object.keys(frozen).sort().map(key=>[key,frozen[key]]));
+  const hash=createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+  // Simulate a process stopping after durable claim but before original dispatch.
+  await pool.query("INSERT INTO platform_core_support_intents(checkout_id,request_id,kind,request_hash,state,review_version) VALUES($1,$2,'complaint',$3,'dispatching',$4)",[checkout.checkoutId,complaint.requestId,hash,complaint.version]);
+  const unknown=await send(path);assert.equal(unknown.status,200);assert.match(unknown.raw,/مراجعة إعادة الإرسال بنفس المرجع/);
   assert.equal((await send(path+'/execute',{body:complaint})).status,303);
+  assert.equal((await app.checkouts.support(customer,checkout.checkoutId)).order.complaints.length,0,'Normal resubmit only reads recovery');
+  assert.equal((await send(path+'/retry-review',{body:{...complaint,reason:'different'}})).status,409);
+  assert.equal((await send(path+'/retry-review',{body:complaint})).status,200);
+  assert.equal((await send(path+'/retry-execute',{body:{...complaint,reviewed:undefined}})).status,400);
+  if(process.env.CORE_BROWSER_TEST==='1'){
+    const {chromium}=await import('playwright-core');const browser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--proxy-server=http://127.0.0.1:9','--proxy-bypass-list=<-loopback>']});
+    try{
+      const context=await browser.newContext({locale:'ar-SA'});await context.addCookies([{name:'__Host-platform_session',value:customer.cookie.split('=')[1],url:base,secure:true,httpOnly:true,sameSite:'Lax'}]);
+      await context.route('**/*',async route=>{const request=route.request(),url=new URL(request.url()),headers=await request.allHeaders();if(url.origin!==base)return route.abort();const response=await new Promise((resolve,reject)=>{const req=httpRequest(local+url.pathname+url.search,{method:request.method(),headers:{...headers,host:'platform.example'}},res=>{const chunks=[];res.on('data',v=>chunks.push(v));res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,body:Buffer.concat(chunks)}));});req.on('error',reject);req.end(request.postDataBuffer()??undefined);});await route.fulfill(response);});
+      const page=await context.newPage();page.setDefaultTimeout(8000);await page.goto(base+path);
+      await page.getByLabel('أعد كتابة السبب الأصلي',{exact:true}).fill(complaint.reason);await page.getByRole('button',{name:'مراجعة إعادة الإرسال بنفس المرجع',exact:true}).click();
+      await page.getByRole('button',{name:'تأكيد إرسال طلب الدعم',exact:true}).click();assert.ok(page.url().endsWith('/retry-review'));
+      await page.getByLabel('راجعت الطلب والسبب وأؤكد الإرسال',{exact:true}).check();await page.screenshot({path:'../../artifacts/customer-support/customer-support-retry-review.png',fullPage:true});await page.getByRole('button',{name:'تأكيد إرسال طلب الدعم',exact:true}).click();await page.waitForURL(base+path);
+      console.log('Verified actual Chromium separately reviewed same-key customer retry after a durable unsubmitted intent; unchecked retry cannot execute.');
+    }finally{await browser.close();}
+  }else assert.equal((await send(path+'/retry-execute',{body:complaint})).status,303);
+
   assert.equal((await send(path+'/execute',{body:complaint})).status,303);
   const after=await app.checkouts.support(customer,checkout.checkoutId);assert.equal(after.order.complaints.length,1);assert.equal(after.pending,null);
   const intents=(await pool.query('SELECT * FROM platform_core_support_intents')).rows;assert.equal(intents.length,2);assert.ok(intents.every(row=>row.state==='recorded'));assert.equal(JSON.stringify(intents).includes(complaint.reason),false);

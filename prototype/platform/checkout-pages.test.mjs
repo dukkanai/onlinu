@@ -25,5 +25,7 @@ test('customer support review escapes messages and uncertain outcomes block new 
  const review=checkoutSupportPage({...args,review:{kind:'cancellation',requestId:'request',version:3,reason:'<script>private</script>'}});
  assert.doesNotMatch(review,/<script>/);assert.match(review,/&lt;script&gt;/);assert.match(review,/name="reviewed" value="yes" required/);assert.match(review,/لا يعني اكتمال الاسترداد/);
  const pending=checkoutSupportPage({...args,pending:{kind:'complaint',requestId:'unknown'}});assert.doesNotMatch(pending,/<form/);assert.match(pending,/نتيجة الإرسال لم تتأكد/);
+ const retry=checkoutSupportPage({...args,pending:{kind:'complaint',requestId:'unknown',version:3}});assert.match(retry,/retry-review/);assert.doesNotMatch(retry,/retry-execute/);assert.match(retry,/أعد كتابة السبب الأصلي/);
+ const retryReview=checkoutSupportPage({...args,review:{retry:true,kind:'complaint',requestId:'unknown',version:2,reason:'original'}});assert.match(retryReview,/retry-execute/);assert.match(retryReview,/نسخة المراجعة الأصلية: 2/);assert.match(retryReview,/name="reviewed" value="yes" required/);
  const terminal=checkoutSupportPage({...args,order:{...order,status:'cancelled'}});assert.doesNotMatch(terminal,/مراجعة طلب إلغاء/);assert.match(terminal,/مراجعة إرسال شكوى/);
 });

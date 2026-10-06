@@ -182,7 +182,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         res.setHeader('set-cookie', cookie(cookieName, '', 0)); return json(res, 200, { loggedOut: true });
       }
 
-      const customerSupportRoute=/^\/checkout\/([a-f0-9-]{36})\/support(?:\/(review|execute))?$/.exec(url.pathname);
+      const customerSupportRoute=/^\/checkout\/([a-f0-9-]{36})\/support(?:\/(review|execute|retry-review|retry-execute))?$/.exec(url.pathname);
       if(customerSupportRoute&&checkouts&&['GET','POST'].includes(req.method)){
         const [,checkoutId,action]=customerSupportRoute;
         if(req.headers.authorization||url.search)throw problem(403,'browser_session_required');
@@ -196,9 +196,14 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         }
         if(req.method==='POST'&&action){
           const input=await body(req);auth.verifyCsrf(req,input.csrf);
-          if(Object.keys(input).some(key=>!['csrf','requestId','kind','version','reason','reviewed'].includes(key))||!/^\d+$/.test(String(input.version))||action==='execute'&&input.reviewed!=='yes')throw problem(400,'invalid_request');
+          if(Object.keys(input).some(key=>!['csrf','requestId','kind','version','reason','reviewed'].includes(key))||!/^\d+$/.test(String(input.version))||action.endsWith('execute')&&input.reviewed!=='yes')throw problem(400,'invalid_request');
           const parsed=coreSupportInput.safeParse({requestId:input.requestId,kind:input.kind,version:Number(input.version),reason:input.reason,reviewed:true});
           if(!parsed.success)throw problem(400,'invalid_request');
+          if(action==='retry-review'){
+            const receipt=await checkouts.reviewSupportRetry(who,checkoutId,parsed.data);
+            if(receipt.recorded)return redirect(res,'/checkout/'+checkoutId+'/support',303);
+            htmlHeaders(res);res.end(checkoutSupportPage({checkoutId,tenantId:checkout.tenantId,order:receipt.order,pending:null,csrf:auth.csrfToken(req),review:{...parsed.data,retry:true}}));return;
+          }
           if(action==='review'){
             const state=await checkouts.support(who,checkoutId);
             if(state.pending)throw problem(409,'support_request_pending');
@@ -206,7 +211,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
             if(parsed.data.kind==='complaint'&&state.order.complaints.length>=10||parsed.data.kind==='cancellation'&&(['completed','cancelled'].includes(state.order.status)||state.order.cancellation&&state.order.cancellation.status!=='rejected'))throw problem(409,'invalid_status');
             htmlHeaders(res);res.end(checkoutSupportPage({checkoutId,tenantId:checkout.tenantId,...state,csrf:auth.csrfToken(req),review:parsed.data}));return;
           }
-          try{await checkouts.submitSupport(who,checkoutId,parsed.data);}
+          try{await checkouts.submitSupport(who,checkoutId,parsed.data,action==='retry-execute');}
           catch(error){if(error.status>=500)return redirect(res,'/checkout/'+checkoutId+'/support',303);throw error;}
           return redirect(res,'/checkout/'+checkoutId+'/support',303);
         }

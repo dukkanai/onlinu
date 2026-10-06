@@ -32,8 +32,8 @@ reopening an order must not make an accepted earlier request appear missing.
 ## Unknown outcomes and persistence
 
 `platform_core_support_intents` is an additive central table keyed by checkout
-and stable UUID v4. It stores kind, state and the reviewed input hash, not reason
-text. A partial unique index permits only one unresolved dispatch per checkout.
+and stable UUID v4. It stores kind, state, original review version and the reviewed input hash, not
+reason text. A partial unique index permits only one unresolved dispatch per checkout.
 The request is claimed durably before contacting the restaurant. Concurrent or
 repeated requests recover using the original support ledger; they never replay a
 POST automatically. A different key cannot bypass an unresolved outcome.
@@ -41,11 +41,18 @@ POST automatically. A different key cannot bypass an unresolved outcome.
 The original ledger and current owned order are read in a repeatable-read snapshot.
 A recorded earlier request stays recorded after a later complaint or order reopen.
 Confirmed original rejections release the pending claim. Ambiguous transport or
-final central persistence failures retain it for read-only recovery. If the
-original request never arrived, it remains unresolved: this increment does not
-pretend that absence proves safety to send another request. The page explains
-verification and contacting the restaurant. Operator reconciliation tooling and
-its production runbook remain an explicit follow-on requirement.
+final central persistence failures retain it for read-only recovery. If the original request never arrived, ordinary refresh and normal resubmission
+remain read-only recovery. A separate human retry now requires re-entering the
+original reason, a fresh review and checked confirmation. Its version, kind and
+stable request ID must match the persisted hash. It first checks original ledger
+recovery again; only an explicit checked retry can send the same request. The
+original row lock/idempotency ledger prevents duplicate logical requests even
+when old and new deliveries overlap. No stale version is upgraded automatically.
+
+The additive nullable review-version column preserves old intent rows. Legacy
+unknown rows without that version cannot use this retry; neither missing data nor
+a forgotten reason is replaced by a guessed value. Operator reconciliation and
+its production runbook remain necessary for these legacy/mismatched cases.
 
 Confirmed historical checkout access follows the existing customer order/payment
 access model, including suspended-tenant settlement and expired checkout links.
@@ -79,3 +86,13 @@ no production payment rule was changed to make the test pass.
 
 No production migration, real customer communication, account or payout occurred.
 POS remains deferred.
+
+## Explicit recovery retry — local increment, 2026-10-06
+
+The latest increment adds the separate same-key customer retry above. Local
+226 platform tests and actual original Go/Node/PostgreSQL/browser-session HTTP
+pass, including lost-before-dispatch, changed-reason denial, no normal auto-replay,
+checked retry, already-recorded no-op and legacy missing-version denial. New
+Chromium retry review/unchecked/checked execution and screenshot are included in
+CI but are not yet remotely accepted. The verified f1046f5 baseline above does
+not itself certify this later increment.

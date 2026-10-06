@@ -14,6 +14,7 @@ assert.equal((await client.customerSupportRecovery('restaurant-a',actor,number,'
 const receipt=await client.customerSupportCommand('restaurant-a',actor,number,'complaint',key,input);
 assert.equal(receipt.recorded,true);assert.equal(receipt.order.version,before.version+1);
 assert.equal(receipt.order.complaints.find(c=>c.id===key).reason,input.reason);
+await assert.rejects(client.customerSupportCommand('restaurant-a',actor,number,'complaint',randomUUID(),input),{status:409,code:'conflict'});
 assert.equal(receipt.order.phone,undefined);assert.equal(receipt.order.trackingToken,undefined);
 const repeat=await client.customerSupportCommand('restaurant-a',actor,number,'complaint',key,input);
 assert.equal(repeat.order.version,receipt.order.version);
