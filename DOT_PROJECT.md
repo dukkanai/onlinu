@@ -684,3 +684,17 @@ Older core responses hide unsupported editing. Unit rendering/parsing tests pass
 actual Chromium save/clear and nine transport/revocation cases await remote CI.
 A synthetic rendering screenshot is retained for review. Flutter editing remains
 pending, and this does not implement per-kilometre delivery pricing.
+
+Browser editor `7faad6dfd07bba4d2991b0cafb108b069c1828f9` passed all four
+ordinary jobs in CI37470572626. The downloaded synthetic Chromium screenshot was
+visually inspected: Arabic labels, coordinates, radius, review and clear/save
+flow are present. Full-image acceptance was intentionally not rerun.
+
+Native editor follow-on (acceptance pending): Flutter gains compatible nullable
+origin models, a validated full-intent location command, matching acknowledgement
+checks, current-tenant/version/permission guards and an explicit review dialog.
+Added tests cover localized decimal input, invalid/old responses, cancellation,
+revocation, real TLS native API save/stale/restore, and Windows form/review
+screenshots. A checksum-verified Flutter SDK was restored locally, but package
+restore did not complete in this execution. Local formatting and diff review are
+not an analyzer/test pass; native analysis, tests and rendering await remote CI.

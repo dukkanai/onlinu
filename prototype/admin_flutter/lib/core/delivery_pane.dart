@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'controller.dart';
 import 'models.dart';
 import 'delivery_models.dart';
+import 'delivery_location_editor.dart';
 
 sealed class DeliveryEdit {}
 
@@ -50,6 +51,18 @@ class _DeliveryPaneState extends State<DeliveryPane> {
     }
   }
 
+  Future<void> editLocation(CoreDelivery value) async {
+    final change = await showDialog<DeliveryLocationChange>(
+      context: context,
+      builder: (_) => DeliveryLocationEditor(
+        controller: widget.controller,
+        expected: value,
+      ),
+    );
+    if (!mounted || change == null) return;
+    await widget.controller.deliveryLocation(value, change);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = widget.controller, d = c.coverage;
@@ -76,6 +89,11 @@ class _DeliveryPaneState extends State<DeliveryPane> {
       const Text(
           'في وضع الأحياء، الحي غير المهيأ أو المعطّل لا يقبل التوصيل. الرسم صفر يعني توصيلًا مجانيًا. رسوم الطلبات السابقة لا تتغير.'),
       Wrap(spacing: 12, children: [
+        if (d.locationKnown)
+          OutlinedButton(
+              onPressed: editable ? () => editLocation(d) : null,
+              child: const Text('تعديل موقع ونطاق التوصيل')),
+
         OutlinedButton(
             onPressed: editable ? () => edit(d, pricing: true) : null,
             child: const Text('تعديل تسعير التوصيل')),

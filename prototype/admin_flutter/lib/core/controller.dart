@@ -1287,6 +1287,8 @@ class CoreController extends ChangeNotifier {
     }
   }
 
+  Future<void> deliveryLocation(CoreDelivery expected, DeliveryLocationChange change) =>
+      _deliveryWrite(expected, () => api.setDeliveryLocation(expected, change));
   Future<void> deliveryPricing(CoreDelivery expected,
           {required String mode, required int fee, required int minimum}) =>
       _deliveryWrite(
@@ -1306,7 +1308,7 @@ class CoreController extends ChangeNotifier {
     if (!_writeGuard(
         expected.tenantId, 'settings:update', CoreSection.coverage)) return;
     if (coverage == null || coverage!.version != expected.version) {
-      message = 'تغيرت رسوم أو مناطق التوصيل. افتح النسخة الحالية.';
+      message = 'تغيرت إعدادات التوصيل. افتح النسخة الحالية.';
       _emit();
       return;
     }

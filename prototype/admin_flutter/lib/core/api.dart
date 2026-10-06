@@ -50,6 +50,7 @@ abstract interface class CoreGateway {
       {required String mode, required int fee, required int minimum});
   Future<void> setDeliveryZone(CoreDelivery expected,
       {required String district, required bool enabled, required int? fee});
+  Future<void> setDeliveryLocation(CoreDelivery expected, DeliveryLocationChange change);
   Future<CoreGeography> geography(String tenant, String kind, {String? parent});
   Future<CoreBusinessProfile> businessProfile(String tenant);
   Future<void> patchBusinessProfile(
@@ -435,6 +436,32 @@ class CoreApi implements CoreGateway {
         'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/delivery');
     _tenant(data, tenant);
     return CoreDelivery(data, tenantId: tenant);
+  }
+
+  @override
+  Future<void> setDeliveryLocation(
+    CoreDelivery expected,
+    DeliveryLocationChange change,
+  ) async {
+    if (!expected.locationKnown) throw const CoreException('invalid_request');
+    final data = await _request(
+      'POST',
+      '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/delivery/location',
+      body: change.toJson(expected.version),
+    );
+    try {
+      _tenant(data, expected.tenantId);
+      final result = CoreDelivery(data, tenantId: expected.tenantId);
+      if (!result.locationKnown ||
+          result.version != expected.version + 1 ||
+          result.latitude != change.latitude ||
+          result.longitude != change.longitude ||
+          result.radius != change.radius ||
+          result.requireLocation != change.requireLocation)
+        invalidResponse();
+    } on CoreException {
+      throw const CoreException('invalid_response', uncertain: true);
+    }
   }
 
   @override

@@ -418,6 +418,24 @@ class FakeCoreGateway implements CoreGateway {
   Future<CoreDelivery> delivery(String tenant) async =>
       CoreDelivery(deliveryData, tenantId: tenant);
   @override
+  Future<void> setDeliveryLocation(
+    CoreDelivery expected,
+    DeliveryLocationChange change,
+  ) async {
+    change.toJson(expected.version);
+    deliveryWrites++;
+    if (writeError != null) throw writeError!;
+    deliveryData = {
+      ...deliveryData,
+      'version': expected.version + 1,
+      'latitude': change.latitude,
+      'longitude': change.longitude,
+      'radiusKm': change.radius,
+      'requireLocation': change.requireLocation,
+    };
+  }
+
+  @override
   Future<void> setDeliveryPricing(CoreDelivery expected,
       {required String mode, required int fee, required int minimum}) async {
     deliveryWrites++;

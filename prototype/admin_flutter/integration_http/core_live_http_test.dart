@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:restaurant_admin_prototype/core/api.dart';
+import 'package:restaurant_admin_prototype/core/delivery_models.dart';
 import 'package:restaurant_admin_prototype/core/team_models.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
 import 'package:restaurant_admin_prototype/core/controller.dart';
@@ -261,6 +262,19 @@ void main() {
     expect(priced.mode, 'district');
     await api.setDeliveryPricing(priced,
         mode: delivery.mode, fee: delivery.fee, minimum: delivery.minimum);
+
+    final locationBefore = await api.delivery('restaurant-a');
+    expect(locationBefore.locationKnown, true);
+    const locationChange = DeliveryLocationChange(latitude: 0, longitude: 0, radius: 1, requireLocation: true);
+    await api.setDeliveryLocation(locationBefore, locationChange);
+    final locationAfter = await api.delivery('restaurant-a');
+    expect(locationAfter.latitude, 0); expect(locationAfter.longitude, 0);
+    expect(locationAfter.radius, 1); expect(locationAfter.requireLocation, true);
+    await expectLater(api.setDeliveryLocation(locationBefore, locationChange), throwsA(isA<CoreException>().having((e) => e.code, 'stale origin', 'catalog_changed')));
+    await api.setDeliveryLocation(locationAfter, DeliveryLocationChange(latitude: locationBefore.latitude, longitude: locationBefore.longitude, radius: locationBefore.radius, requireLocation: locationBefore.requireLocation));
+    final locationRestored = await api.delivery('restaurant-a');
+    expect(locationRestored.latitude, locationBefore.latitude);
+    expect(locationRestored.radius, locationBefore.radius);
 
     final menu = await api.menu('restaurant-a'), item = menu.items.first;
     await api.patchMenu(menu, item,
