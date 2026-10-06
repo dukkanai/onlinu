@@ -896,3 +896,27 @@ No daemon/service or container was started. At the owner's conditional cleanup
 request the complete trial was moved to recoverable OS Trash, verified absent
 from its workspace installation path. Merely restoring these files is not a
 working Docker runtime. Linux also does not replace actual Windows acceptance.
+
+## Public repository decision — 2026-10-06 23:38 UTC
+
+The owner explicitly authorized conversion to public after checking for secrets,
+with the public code/history exposure explained beforehand. A local heuristic
+scan covered266 commits and2118 reachable blobs across fetched branches/history;
+known provider-token/private-key signatures found no matches. All184 broad
+credential-like candidates were classified as placeholders, fixture values,
+translation/form metadata, runtime generation or secret-file references. Extra
+entropy/signature review, tracked environment/database/session-file inventory,
+binary asset inventory and repository PR/comment/release surfaces were reviewed.
+No real credential or private customer data was found. This is not a guarantee
+of absence or a substitute for ongoing security review; GitHub's secret-scanning
+endpoint had been disabled while private. No credentials were rotated or posted.
+
+An initial visibility attempt was blocked until remaining candidate classifications
+were supplied. The same action then succeeded; unauthenticated GitHub metadata
+confirmed `private:false`, `visibility:public`. Existing AGPL-3.0 license remains.
+Standard hosted Actions use is free for public repositories under GitHub's current
+policy: https://docs.github.com/en/billing/concepts/product-billing/github-actions .
+The owner-authorized public route resolves the temporary hosted-dispatch hold;
+no paid/larger runner, billing budget or self-hosted registration was configured.
+Local checks and batched acceptance remain preferred. The last accepted code
+checkpoint is still5d97331; visibility/docs changes do not constitute new tests.
