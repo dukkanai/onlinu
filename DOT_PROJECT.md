@@ -571,4 +571,15 @@ evidence digest. Ambiguous outcomes require reconciliation; no automatic retry,
 rollback or activation is introduced. The production host driver is intentionally
 absent. See `prototype/platform/PROVISIONING-RUNNER.md` for that trust boundary and
 required subprocess/lock acceptance. Synthetic coordinator and real PostgreSQL/
-compiler integration tests are included; remote acceptance is pending.
+compiler integration tests are included. Commit `040ecb5` passed all four ordinary
+CI37436422280 jobs, with the optional unchanged runtime-image job skipped.
+
+
+## Concrete Linux host lock (local increment)
+
+`provisioning-host-lock.mjs` uses inherited-descriptor util-linux flock, strict
+private local-file checks and stable planner resource names. Real separate-process
+contention and worker-exit tests pass; lock release never deletes the lock file.
+The PostgreSQL/compiler/coordinator fixture uses this concrete lock. It does not
+prove Docker daemon cancellation or replace uncertain-outcome reconciliation.
+See `prototype/platform/PROVISIONING-HOST-LOCK.md`. Remote CI is pending.

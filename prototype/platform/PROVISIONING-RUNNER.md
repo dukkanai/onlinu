@@ -73,4 +73,10 @@ has no Docker or network effects. This is coordinator verification, not producti
 executor or crash-safe host-lock acceptance.
 
 Local verification: 269 platform tests pass without skips and related actual-main
-Go race tests pass. Remote CI for this increment is pending.
+Go race tests pass. Commit `040ecb5` passed all four ordinary jobs in
+[CI37436422280](https://github.com/dukkanai/onlinu/actions/runs/37436422280);
+the optional unchanged runtime-image job was skipped.
+
+The next local increment supplies `provisioning-host-lock.mjs` for Linux-local
+exclusion; see `PROVISIONING-HOST-LOCK.md`. It does not supply the remaining
+production driver operations or prove cancellation of Docker daemon effects.

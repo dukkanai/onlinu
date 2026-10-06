@@ -6,6 +6,7 @@ import { createIdentityDirectory } from './identity-directory.mjs';
 import { createProvisioningJournal } from './provisioning-journal.mjs';
 import { createProvisioningArtifacts } from './provisioning-artifacts.mjs';
 import { createProvisioningRunner } from './provisioning-runner.mjs';
+import { createProvisioningHostLock } from './provisioning-host-lock.mjs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -222,10 +223,14 @@ test('durable operator provisioning intents and fenced outcomes', { skip: !proce
     let pending = await journal.expire(actor.id, claimed.id, { expectedVersion: claimed.version });
     pending = await journal.reconcile(actor.id, pending.id, { expectedVersion: pending.version, decision: 'requeue', evidenceDigest: evidence });
     let locked = false, applies = 0, expireDuringApply = true;
+    const hostLock = createProvisioningHostLock({ directory: directoryPath });
     const driver = {
       async withLock(resource, operation) {
-        assert.equal(resource, plan.projectName); assert.equal(locked, false); locked = true;
-        try { return await operation(); } finally { locked = false; }
+        assert.equal(resource, plan.projectName);
+        return hostLock.withLock(resource, async () => {
+          assert.equal(locked, false); locked = true;
+          try { return await operation(); } finally { locked = false; }
+        });
       },
       async inspect(prepared) { assert.ok(locked); assert.equal(prepared.job.id, pending.id); },
       async apply(_prepared, { checkpoint }) {
