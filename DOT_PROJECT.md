@@ -623,5 +623,6 @@ preflight, stager, host lock and process transport to disposable Docker tenants.
 It covers success and a lost apply reply, blocks replay and requires actual
 inspection plus explicit reconciliation. Test-only image/path/identity overrides
 remain explicit; no production driver is claimed. Local guards and existing
-regressions pass. Actual Docker acceptance is pending; see
-`deploy/PROVISIONING-JOURNAL-DOCKER-SMOKE.md`.
+regressions pass. After a canonical fixture-issuer correction, `147a8c1` passed
+all five CI37451506853 jobs; all four exact-commit runtime reports were inspected.
+See `deploy/PROVISIONING-JOURNAL-DOCKER-SMOKE.md` for the explicit fixture scope.

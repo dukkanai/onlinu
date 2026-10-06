@@ -55,4 +55,7 @@ Go race checks pass. First CI37449963742 reached the new fixture but rejected it
 synthetic identity issuer before tenant creation. The fixture now uses the exact
 canonical issuer required by the existing identity directory, with a regression
 guard. Reconciliation also holds the host lock while inspecting exact container
-IDs and recording evidence. Corrected real Docker acceptance is pending.
+IDs and recording evidence. Corrected commit `147a8c1` passed all five jobs in
+[CI37451506853](https://github.com/dukkanai/onlinu/actions/runs/37451506853).
+The exact-commit journal/Docker report and the other three runtime reports were
+downloaded and inspected; both lifecycle cases and scoped cleanup passed.
