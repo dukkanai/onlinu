@@ -262,7 +262,7 @@ try {
   const deliveryBefore=(await send('/api/restaurants/restaurant-a/staff/delivery',{cookie:alice.cookie})).data;
   const deliveryPermissions=(await pool.query('SELECT permissions FROM platform_memberships WHERE tenant_id=$1 AND principal_id=$2',['restaurant-a',alice.id])).rows[0].permissions;
   const originalAuthorize=app.directory.authorize;
-  for(const transport of ['form','api','native'])for(const action of ['pricing','zone']){
+  for(const transport of ['form','api','native'])for(const action of ['pricing','zone','location']){
     let revoked=false;
     app.directory.authorize=async(...args)=>{
       const result=await originalAuthorize(...args);
@@ -273,10 +273,10 @@ try {
       return result;
     };
     try{
-      const payload=action==='pricing'?{expectedVersion:deliveryBefore.version,mode:'flat',feeMinor:900,minimumMinor:0}:{expectedVersion:deliveryBefore.version,zone:{districtId:'sa-d-1',enabled:true,feeMinor:900}};
+      const payload=action==='location'?{expectedVersion:deliveryBefore.version,origin:{latitude:0,longitude:0},radiusKm:1}:action==='pricing'?{expectedVersion:deliveryBefore.version,mode:'flat',feeMinor:900,minimumMinor:0}:{expectedVersion:deliveryBefore.version,zone:{districtId:'sa-d-1',enabled:true,feeMinor:900}};
       let response;
       if(transport==='form'){
-        const fields=action==='pricing'?{mode:'flat',feeMinor:'9.00',minimumMinor:'0.00'}:{districtId:'sa-d-1',enabled:'true',feeMinor:'9.00'};
+        const fields=action==='location'?{latitude:'0',longitude:'0',radiusKm:'1',requireLocation:'false'}:action==='pricing'?{mode:'flat',feeMinor:'9.00',minimumMinor:'0.00'}:{districtId:'sa-d-1',enabled:'true',feeMinor:'9.00'};
         response=await send('/manage/restaurant-a/delivery/'+action,{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl,'content-type':'application/x-www-form-urlencoded'},raw:new URLSearchParams({csrf,reviewed:'yes',expectedVersion:String(deliveryBefore.version),...fields}).toString()});
       }else{
         response=await send((transport==='native'?'/native':'')+'/api/restaurants/restaurant-a/staff/delivery/'+action,{method:'POST',...(transport==='native'?{token:nativeToken}:{cookie:alice.cookie,headers:{origin:baseUrl,'x-csrf-token':csrf}}),body:payload});
@@ -480,6 +480,32 @@ try {
       await deliveryPricing.getByLabel('راجعت أثر التغيير على الطلبات الجديدة',{exact:true}).check();
       await deliveryPricing.getByRole('button',{name:'حفظ تسعير التوصيل',exact:true}).click();
       await page.locator(`input[name="expectedVersion"][value="${zoneState.version+1}"]`).first().waitFor({state:'attached'});
+
+      const locationForm=page.locator('form[action$="/delivery/location"]');
+      await locationForm.getByLabel('خط عرض المطعم',{exact:true}).fill('٠');
+      await locationForm.getByLabel('خط طول المطعم',{exact:true}).fill('٠');
+      await locationForm.getByLabel('نطاق التوصيل بالكيلومتر',{exact:true}).fill('١٫٥');
+      await locationForm.getByLabel('اشتراط موقع العميل',{exact:true}).selectOption('true');
+      await locationForm.getByLabel('راجعت أثر التغيير على الطلبات الجديدة',{exact:true}).check();
+      await locationForm.getByRole('button',{name:'حفظ موقع ونطاق التوصيل',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${zoneState.version+2}"]`).first().waitFor({state:'attached'});
+      const browserLocation=(await send('/api/restaurants/restaurant-a/staff/delivery',{cookie:alice.cookie})).data;
+      assert.equal(browserLocation.latitude,0);assert.equal(browserLocation.longitude,0);assert.equal(browserLocation.radiusKm,1.5);assert.equal(browserLocation.requireLocation,true);assert.equal(browserLocation.feeMinor,zoneState.feeMinor);
+      if(process.env.CORE_DELIVERY_SCREENSHOT){
+        const fs=await import('node:fs/promises'),path=await import('node:path');
+        await fs.mkdir(path.dirname(process.env.CORE_DELIVERY_SCREENSHOT),{recursive:true});
+        await page.screenshot({path:process.env.CORE_DELIVERY_SCREENSHOT,fullPage:true});
+      }
+      // Explicitly clear the origin and radius, restoring the fixture policy.
+      await locationForm.getByLabel('خط عرض المطعم',{exact:true}).fill('');
+      await locationForm.getByLabel('خط طول المطعم',{exact:true}).fill('');
+      await locationForm.getByLabel('نطاق التوصيل بالكيلومتر',{exact:true}).fill('0');
+      await locationForm.getByLabel('اشتراط موقع العميل',{exact:true}).selectOption('false');
+      await locationForm.getByLabel('راجعت أثر التغيير على الطلبات الجديدة',{exact:true}).check();
+      await locationForm.getByRole('button',{name:'حفظ موقع ونطاق التوصيل',exact:true}).click();
+      await page.locator(`input[name="expectedVersion"][value="${zoneState.version+3}"]`).first().waitFor({state:'attached'});
+      const browserCleared=(await send('/api/restaurants/restaurant-a/staff/delivery',{cookie:alice.cookie})).data;
+      assert.equal(browserCleared.latitude,null);assert.equal(browserCleared.longitude,null);assert.equal(browserCleared.radiusKm,0);assert.equal(browserCleared.requireLocation,false);
 
       await page.goto(baseUrl+'/manage/restaurant-a/orders/'+order.number+'/finance');
       assert.match(await page.locator('body').innerText(),/المبلغ المحصل المؤكد/);assert.equal(await page.locator('form').count(),0);

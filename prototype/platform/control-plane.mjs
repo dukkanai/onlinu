@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts, coreSupportInput } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffTaxPage,staffSupportPage,staffBrandPage,brandFormChoices,brandFormLabels,staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { deliveryLocationForm,staffTaxPage,staffSupportPage,staffBrandPage,brandFormChoices,brandFormLabels,staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -289,7 +289,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         await orderClient.assignCourier(tenantId,who.id,number,{version:Number(input.version),courierId:input.courierId==='__remove__'?'':input.courierId});
         return redirect(res,'/manage/'+tenantId+'/orders/'+number,303);
       }
-      const managementDelivery=/^\/manage\/([a-z0-9-]{1,64})\/delivery(?:\/(pricing|zone))?$/.exec(url.pathname);
+      const managementDelivery=/^\/manage\/([a-z0-9-]{1,64})\/delivery(?:\/(pricing|zone|location))?$/.exec(url.pathname);
       if(managementDelivery&&orderClient){
         const [,tenantId,action]=managementDelivery;
         if(req.headers.authorization)throw problem(403,'browser_session_required');
@@ -308,9 +308,14 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         }
         if(url.search)throw problem(400,'invalid_request');
         const input=await body(req);auth.verifyCsrf(req,input.csrf);
-        const allowed=action==='pricing'?['csrf','expectedVersion','reviewed','mode','feeMinor','minimumMinor']:['csrf','expectedVersion','reviewed','districtId','enabled','feeMinor'];
+        const allowed=action==='location'?['csrf','expectedVersion','reviewed','latitude','longitude','radiusKm','requireLocation']:action==='pricing'?['csrf','expectedVersion','reviewed','mode','feeMinor','minimumMinor']:['csrf','expectedVersion','reviewed','districtId','enabled','feeMinor'];
         if(input.reviewed!=='yes'||Object.keys(input).some(k=>!allowed.includes(k)))throw problem(400,'invalid_request');
         await directory.authorize(who.id,tenantId,'settings:update');
+        if(action==='location'){
+          const patch=deliveryLocationForm(input);if(!patch)throw problem(400,'invalid_request');
+          await orderClient.patchDelivery(tenantId,who.id,action,patch);
+          return redirect(res,'/manage/'+tenantId+'/delivery',303);
+        }
         const fee=input.feeMinor===''?null:menuPriceMinor(input.feeMinor);
         if(action==='pricing'){
           const minimum=menuPriceMinor(input.minimumMinor);if(fee===null||minimum===null)throw problem(400,'invalid_request');

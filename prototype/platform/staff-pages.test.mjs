@@ -147,3 +147,24 @@ test('tax review escapes registration text, displays inclusive semantics and sep
  const readonly=staffTaxPage({tenantId:'a',data,csrf:'token'});assert.doesNotMatch(readonly,/<form/);assert.match(readonly,/&lt;synthetic&gt;/);
  const review=staffTaxPage({tenantId:'a',data,csrf:'token',canUpdate:true,review:{expectedVersion:2,enabled:false,rateBps:0,taxNumber:'<synthetic>'}});assert.match(review,/name="reviewed" value="yes" required/);assert.match(review,/الأسعار المسجلة شاملة/);assert.match(review,/value="false"/);assert.doesNotMatch(review,/<synthetic>/);
 });
+
+test('delivery location form distinguishes missing origin from zero coordinates and supports localized decimals',async()=>{
+ const {deliveryDecimal,deliveryLocationForm}=await import('./staff-pages.mjs');
+ for(const [text,value] of [['٠',0],['-٩٠',-90],['۱۲٫۵',12.5],['.5',.5],['1e-7',1e-7],['25,12',25.12]])assert.equal(deliveryDecimal(text,-90,90),value);
+ for(const value of ['',null,' ','Infinity','NaN','0x10','1,2,3','91','9'.repeat(65)])assert.equal(deliveryDecimal(value,-90,90),null);
+ const form={expectedVersion:'7',latitude:'٠',longitude:'٠',radiusKm:'١٫٥',requireLocation:'false'};
+ assert.deepEqual(deliveryLocationForm(form),{expectedVersion:7,origin:{latitude:0,longitude:0},radiusKm:1.5,requireLocation:false});
+ assert.equal(deliveryLocationForm({...form,latitude:''}),null);
+ assert.equal(deliveryLocationForm({...form,latitude:'',longitude:''}),null);
+ assert.equal(deliveryLocationForm({...form,requireLocation:'yes'}),null);
+ assert.deepEqual(deliveryLocationForm({...form,latitude:'',longitude:'',radiusKm:'0'}),{expectedVersion:7,origin:null,radiusKm:0,requireLocation:false});
+});
+
+test('delivery location editor requires review and write authority and hides unsupported old-core editing',()=>{
+ const args={tenantId:'a',data:{version:7,mode:'flat',feeMinor:500,minimumMinor:0,enabled:true,acceptingOrders:true,requireLocation:false,radiusKm:0,latitude:0,longitude:0,zones:[]},regions:{regions:[],source:{name:'Fixture',license:'test',notice:'Synthetic'}},canUpdate:true,csrf:'<token>'};
+ const html=staffDeliveryPage(args);assert.match(html,/action="\/manage\/a\/delivery\/location"/);assert.match(html,/name="latitude" value="0"/);assert.match(html,/name="longitude" value="0"/);assert.match(html,/مسافة بخط مستقيم/);assert.match(html,/حفظ موقع ونطاق التوصيل/);assert.doesNotMatch(html,/value="<token>"/);
+ assert.doesNotMatch(staffDeliveryPage({...args,canUpdate:false}),/>حفظ موقع ونطاق التوصيل</);
+ const older={...args,data:{...args.data}};delete older.data.latitude;delete older.data.longitude;
+ assert.doesNotMatch(staffDeliveryPage(older),/action="\/manage\/a\/delivery\/location"/);
+ assert.match(staffDeliveryPage({...args,data:{...args.data,latitude:null,longitude:null}}),/name="latitude" value=""/);
+});

@@ -671,3 +671,16 @@ checks are present but skipped without the disposable PostgreSQL service. Node
 focused tests pass 34/34; platform suite passes 190 with 12 database skips.
 Actual signed native-to-Node-to-Go set/stale/invalid-clear/restore checks were
 added to the remote integration fixture; remote acceptance is pending.
+
+The location API commit `1f1ea2a25a850b7b29717949dc0e5c9ba8420937`
+passed all four ordinary jobs in CI37468733999, verified 2026-10-06 13:21 UTC;
+the optional full runtime image job was intentionally skipped. Its actual
+PostgreSQL audit/coverage and signed native API regressions passed remotely.
+
+Browser editor follow-on: management forms now expose explicit origin, straight-
+line radius and customer-location requirement edits, with review, CSRF/current
+permissions, strict localized decimal parsing and explicit clearing semantics.
+Older core responses hide unsupported editing. Unit rendering/parsing tests pass;
+actual Chromium save/clear and nine transport/revocation cases await remote CI.
+A synthetic rendering screenshot is retained for review. Flutter editing remains
+pending, and this does not implement per-kilometre delivery pricing.

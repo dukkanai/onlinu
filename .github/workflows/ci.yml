@@ -60,6 +60,7 @@ jobs:
       TEST_CORE_ADAPTER: "1"
       TEST_RUNTIME_MAIN: "1"
       CORE_BROWSER_TEST: "1"
+      CORE_DELIVERY_SCREENSHOT: ${{ github.workspace }}/artifacts/delivery-location/browser.png
     steps:
       - uses: actions/checkout@v4
 
@@ -166,6 +167,15 @@ jobs:
         with:
           name: onlinu-customer-support-${{ github.sha }}
           path: artifacts/customer-support/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Preserve synthetic delivery location rendering
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-delivery-location-${{ github.sha }}
+          path: artifacts/delivery-location/*.png
           if-no-files-found: ignore
           retention-days: 7
 
