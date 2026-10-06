@@ -84,3 +84,22 @@ test('tax writes require read and update again after body parsing',async()=>{
  const url=new URL('https://platform.example/api/restaurants/a/staff/tax');assert.equal((await api({method:'GET'},{},{id:'staff'},url)).status,200);
  await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});grants.add('settings:update');revoke=true;await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(writes,0);revoke=false;grants.add('settings:read');await api({method:'POST'},{},{id:'staff'},url);assert.equal(writes,1);
 });
+
+test('delivery writes recheck authority after body parsing and never retry an uncertain mutation',async t=>{
+ for(const action of ['pricing','zone'])await t.test(action,async()=>{
+  let granted=false,revoke=false,reads=0,writes=0;
+  const input=action==='pricing'?{expectedVersion:4,mode:'flat',feeMinor:500,minimumMinor:0}:{expectedVersion:4,zone:{districtId:'sa-d-1',enabled:true,feeMinor:500}};
+  const api=createStaffApi({
+   directory:{async authorize(actor,tenant,permission){assert.equal(actor,'staff');assert.equal(tenant,'a');assert.equal(permission,'settings:update');if(!granted)throw Object.assign(Error(),{code:'forbidden'});}},
+   body:async()=>{reads++;if(revoke)granted=false;return input;},
+   orderClient:{async patchDelivery(...args){writes++;assert.deepEqual(args,['a','staff',action,input]);throw Object.assign(Error(),{code:'order_outcome_unknown'});}},
+   json:()=>assert.fail('an uncertain mutation must not report success'),
+  });
+  const url=new URL('https://platform.example/api/restaurants/a/staff/delivery/'+action);
+  await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(reads,0);assert.equal(writes,0);
+  granted=true;revoke=true;
+  await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(reads,1);assert.equal(writes,0);
+  granted=true;revoke=false;
+  await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'order_outcome_unknown'});assert.equal(writes,1);
+ });
+});

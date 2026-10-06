@@ -257,6 +257,38 @@ try {
   const nativeWrite=await send(nativeMenuPath+'/items/rice',{method:'POST',token:nativeToken,body:{expectedVersion:nativeItem.version,description:'Synthetic native staff edit'}});
   assert.equal(nativeWrite.status,200,JSON.stringify(nativeWrite.data));assert.equal(nativeWrite.data.item.description,'Synthetic native staff edit');assert.deepEqual(nativeWrite.data.item.options,nativeItem.item.options);
   const deliveryPageCheck=await send('/manage/restaurant-a/delivery',{cookie:alice.cookie});assert.equal(deliveryPageCheck.status,200,JSON.stringify(deliveryPageCheck.data));assert.match(deliveryPageCheck.data,/name="region"/);
+  // Revoke real fixture membership after the first permission check. All
+  // transports must consult current authority again before a signed core write.
+  const deliveryBefore=(await send('/api/restaurants/restaurant-a/staff/delivery',{cookie:alice.cookie})).data;
+  const deliveryPermissions=(await pool.query('SELECT permissions FROM platform_memberships WHERE tenant_id=$1 AND principal_id=$2',['restaurant-a',alice.id])).rows[0].permissions;
+  const originalAuthorize=app.directory.authorize;
+  for(const transport of ['form','api','native'])for(const action of ['pricing','zone']){
+    let revoked=false;
+    app.directory.authorize=async(...args)=>{
+      const result=await originalAuthorize(...args);
+      if(!revoked&&args[0]===alice.id&&args[1]==='restaurant-a'&&args[2]==='settings:update'){
+        await pool.query("UPDATE platform_memberships SET permissions=permissions-'settings:update' WHERE tenant_id=$1 AND principal_id=$2",['restaurant-a',alice.id]);
+        revoked=true;
+      }
+      return result;
+    };
+    try{
+      const payload=action==='pricing'?{expectedVersion:deliveryBefore.version,mode:'flat',feeMinor:900,minimumMinor:0}:{expectedVersion:deliveryBefore.version,zone:{districtId:'sa-d-1',enabled:true,feeMinor:900}};
+      let response;
+      if(transport==='form'){
+        const fields=action==='pricing'?{mode:'flat',feeMinor:'9.00',minimumMinor:'0.00'}:{districtId:'sa-d-1',enabled:'true',feeMinor:'9.00'};
+        response=await send('/manage/restaurant-a/delivery/'+action,{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl,'content-type':'application/x-www-form-urlencoded'},raw:new URLSearchParams({csrf,reviewed:'yes',expectedVersion:String(deliveryBefore.version),...fields}).toString()});
+      }else{
+        response=await send((transport==='native'?'/native':'')+'/api/restaurants/restaurant-a/staff/delivery/'+action,{method:'POST',...(transport==='native'?{token:nativeToken}:{cookie:alice.cookie,headers:{origin:baseUrl,'x-csrf-token':csrf}}),body:payload});
+      }
+      assert.equal(revoked,true,transport+' '+action+' reached initial permission check');
+      assert.equal(response.status,403,JSON.stringify({transport,action,response}));
+    }finally{
+      app.directory.authorize=originalAuthorize;
+      await pool.query('UPDATE platform_memberships SET permissions=$3::jsonb WHERE tenant_id=$1 AND principal_id=$2',['restaurant-a',alice.id,JSON.stringify(deliveryPermissions)]);
+    }
+    assert.deepEqual((await send('/api/restaurants/restaurant-a/staff/delivery',{cookie:alice.cookie})).data,deliveryBefore,'revoked delivery write changed the original catalogue');
+  }
   if(process.env.CORE_BROWSER_TEST==='1'){
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,

@@ -310,6 +310,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const input=await body(req);auth.verifyCsrf(req,input.csrf);
         const allowed=action==='pricing'?['csrf','expectedVersion','reviewed','mode','feeMinor','minimumMinor']:['csrf','expectedVersion','reviewed','districtId','enabled','feeMinor'];
         if(input.reviewed!=='yes'||Object.keys(input).some(k=>!allowed.includes(k)))throw problem(400,'invalid_request');
+        await directory.authorize(who.id,tenantId,'settings:update');
         const fee=input.feeMinor===''?null:menuPriceMinor(input.feeMinor);
         if(action==='pricing'){
           const minimum=menuPriceMinor(input.minimumMinor);if(fee===null||minimum===null)throw problem(400,'invalid_request');

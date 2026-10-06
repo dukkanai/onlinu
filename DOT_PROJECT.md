@@ -626,3 +626,19 @@ remain explicit; no production driver is claimed. Local guards and existing
 regressions pass. After a canonical fixture-issuer correction, `147a8c1` passed
 all five CI37451506853 jobs; all four exact-commit runtime reports were inspected.
 See `deploy/PROVISIONING-JOURNAL-DOCKER-SMOKE.md` for the explicit fixture scope.
+
+## Delivery mutation permission recheck — 2026-10-06
+
+Delivery pricing and zone mutations now recheck current `settings:update`
+authority after consuming the request body, both in management forms and the
+shared browser/native staff API. This closes the interval where an earlier
+permission check could outlive a revocation while a request body was arriving.
+No new permissions, pricing semantics or production changes are introduced.
+
+Focused staff tests pass (12 including subtests). The available local platform
+suite passes 187 tests with 12 database-dependent skips; those skips are not a
+full integration pass. A real-core integration regression revokes fixture
+membership between checks and verifies all six pricing/zone transport cases
+(form, browser API, native API) fail without changing the catalogue. Remote
+integration acceptance is pending for this change. Restaurant origin/radius
+editing remains unfinished and is not included in this checkpoint.

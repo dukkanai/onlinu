@@ -20,7 +20,12 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
         if(deliveryRoute&&orderClient){
           const [,tenantId,action]=deliveryRoute;if(url.search||!(req.method==='GET'&&!action||req.method==='POST'&&action))throw problem(400,'invalid_request');
           await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');
-          return json(res,200,req.method==='GET'?await orderClient.delivery(tenantId,who.id):await orderClient.patchDelivery(tenantId,who.id,action,await body(req)));
+          if(req.method==='GET')return json(res,200,await orderClient.delivery(tenantId,who.id));
+          const input=await body(req);
+          // A streamed body can outlive the permission checked above. Check the
+          // current membership again before issuing a signed core mutation.
+          await directory.authorize(who.id,tenantId,'settings:update');
+          return json(res,200,await orderClient.patchDelivery(tenantId,who.id,action,input));
         }
         const geoRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/geography\/(regions|cities|districts)(?:\/([A-Za-z0-9][A-Za-z0-9_-]{0,79}))?$/.exec(url.pathname);
         if(geoRoute&&orderClient&&req.method==='GET'){
