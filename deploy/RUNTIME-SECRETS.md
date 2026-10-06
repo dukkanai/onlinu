@@ -90,8 +90,19 @@ randomly named owned fixture database, and removes only that database after the
 owned child exits. Synthetic secret files feed the real startup loader. The test
 checks health, rejection of missing/wrong administrator keys, a successful
 file-backed key, signed service reads, and credential-free logs. It does not open
-a WhatsApp session or make provider calls. The fixture uses the test cluster
-maintenance role; it does not prove least-privilege production role isolation.
+a WhatsApp session or make provider calls.
+
+A follow-on local test creates a random, temporary runtime role with `LOGIN`
+and `CREATEDB`, explicitly without superuser, role-management, replication or
+row-security bypass. The actual runtime connects with that role, creates its
+owned main database and serves the same authenticated reads. The test checks
+role flags and database ownership before removing only its own database and
+role. The test harness alone uses the fixture administrator for setup/cleanup.
+This confirms the tested startup does not require superuser; it does not prove
+cross-tenant network/database isolation or WhatsApp session lifecycle coverage.
+Dedicated PostgreSQL instances and production acceptance remain required.
+This restricted-role extension has passed local race tests; remote verification
+of that extension is pending.
 
 The new guard and actual-main smoke pass local race tests. Commit `9812807`
 passed all jobs in [CI37405031722](https://github.com/dukkanai/onlinu/actions/runs/37405031722),

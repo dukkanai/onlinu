@@ -58,11 +58,46 @@ func TestRuntimeSecretFilesActualMainServer(t *testing.T) {
 	if err != nil || exists {
 		t.Fatal("fixture namespace must not already exist")
 	}
+	// Exercise the existing CREATEDB requirement without giving the restaurant
+	// superuser, role-management or replication privileges. This role exists
+	// only inside the explicitly opted-in synthetic loopback test cluster.
+	role := namespace + "_role"
+	var passwordBytes [24]byte
+	if _, err = rand.Read(passwordBytes[:]); err != nil {
+		t.Fatal(err)
+	}
+	password := hex.EncodeToString(passwordBytes[:])
+	roleContext, roleCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	err = admin.QueryRowContext(roleContext, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=$1)", role).Scan(&exists)
+	if err == nil && !exists {
+		_, err = admin.ExecContext(roleContext, "CREATE ROLE "+quoteIdent(role)+" LOGIN NOSUPERUSER NOCREATEROLE CREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '"+password+"'")
+	} else {
+		roleCancel()
+		t.Fatal("fixture role must not already exist")
+	}
+	roleCancel()
+	if err != nil {
+		t.Fatal("cannot create restricted synthetic runtime role")
+	}
+	t.Cleanup(func() {
+		if role != "onlinu_rt_test_"+hex.EncodeToString(unique[:])+"_role" {
+			t.Error("unsafe fixture role cleanup refused")
+			return
+		}
+		ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stop()
+		if _, e := admin.ExecContext(ctx, "DROP ROLE "+quoteIdent(role)); e != nil {
+			t.Error("could not remove owned synthetic runtime role")
+		}
+	})
+	runtimeURL := *parsed
+	runtimeURL.User = url.UserPassword(role, password)
+	runtimeDSN := runtimeURL.String()
 	root := t.TempDir()
 	masterFile := filepath.Join(root, "master")
 	pgFile := filepath.Join(root, "pg-url")
 	master := "synthetic-actual-main-master"
-	for path, value := range map[string]string{masterFile: master, pgFile: raw} {
+	for path, value := range map[string]string{masterFile: master, pgFile: runtimeDSN} {
 		if err = os.WriteFile(path, []byte(value+"\n"), 0600); err != nil {
 			t.Fatal("cannot prepare synthetic runtime file")
 		}
@@ -107,7 +142,7 @@ func TestRuntimeSecretFilesActualMainServer(t *testing.T) {
 		}
 		cancel()
 		logs, _ := os.ReadFile(logPath)
-		if strings.Contains(string(logs), master) || strings.Contains(string(logs), raw) || strings.Contains(string(logs), masterFile) || strings.Contains(string(logs), pgFile) {
+		if strings.Contains(string(logs), master) || strings.Contains(string(logs), raw) || strings.Contains(string(logs), runtimeDSN) || strings.Contains(string(logs), password) || strings.Contains(string(logs), masterFile) || strings.Contains(string(logs), pgFile) {
 			t.Error("runtime log disclosed synthetic credential configuration")
 		}
 		// The name is generated above only after proving it did not exist. Never use
@@ -155,6 +190,17 @@ func TestRuntimeSecretFilesActualMainServer(t *testing.T) {
 	if !healthy {
 		t.Fatal("isolated actual-main runtime did not become healthy")
 	}
+	verificationContext, verificationCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	var superuser, createRole, createDB, replication, bypassRLS bool
+	err = admin.QueryRowContext(verificationContext, "SELECT rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls FROM pg_roles WHERE rolname=$1", role).Scan(&superuser, &createRole, &createDB, &replication, &bypassRLS)
+	var owner string
+	if err == nil {
+		err = admin.QueryRowContext(verificationContext, "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=$1", database).Scan(&owner)
+	}
+	verificationCancel()
+	if err != nil || superuser || createRole || !createDB || replication || bypassRLS || owner != role {
+		t.Fatal("actual-main runtime did not use the restricted fixture database owner")
+	}
 	check := func(path, key string, want int) {
 		t.Helper()
 		req, _ := http.NewRequest("GET", origin+path, nil)
@@ -187,5 +233,5 @@ func TestRuntimeSecretFilesActualMainServer(t *testing.T) {
 	if response.StatusCode != 200 {
 		t.Fatal("signed service request rejected by actual-main runtime", response.StatusCode)
 	}
-	t.Log("Actual main loaded private files, created only its isolated fixture database, served authenticated administrator and signed service reads, and preserved credential-free logs.")
+	t.Log("Actual main loaded private files, created only its isolated fixture database as a non-superuser CREATEDB role, served authenticated administrator and signed service reads, and preserved credential-free logs.")
 }
