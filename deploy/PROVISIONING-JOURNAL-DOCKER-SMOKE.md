@@ -51,4 +51,8 @@ public routing, backup/restore or real calling. Those remain release gates.
 
 Local pure guards verify database scope, ownership and runtime constraints;
 64 deployment tests and286 platform tests without skips plus related actual-main
-Go race checks pass. Real Docker execution for this increment is pending.
+Go race checks pass. First CI37449963742 reached the new fixture but rejected its noncanonical
+synthetic identity issuer before tenant creation. The fixture now uses the exact
+canonical issuer required by the existing identity directory, with a regression
+guard. Reconciliation also holds the host lock while inspecting exact container
+IDs and recording evidence. Corrected real Docker acceptance is pending.

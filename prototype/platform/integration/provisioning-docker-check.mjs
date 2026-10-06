@@ -18,6 +18,7 @@ import { createProvisioningHostLock } from '../provisioning-host-lock.mjs';
 import { createProvisioningProcess } from '../provisioning-process.mjs';
 import { validateContext } from '../../../integration/provisioning-cancellation-smoke.mjs';
 
+export const FIXTURE_IDENTITY_ISSUER = 'https://identity.example.invalid/';
 const hash = value => createHash('sha256').update(value).digest('hex');
 const compiler = fileURLToPath(new URL('../../../deploy/tenant_plan.py', import.meta.url));
 export function verifyTestDatabase(value) {
@@ -94,13 +95,13 @@ export async function runSmoke(image, env = process.env) {
   async function verifyOwnership(f, requireHealthy = false) {
     const current = await ids(f);
     if (current.length > 2 || (requireHealthy && current.length !== 2)) throw new Error('fixture_container_count');
-    const seen = new Set();
+    const seen = new Set(), observed = {};
     for (const id of current) {
       const info = await inspect(id);
       owned(info.Config?.Labels, f);
       const service = info.Config.Labels['com.docker.compose.service'];
       if (!['postgres', 'restaurant'].includes(service) || seen.has(service)) throw new Error('fixture_service_mismatch');
-      seen.add(service); constraints(info, f, service);
+      seen.add(service); constraints(info, f, service); observed[service] = info.Id;
       if (requireHealthy && (!info.State?.Running || info.State.Health?.Status !== 'healthy')) throw new Error('fixture_not_healthy');
     }
     for (const [type, field] of [['volume', 'volumes'], ['network', 'networks']]) {
@@ -110,6 +111,7 @@ export async function runSmoke(image, env = process.env) {
         else if (requireHealthy) throw new Error('fixture_resource_missing');
       }
     }
+    return { restaurant: observed.restaurant, postgres: observed.postgres };
   }
   try {
     const context = (await json(['context', 'inspect', 'default']))[0];
@@ -119,7 +121,7 @@ export async function runSmoke(image, env = process.env) {
     phase = 'journal-initialization';
     await admin.query(`CREATE SCHEMA ${schema}`); schemaOwned = true;
     pool = new pg.Pool({ connectionString: database, options: `-c search_path=${schema}`, max: 4, connectionTimeoutMillis: 5000, statement_timeout: 10000 });
-    const issuer = 'https://identity.example.invalid';
+    const issuer = FIXTURE_IDENTITY_ISSUER;
     const directory = createIdentityDirectory({ pool, trustedIssuers: [issuer] }); await directory.init();
     // Synthetic identities only. This does not bypass a production OIDC verifier.
     const actor = await directory.verifiedIdentity({ issuer, subject: 'ci-operator' });
@@ -184,13 +186,13 @@ export async function runSmoke(image, env = process.env) {
           if (number === 1) throw new Error('intentional_fixture_lost_apply_reply');
         },
         async verify(prepared) {
-          await verifyOwnership(f, true);
+          const containerIds = await verifyOwnership(f, true);
           if (await status(config.httpPort, '/healthz') !== 200
               || await status(config.httpPort, '/api/restaurant/catalog', f.key) !== 200
               || await status(config.httpPort, '/api/restaurant/catalog', 'wrong-public-fixture-key') !== 401)
             throw new Error('fixture_runtime_authentication');
           return { jobId: prepared.job.id, tenantId, planDigest: plan.planDigest,
-            verificationSha256: hash(JSON.stringify({ tenantId, planDigest: plan.planDigest, images, healthy: true })) };
+            verificationSha256: hash(JSON.stringify({ tenantId, planDigest: plan.planDigest, images, containerIds, healthy: true })) };
         },
       };
       const runner = createProvisioningRunner({ journal, artifacts, driver });
@@ -210,8 +212,13 @@ export async function runSmoke(image, env = process.env) {
         catch (error) { if (error.code === 'invalid_provisioning_transition') blocked = true; else throw error; }
         if (!blocked || f.applies !== 1) throw new Error('fixture_replay_not_blocked');
         phase = 'explicit-reconciliation';
-        const evidence = await driver.verify({ job });
-        job = await journal.reconcile(actor.id, job.id, { expectedVersion: job.version, decision: 'accept', evidenceDigest: hash(JSON.stringify(evidence)) });
+        job = await hostLock.withLock(plan.projectName, async () => {
+          const current = await journal.get(actor.id, job.id);
+          if (current.state !== 'unknown' || current.version !== job.version) throw new Error('fixture_reconciliation_changed');
+          const evidence = await driver.verify({ job: current });
+          return journal.reconcile(actor.id, current.id, { expectedVersion: current.version,
+            decision: 'accept', evidenceDigest: hash(JSON.stringify(evidence)) });
+        });
         if (job.state !== 'succeeded') throw new Error('fixture_reconciliation_not_recorded');
       }
       if (f.applies !== 1) throw new Error('fixture_apply_count');
@@ -226,7 +233,7 @@ export async function runSmoke(image, env = process.env) {
       checks: ['real-postgresql-journal', 'authoritative-artifact-compiler', 'exclusive-staged-artifacts',
         'linux-host-lock', 'bounded-docker-commands', 'successful-attempt-recorded', 'lost-apply-reply-retained-as-unknown',
         'uncertain-attempt-replay-blocked', 'actual-owned-runtime-inspected-before-reconciliation',
-        'explicit-evidenced-reconciliation', 'one-apply-per-fixture', 'tenant-activation-not-implied'],
+        'explicit-evidenced-reconciliation', 'reconciliation-under-host-lock', 'one-apply-per-fixture', 'tenant-activation-not-implied'],
       notVerified: ['production-apply-driver', 'production-registry-digests', 'real-secret-provisioning',
         'external-identity-provider', 'production-routing', 'backup-restore', 'real-calls'] };
   } catch {

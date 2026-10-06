@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { verifyTestDatabase, owned, constraints } from './provisioning-docker-check.mjs';
+import { verifyTestDatabase, owned, constraints, FIXTURE_IDENTITY_ISSUER } from './provisioning-docker-check.mjs';
+
+import { createIdentityDirectory } from '../identity-directory.mjs';
 
 const url = 'postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_identity_test?sslmode=disable';
 const f = { config: { tenantId: 'fixture', httpPort: 18080 }, plan: { planDigest: 'a'.repeat(64), projectName: 'project' },
@@ -40,4 +42,13 @@ test('runtime image, user, private binding and secret/socket hardening are check
   constraints(database, f, 'postgres');
   database.HostConfig.PortBindings = { '5432/tcp': [] };
   assert.throws(() => constraints(database, f, 'postgres'), /published/);
+});
+
+
+test('fixture identity issuer meets the real directory canonical-URL contract', () => {
+  assert.equal(new URL(FIXTURE_IDENTITY_ISSUER).href, FIXTURE_IDENTITY_ISSUER);
+  assert.throws(() => createIdentityDirectory({ pool: { query() {}, connect() {} },
+    trustedIssuers: [FIXTURE_IDENTITY_ISSUER.slice(0, -1)] }), /invalid_trusted_issuer/);
+  assert.doesNotThrow(() => createIdentityDirectory({ pool: { query() {}, connect() {} },
+    trustedIssuers: [FIXTURE_IDENTITY_ISSUER] }));
 });
