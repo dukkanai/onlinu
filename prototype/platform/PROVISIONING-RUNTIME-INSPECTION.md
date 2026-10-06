@@ -78,3 +78,14 @@ verification and explicit reconciliation. Seven new probe tests pass alongside
 five observation groups and four fixture guards. Actual Docker acceptance of
 this reader awaits its own run; the preceding snapshot-gate acceptance does not
 substitute for it.
+
+Read-only runtime probe acceptance: commit
+`d099829ea7030a2a45b75d83e1c55bbc467e55c3` passed all five jobs in
+CI37542056436, verified 2026-10-06 22:49 UTC. The shared bounded reader ran in
+the actual journal/Docker success and unknown-reply reconciliation paths. Four
+runtime reports were downloaded and inspected, and both evidence receipts were
+independently rehashed and source/identity-bound. Synthetic local image ID:
+`sha256:6f0d6c0a1fb85e75eba48b37e9d8b05661206edcbd7656b7a8c975ae4ac5adfb`.
+No registry publication, production apply driver, real secret provisioning or
+deployment is implied. Local platform218 passed with12 database skips; actual
+PostgreSQL, Windows/client and full-image validation passed remotely.

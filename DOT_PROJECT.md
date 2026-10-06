@@ -830,3 +830,14 @@ uncertain-reply reconciliation fixtures. It verifies identifiers before building
 read-only arguments, bounds daemon responses, preserves cancellation and returns
 only validated resource identities. Seven new probe tests pass; actual daemon CI
 for this follow-on remains pending. No production apply or account setup added.
+
+Read-only runtime probe acceptance: commit
+`d099829ea7030a2a45b75d83e1c55bbc467e55c3` passed all five jobs in
+CI37542056436, verified 2026-10-06 22:49 UTC. The shared bounded reader ran in
+the actual journal/Docker success and unknown-reply reconciliation paths. Four
+runtime reports were downloaded and inspected, and both evidence receipts were
+independently rehashed and source/identity-bound. Synthetic local image ID:
+`sha256:6f0d6c0a1fb85e75eba48b37e9d8b05661206edcbd7656b7a8c975ae4ac5adfb`.
+No registry publication, production apply driver, real secret provisioning or
+deployment is implied. Local platform218 passed with12 database skips; actual
+PostgreSQL, Windows/client and full-image validation passed remotely.
