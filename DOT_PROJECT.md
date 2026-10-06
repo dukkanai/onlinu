@@ -503,4 +503,5 @@ non-executable, digest-identified resource plans. Distinct per-tenant resources,
 loopback HTTP, pinned image references and restricted DB-role requirements are
 covered by eight pure tests. All 45 deployment/packaging Python tests pass.
 No Docker/secret/network operations or provisioning worker are added; see
-`deploy/TENANT-PLAN.md` for remaining execution gates. Remote CI is pending.
+`deploy/TENANT-PLAN.md` for remaining execution gates. Commit `ef87ab9` passed
+every job in CI37407109723; this does not establish provisioning acceptance.

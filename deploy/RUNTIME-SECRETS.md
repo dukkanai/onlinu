@@ -101,8 +101,9 @@ role. The test harness alone uses the fixture administrator for setup/cleanup.
 This confirms the tested startup does not require superuser; it does not prove
 cross-tenant network/database isolation or WhatsApp session lifecycle coverage.
 Dedicated PostgreSQL instances and production acceptance remain required.
-This restricted-role extension has passed local race tests; remote verification
-of that extension is pending.
+This restricted-role extension passed local race tests and all jobs in
+[CI37406247021](https://github.com/dukkanai/onlinu/actions/runs/37406247021)
+for commit `2c4fb7f`.
 
 The new guard and actual-main smoke pass local race tests. Commit `9812807`
 passed all jobs in [CI37405031722](https://github.com/dukkanai/onlinu/actions/runs/37405031722),

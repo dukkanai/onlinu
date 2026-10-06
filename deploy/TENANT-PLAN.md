@@ -71,4 +71,6 @@ call-media ingress, measured capacity, backup/rollback and production approval.
 No production settings, keys, customer data or existing installer files change.
 
 Local evidence: eight pure planner tests and all 45 deployment/packaging Python
-tests pass. CI has a dedicated planner step; remote verification is pending.
+tests pass. Commit `ef87ab9` passed every job in
+[CI37407109723](https://github.com/dukkanai/onlinu/actions/runs/37407109723),
+including the dedicated planner step. No provisioning was executed.
