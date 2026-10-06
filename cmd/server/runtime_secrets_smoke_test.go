@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
 // Opt-in actual-main smoke, confined to a unique database created by this test
@@ -201,6 +203,44 @@ func TestRuntimeSecretFilesActualMainServer(t *testing.T) {
 	if err != nil || superuser || createRole || !createDB || replication || bypassRLS || owner != role {
 		t.Fatal("actual-main runtime did not use the restricted fixture database owner")
 	}
+	// Exercise the original per-session storage migrations directly, without
+	// creating a WhatsApp session or connecting to an external provider.
+	sessionDatabase := namespace + "_storagefixture"
+	sessionContext, sessionCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer sessionCancel()
+	err = admin.QueryRowContext(sessionContext, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname=$1)", sessionDatabase).Scan(&exists)
+	if err != nil || exists {
+		t.Fatal("session fixture database must not already exist")
+	}
+	t.Cleanup(func() {
+		if sessionDatabase != "onlinu_rt_test_"+hex.EncodeToString(unique[:])+"_storagefixture" {
+			t.Error("unsafe session fixture cleanup refused")
+			return
+		}
+		ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stop()
+		if _, e := admin.ExecContext(ctx, "DROP DATABASE IF EXISTS "+quoteIdent(sessionDatabase)); e != nil {
+			t.Error("could not remove owned session storage fixture")
+		}
+	})
+	func() {
+		provider, e := newDBProvider(sessionContext, runtimeDSN, namespace, waLog.Noop, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if e != nil {
+			t.Fatal("restricted role could not initialize the original database provider")
+		}
+		defer provider.close()
+		container, sessionDB, e := provider.openSessionContainer(sessionContext, "storagefixture")
+		if sessionDB != nil {
+			defer sessionDB.Close()
+		}
+		if e != nil || container == nil {
+			t.Fatal("restricted role could not migrate original WhatsApp session storage")
+		}
+		var sessionOwner string
+		if e = admin.QueryRowContext(sessionContext, "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=$1", sessionDatabase).Scan(&sessionOwner); e != nil || sessionOwner != role {
+			t.Fatal("restricted runtime role does not own the session storage fixture")
+		}
+	}()
 	check := func(path, key string, want int) {
 		t.Helper()
 		req, _ := http.NewRequest("GET", origin+path, nil)
@@ -233,5 +273,5 @@ func TestRuntimeSecretFilesActualMainServer(t *testing.T) {
 	if response.StatusCode != 200 {
 		t.Fatal("signed service request rejected by actual-main runtime", response.StatusCode)
 	}
-	t.Log("Actual main loaded private files, created only its isolated fixture database as a non-superuser CREATEDB role, served authenticated administrator and signed service reads, and preserved credential-free logs.")
+	t.Log("Actual main loaded private files, created its owned main and migrated session-storage fixture databases as a non-superuser CREATEDB role, served authenticated administrator and signed service reads, and preserved credential-free logs.")
 }

@@ -109,3 +109,12 @@ The new guard and actual-main smoke pass local race tests. Commit `9812807`
 passed all jobs in [CI37405031722](https://github.com/dukkanai/onlinu/actions/runs/37405031722),
 including the enabled actual-main smoke. This is not production deployment or
 acceptance of a container image, tenant isolation or external providers.
+
+## Original session-storage migration follow-on
+
+The local smoke now also calls the original database provider to create and
+migrate a uniquely owned WhatsApp session-storage database with that restricted
+role. It checks ownership and closes the storage connections before removing
+only the fixture database. No WhatsApp client session, QR pairing, message or
+provider connection is started. The main runtime authentication checks still run.
+Local race tests and vet pass; remote CI for this extension is pending.
