@@ -433,3 +433,14 @@ duplicate logical requests. Reasons are not newly persisted centrally. Legacy
 rows without original review version stay blocked rather than guessing it.
 Local 226 platform and original Node/Go/HTTP regression checks pass; remote
 Chromium retry confirmation and full CI are pending for this later increment.
+
+
+## Verified explicit retry checkpoint — 2026-10-06 00:59 UTC
+
+`e092c7efbc110e4c0dcec8bd1551d76997ca978f` passed all jobs in
+[CI37396101646](https://github.com/dukkanai/onlinu/actions/runs/37396101646).
+The customer can explicitly review/confirm a same-key retry, while ordinary
+refresh/resubmit stays read-only. The original idempotency ledger prevents
+duplicate logical requests. A subsequent Arabic status-label and screenshot
+focus correction passes local 227 platform and original Node/Go/HTTP checks;
+remote verification for that later correction remains pending.

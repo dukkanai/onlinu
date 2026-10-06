@@ -3,7 +3,7 @@ import {createStaffApi} from './staff-api.mjs';
 import {createNativeStaff} from './native-staff.mjs';
 import {createCoreMedia,publicMenuImages} from './core-media.mjs';
 import { randomUUID } from 'node:crypto';
-import { checkoutSummary, checkoutErrorPage, checkoutSupportPage } from './checkout-pages.mjs';
+import { checkoutSummary, checkoutErrorPage, checkoutSupportPage, checkoutOrderStatus, checkoutPaymentStatus } from './checkout-pages.mjs';
 /** Real subject-based identity and staff control API, separate from demo routes.
  * Deployment still needs approved HTTPS/OIDC configuration. No public bootstrap,
  * Docker socket or production provisioning is exposed by this module. Payment
@@ -240,7 +240,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
             const pay=order.paymentMethod==='card'&&['unpaid','pending'].includes(order.paymentStatus)?button('payment','الانتقال لصفحة الدفع'):'';
             const refresh=order.paymentMethod==='card'?button('refresh-payment','التحقق من حالة الدفع'):'';
             htmlHeaders(res);
-            res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>طلبك</title><h1>طلب ${escape(order.number)}</h1><p>حالة الطلب: ${escape(order.status)}</p><p>حالة الدفع: ${escape(order.paymentStatus)}</p>${checkoutSummary(order)}${pay}${refresh}<p><a href="/checkout/${checkoutId}/support">متابعة الإلغاء والشكاوى</a></p><p>لا يعتبر الدفع مكتملًا إلا بعد التحقق لدى مزود الدفع.</p></html>`);return;
+            res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>طلبك</title><h1>طلب ${escape(order.number)}</h1><p>حالة الطلب: ${escape(checkoutOrderStatus(order.status))}</p><p>حالة الدفع: ${escape(checkoutPaymentStatus(order.paymentStatus))}</p>${checkoutSummary(order)}${pay}${refresh}<p><a href="/checkout/${checkoutId}/support">متابعة الإلغاء والشكاوى</a></p><p>لا يعتبر الدفع مكتملًا إلا بعد التحقق لدى مزود الدفع.</p></html>`);return;
           }
           const providers=(await core.payments(checkout.tenantId)).providers.filter(row=>['stripe','moyasar','tap','paytabs','geidea','myfatoorah'].includes(row.id));
           const providerOptions=providers.map(row=>`<option value="${escape(row.id)}">${escape(row.name)}${row.mode==='test'?' (اختبار)':''}</option>`).join('');

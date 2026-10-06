@@ -87,12 +87,17 @@ no production payment rule was changed to make the test pass.
 No production migration, real customer communication, account or payout occurred.
 POS remains deferred.
 
-## Explicit recovery retry — local increment, 2026-10-06
+## Explicit recovery retry — verified 2026-10-06 00:59 UTC
 
 The latest increment adds the separate same-key customer retry above. Local
 226 platform tests and actual original Go/Node/PostgreSQL/browser-session HTTP
 pass, including lost-before-dispatch, changed-reason denial, no normal auto-replay,
 checked retry, already-recorded no-op and legacy missing-version denial. New
 Chromium retry review/unchecked/checked execution and screenshot are included in
-CI but are not yet remotely accepted. The verified f1046f5 baseline above does
-not itself certify this later increment.
+[CI37396101646](https://github.com/dukkanai/onlinu/actions/runs/37396101646),
+which passed every job for `e092c7efbc110e4c0dcec8bd1551d76997ca978f`.
+The retry review screenshot was inspected; a transient browser validation bubble
+was still fading over navigation after the checked input. A later fixture-focus
+correction and Arabic machine-state labels are being checked separately (local
+227 platform tests and original Node/Go/HTTP regressions pass). Financial review
+is never relabelled as confirmed refunded.

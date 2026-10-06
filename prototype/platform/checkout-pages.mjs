@@ -1,5 +1,9 @@
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const money=value=>escape((value/100).toFixed(2))+' SAR';
+// Label only known machine states; unknown text is still escaped by the caller.
+export const checkoutOrderStatus=value=>({new:'جديد',accepted:'مقبول',preparing:'قيد التحضير',ready:'جاهز',out_for_delivery:'في الطريق',completed:'مكتمل',cancelled:'ملغي'}[value]??value);
+export const checkoutPaymentStatus=value=>({unpaid:'غير مدفوع',pending:'بانتظار تأكيد الدفع',paid:'مدفوع',review:'قيد المراجعة المالية',refunded:'مسترد',failed:'تعذر الدفع',cancelled:'ملغي'}[value]??value);
+const supportResponse=value=>value==='before_preparation'?'تم الإلغاء تلقائيًا قبل بدء التحضير':value;
 // Both preview and confirmed receipt use the core's gross-inclusive tax snapshot.
 // This is an order summary, not a certified electronic tax invoice.
 export function checkoutSummary(value){
@@ -27,9 +31,9 @@ export function checkoutSupportPage({checkoutId,tenantId,order,pending,csrf,requ
   const hidden=(name,value)=>`<input type="hidden" name="${name}" value="${escape(value)}">`;
   const kindLabel=kind=>kind==='cancellation'?'طلب إلغاء':'إرسال شكوى';
   const state=value=>({requested:'بانتظار قرار المطعم',approved:'تمت الموافقة',rejected:'مرفوض',open:'مفتوحة',resolved:'تم الرد عليها'}[value]??value);
-  const requestCard=(value,kind)=>`<article><h3>${kindLabel(kind)}: ${escape(state(value.status))}</h3><p>${escape(value.reason)}</p><p>رد المطعم: ${escape(value.decisionReason||value.resolution||'لم يصل رد بعد')}</p><p>مرجع الطلب: ${escape(value.id)}</p></article>`;
+  const requestCard=(value,kind)=>`<article><h3>${kindLabel(kind)}: ${escape(state(value.status))}</h3><p>${escape(value.reason)}</p><p>رد المطعم: ${escape(supportResponse(value.decisionReason||value.resolution||'لم يصل رد بعد'))}</p><p>مرجع الطلب: ${escape(value.id)}</p></article>`;
   const warning='<p>طلب الإلغاء قبل بدء التحضير قد يُعتمد مباشرة. بعد بدء التحضير يحتاج قرار المطعم. اعتماد الإلغاء لا يعني اكتمال الاسترداد المالي؛ تتم مراجعته بشكل منفصل.</p>';
-  const facts=`<p>المطعم: ${escape(tenantId)} · الطلب: ${escape(order.number)} · الإصدار: ${escape(order.version)}</p><p>الإجمالي: ${money(order.totalMinor)} · حالة الطلب: ${escape(order.status)} · حالة الدفع: ${escape(order.paymentStatus)}</p>${order.demo?'<p>طلب تجريبي</p>':''}`;
+  const facts=`<p>المطعم: ${escape(tenantId)} · الطلب: ${escape(order.number)} · الإصدار: ${escape(order.version)}</p><p>الإجمالي: ${money(order.totalMinor)} · حالة الطلب: ${escape(checkoutOrderStatus(order.status))} · حالة الدفع: ${escape(checkoutPaymentStatus(order.paymentStatus))}</p>${order.demo?'<p>طلب تجريبي</p>':''}`;
   let controls='';
   if(pending&&!review)controls=`<p role="status">نتيجة الإرسال لم تتأكد بعد. لا ترسل طلبًا جديدًا. أعد فتح هذه الصفحة للتحقق من نفس المرجع؛ إذا استمرت الحالة فتواصل مع المطعم.</p><p>مرجع المتابعة: ${escape(pending.requestId)}</p><a href="${support}">التحقق من نفس الطلب</a>`;
   if(pending&&!review&&pending.version)controls+=`<p>يمكنك إعادة الإرسال بنفس المرجع والنسخة والسبب الأصلي فقط. لا يُعاد الإرسال تلقائيًا. إذا تغير الطلب فسيُرفض الطلب القديم بأمان.</p><form method="post" action="${support}/retry-review">${hidden('csrf',csrf)}${hidden('kind',pending.kind)}${hidden('requestId',pending.requestId)}${hidden('version',pending.version)}<label>أعد كتابة السبب الأصلي<textarea name="reason" maxlength="1000" required></textarea></label><button>مراجعة إعادة الإرسال بنفس المرجع</button></form>`;

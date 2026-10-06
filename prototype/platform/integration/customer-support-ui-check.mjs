@@ -36,7 +36,7 @@ export async function checkCustomerSupportUI(fixture){
       await page.getByRole('link',{name:'إلغاء المراجعة',exact:true}).click();await page.getByRole('button',{name:'مراجعة طلب إلغاء',exact:true}).waitFor();
       assert.equal((await app.checkouts.support(customer,checkout.checkoutId)).order.version,order.version);
       await page.getByLabel('سبب طلب إلغاء',{exact:true}).fill('Synthetic confirmed cancellation');await page.getByRole('button',{name:'مراجعة طلب إلغاء',exact:true}).click();
-      await page.getByLabel('راجعت الطلب والسبب وأؤكد الإرسال',{exact:true}).check();await mkdir('../../artifacts/customer-support',{recursive:true});await page.screenshot({path:'../../artifacts/customer-support/customer-support-review.png',fullPage:true});await page.getByRole('button',{name:'تأكيد إرسال طلب الدعم',exact:true}).click();await page.waitForURL(base+path);
+      await page.getByLabel('راجعت الطلب والسبب وأؤكد الإرسال',{exact:true}).check();await page.getByRole('heading',{name:'متابعة الإلغاء والشكاوى',exact:true}).click();await page.waitForTimeout(300);await mkdir('../../artifacts/customer-support',{recursive:true});await page.screenshot({path:'../../artifacts/customer-support/customer-support-review.png',fullPage:true});await page.getByRole('button',{name:'تأكيد إرسال طلب الدعم',exact:true}).click();await page.waitForURL(base+path);
       await page.getByText('تمت الموافقة',{exact:false}).waitFor();
       console.log('Verified actual Chromium customer cancellation review, unchecked guard, inert cancel and confirmed original-core cancellation.');
     }finally{await browser.close();}
@@ -63,7 +63,7 @@ export async function checkCustomerSupportUI(fixture){
       const page=await context.newPage();page.setDefaultTimeout(8000);await page.goto(base+path);
       await page.getByLabel('أعد كتابة السبب الأصلي',{exact:true}).fill(complaint.reason);await page.getByRole('button',{name:'مراجعة إعادة الإرسال بنفس المرجع',exact:true}).click();
       await page.getByRole('button',{name:'تأكيد إرسال طلب الدعم',exact:true}).click();assert.ok(page.url().endsWith('/retry-review'));
-      await page.getByLabel('راجعت الطلب والسبب وأؤكد الإرسال',{exact:true}).check();await page.screenshot({path:'../../artifacts/customer-support/customer-support-retry-review.png',fullPage:true});await page.getByRole('button',{name:'تأكيد إرسال طلب الدعم',exact:true}).click();await page.waitForURL(base+path);
+      await page.getByLabel('راجعت الطلب والسبب وأؤكد الإرسال',{exact:true}).check();await page.getByRole('heading',{name:'متابعة الإلغاء والشكاوى',exact:true}).click();await page.waitForTimeout(300);await page.screenshot({path:'../../artifacts/customer-support/customer-support-retry-review.png',fullPage:true});await page.getByRole('button',{name:'تأكيد إرسال طلب الدعم',exact:true}).click();await page.waitForURL(base+path);
       console.log('Verified actual Chromium separately reviewed same-key customer retry after a durable unsubmitted intent; unchecked retry cannot execute.');
     }finally{await browser.close();}
   }else assert.equal((await send(path+'/retry-execute',{body:complaint})).status,303);

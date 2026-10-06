@@ -29,3 +29,11 @@ test('customer support review escapes messages and uncertain outcomes block new 
  const retryReview=checkoutSupportPage({...args,review:{retry:true,kind:'complaint',requestId:'unknown',version:2,reason:'original'}});assert.match(retryReview,/retry-execute/);assert.match(retryReview,/نسخة المراجعة الأصلية: 2/);assert.match(retryReview,/name="reviewed" value="yes" required/);
  const terminal=checkoutSupportPage({...args,order:{...order,status:'cancelled'}});assert.doesNotMatch(terminal,/مراجعة طلب إلغاء/);assert.match(terminal,/مراجعة إرسال شكوى/);
 });
+
+
+test('customer machine states are readable Arabic without treating review as refunded',async()=>{
+ const {checkoutOrderStatus,checkoutPaymentStatus,checkoutSupportPage}=await import('./checkout-pages.mjs');
+ assert.equal(checkoutOrderStatus('cancelled'),'ملغي');assert.equal(checkoutPaymentStatus('review'),'قيد المراجعة المالية');
+ const html=checkoutSupportPage({checkoutId:'id',tenantId:'a',csrf:'token',requestId:'key',order:{number:'R12345678',version:2,totalMinor:3500,status:'cancelled',paymentStatus:'review',complaints:[],cancellationHistory:[],cancellation:{status:'approved',reason:'Synthetic',decisionReason:'before_preparation',id:'key'}}});
+ assert.match(html,/تم الإلغاء تلقائيًا قبل بدء التحضير/);assert.match(html,/قيد المراجعة المالية/);assert.doesNotMatch(html,/before_preparation|حالة الدفع: مسترد/);
+});
