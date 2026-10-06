@@ -4,6 +4,12 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { createIdentityDirectory } from './identity-directory.mjs';
 import { createProvisioningJournal } from './provisioning-journal.mjs';
+import { createProvisioningArtifacts } from './provisioning-artifacts.mjs';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const issuer = 'https://identity.example/';
 const hash = 'a'.repeat(64), evidence = 'b'.repeat(64);
@@ -168,6 +174,51 @@ test('durable operator provisioning intents and fenced outcomes', { skip: !proce
     const unknown = await journal.expire(actor.id, claimed.id, { expectedVersion: claimed.version });
     assert.equal(unknown.state, 'unknown');
     assert.equal((await pool.query("SELECT 1 FROM platform_identity_audit WHERE details::text LIKE '%must-not-store%'")).rowCount, 0);
+  });
+
+  await t.test('preflight reviews check current operator, draft and worker without changing state', async () => {
+    await tenant('review'); const queued = await journal.request(actor.id, 'review', request());
+    assert.deepEqual(await journal.review(actor.id, queued.id, { expectedVersion: queued.version }), queued);
+    await assert.rejects(journal.review(owner.id, queued.id, { expectedVersion: queued.version }), { code: 'forbidden' });
+    await assert.rejects(journal.review(actor.id, queued.id, { expectedVersion: queued.version, workerId: randomUUID() }), { code: 'invalid_provisioning_transition' });
+    const claimed = await journal.claim(actor.id, queued.id, claiming(queued));
+    const args = { expectedVersion: claimed.version, workerId: claimed.workerId };
+    assert.deepEqual(await journal.review(actor.id, claimed.id, args), claimed);
+    await assert.rejects(journal.review(otherActor.id, claimed.id, args), { code: 'provisioning_worker_mismatch' });
+    await directory.setTenantStatus(actor.id, 'review', { expectedVersion: 1, status: 'closed' });
+    await assert.rejects(journal.review(actor.id, claimed.id, args), { code: 'provisioning_tenant_changed' });
+    const unknown = await journal.uncertain(actor.id, claimed.id, args);
+    await assert.rejects(journal.review(actor.id, unknown.id, { expectedVersion: unknown.version }), { code: 'invalid_provisioning_transition' });
+  });
+
+  await t.test('real journal and authoritative artifact compiler bind one approved tenant', async child => {
+    await tenant('artifact-bridge');
+    const directoryPath = await mkdtemp(join(tmpdir(), 'onlinu-journal-artifact-'));
+    child.after(() => rm(directoryPath, { recursive: true, force: true }));
+    const config = { tenantId: 'artifact-bridge', runtimeImage: 'registry.example/onlinu@sha256:' + 'a'.repeat(64),
+      postgresImage: 'postgres@sha256:' + 'b'.repeat(64), httpPort: 18080,
+      publicOrigin: 'https://artifact-bridge.example.invalid', platformIssuer: 'https://platform.example.invalid',
+      platformPublicKey: Buffer.from(Array.from({ length: 32 }, (_, i) => i)).toString('base64') };
+    const source = JSON.stringify([config]);
+    const compiler = fileURLToPath(new URL('../../deploy/tenant_plan.py', import.meta.url));
+    const plan = JSON.parse(execFileSync('/usr/bin/python3', ['-I', '-S', '-B', compiler], {
+      input: source, encoding: 'utf8', timeout: 5000, maxBuffer: 262144,
+      env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' },
+    }))[0];
+    await writeFile(join(directoryPath, plan.planDigest + '.json'), source, { mode: 0o600 });
+    const queued = await journal.request(actor.id, 'artifact-bridge', { ...request(), planDigest: plan.planDigest });
+    const artifacts = createProvisioningArtifacts({ journal, artifactDirectory: directoryPath, secretRoot: '/srv/onlinu/tenant-secrets',
+      platformIssuer: config.platformIssuer, platformPublicKey: config.platformPublicKey,
+      runtimeImage: config.runtimeImage, postgresImage: config.postgresImage, bootstrapSha256: plan.postgres.bootstrapAssetSha256 });
+    await assert.rejects(artifacts.prepare(owner.id, queued.id, { expectedVersion: queued.version }), { code: 'forbidden' });
+    const result = await artifacts.prepare(actor.id, queued.id, { expectedVersion: queued.version });
+    assert.equal(result.plan.tenantId, 'artifact-bridge'); assert.equal(result.job.state, 'queued');
+    const claimed = await journal.claim(actor.id, queued.id, claiming(queued));
+    await assert.rejects(artifacts.prepare(actor.id, claimed.id, { expectedVersion: claimed.version }), { code: 'provisioning_worker_mismatch' });
+    assert.equal((await artifacts.prepare(actor.id, claimed.id, { expectedVersion: claimed.version, workerId: claimed.workerId })).job.workerId, claimed.workerId);
+    await pool.query("UPDATE platform_provision_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [claimed.id]);
+    await assert.rejects(artifacts.prepare(actor.id, claimed.id, { expectedVersion: claimed.version, workerId: claimed.workerId }), { code: 'provisioning_lease_expired' });
+    assert.equal((await pool.query("SELECT status FROM platform_tenants WHERE id='artifact-bridge'")).rows[0].status, 'draft');
   });
 
   await t.test('audit failure rolls back intent and new store recovers existing state', async () => {

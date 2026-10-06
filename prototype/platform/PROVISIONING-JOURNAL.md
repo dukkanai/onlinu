@@ -69,3 +69,12 @@ race tests still pass. Commit `33f15a4` passed all four ordinary jobs in
 [CI37427159676](https://github.com/dukkanai/onlinu/actions/runs/37427159676);
 the opt-in image job was intentionally skipped. These are
 synthetic database tests, not live provisioning or deployment acceptance.
+
+## Read-only artifact review
+
+`review(actorId, jobId, { expectedVersion, workerId? })` checks a current draft and
+queued intent, or the matching live claimed worker, without changing journal
+state/version or writing an audit event. It uses the same identity/tenant/job
+lock order as mutations. See `PROVISIONING-ARTIFACTS.md` for the private compiler
+bridge and its before/after authority checks. It does not hold locks across
+external effects or replace a claim.

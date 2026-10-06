@@ -551,3 +551,13 @@ image references and disposable host-file paths override the rendered spec.
 Local 64 Python tests pass. Actual Docker acceptance passed with all five jobs
 in CI37429655725 for `1b938f5`; the two-fixture report was inspected. See
 `deploy/TENANT-COMPOSE-SMOKE.md`. No production executor or deployment is added.
+
+## Private reviewed-artifact preparation (local increment)
+
+`prototype/platform/provisioning-artifacts.mjs` connects the private journal to
+strict offline resource compilation, matching tenant/digest and approved release
+policy before returning immutable Compose plus verified bootstrap bytes. It
+rechecks authority and worker fencing before/after compilation and never reads
+secret files or executes Docker. Local 255 platform tests pass without skips;
+related actual-main Go race tests pass. Remote CI is pending for this increment.
+See `prototype/platform/PROVISIONING-ARTIFACTS.md` for remaining executor gates.

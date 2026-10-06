@@ -148,6 +148,15 @@ export function createProvisioningJournal({ pool, leaseSeconds = 120 }) {
       return snapshot(row);
     });
   }
+  async function review(actorId, jobId, input) {
+    const args = parse(z.object({ expectedVersion: version, workerId: uuid.optional() }).strict(), input);
+    return mutate(actorId, jobId, args, async (_db, tenant, row) => {
+      if (row.state === 'claimed') ownedClaim(row, actorId, args.workerId);
+      else if (row.state !== 'queued' || args.workerId !== undefined) throw problem(409, 'invalid_provisioning_transition');
+      currentDraft(tenant, row);
+      return snapshot(row);
+    });
+  }
   async function claim(actorId, jobId, input) {
     const args = parse(workerInput, input);
     return mutate(actorId, jobId, args, async (db, tenant, row) => {
@@ -200,5 +209,5 @@ export function createProvisioningJournal({ pool, leaseSeconds = 120 }) {
       return change(db, actorId, row, state, `reconciled_${args.decision}`, args);
     });
   }
-  return { init, request, get, claim, heartbeat, finish, uncertain, expire, cancelQueued, reconcile };
+  return { init, request, get, review, claim, heartbeat, finish, uncertain, expire, cancelQueued, reconcile };
 }
