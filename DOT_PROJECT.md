@@ -486,3 +486,12 @@ prevent a configured database URL from appearing as a flag default. Related
 original auth/Meta/archive/translation/restaurant and Node/Dart regressions pass
 locally; remote acceptance remains pending. This is preparation for isolated
 provisioning, not evidence that a provisioner or deployment has run.
+
+## Runtime startup verification follow-on — 2026-10-06
+
+File-backed secret commit `38c60fe` passed all CI37401147861 jobs. The following
+local increment requires original administrator authentication whenever signed
+platform access is configured, and adds an opt-in actual-main smoke using only
+synthetic files and a uniquely owned loopback test database. Local race tests
+pass; remote verification of the guard and smoke is pending. See
+`deploy/RUNTIME-SECRETS.md` for the exact boundary and test opt-in.

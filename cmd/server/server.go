@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"sync"
@@ -28,12 +29,19 @@ type server struct {
 	platformAuth *platformRequestAuth
 }
 
+var errPlatformAdminAuthenticationRequired = errors.New("platform restaurant runtime requires administrator authentication")
+
 // newServer monta o provedor de banco (Postgres, 1 banco por sessão no estilo
 // WAHA), abre o banco principal e inicializa o gerenciador de sessões.
 func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, maxCalls int, log *slog.Logger) (*server, error) {
 	platformAuth, err := platformAuthFromEnv()
 	if err != nil {
 		return nil, err
+	}
+	// Signed commerce routes do not replace authentication on the original
+	// administrator API. A configured SaaS restaurant must not start it open.
+	if platformAuth != nil && runtimeSecret("WACALLS_API_KEY") == "" {
+		return nil, errPlatformAdminAuthenticationRequired
 	}
 	waLogger := waLog.Noop
 	if log.Enabled(ctx, slog.LevelDebug) {

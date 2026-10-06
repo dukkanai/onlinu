@@ -52,6 +52,7 @@ jobs:
       TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_oauth_refresh_test?sslmode=disable
       IDENTITY_TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_identity_test?sslmode=disable
       TEST_CORE_ADAPTER: "1"
+      TEST_RUNTIME_MAIN: "1"
       CORE_BROWSER_TEST: "1"
     steps:
       - uses: actions/checkout@v4

@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"io"
 	"log/slog"
@@ -207,6 +209,13 @@ func TestRuntimeSecretFilesFeedAuthConsumersWithoutExport(t *testing.T) {
 		if restaurantSessionCookieName() != restaurantCookieName+"_"+hex.EncodeToString(digest[:8]) {
 			t.Fatal("cookie isolation ignored file master")
 		}
+		t.Setenv("WACALLS_PLATFORM_ISSUER", "https://platform.example")
+		t.Setenv("WACALLS_PLATFORM_TENANT_ID", "synthetic-file-tenant")
+		t.Setenv("WACALLS_PLATFORM_PUBLIC_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
+		_, startupErr := newServer(context.Background(), "", "synthetic", "", 1, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if startupErr == nil || errors.Is(startupErr, errPlatformAdminAuthenticationRequired) || !strings.Contains(startupErr.Error(), "WACALLS_PG_URL") {
+			t.Fatal("SaaS startup ignored the file-backed master key")
+		}
 		return
 	}
 	root := t.TempDir()
@@ -223,5 +232,29 @@ func TestRuntimeSecretFilesFeedAuthConsumersWithoutExport(t *testing.T) {
 	cmd.Env = append(cleanRuntimeSecretEnvironment(), "ONLINU_SECRET_TEST_HELPER=consumers", "WACALLS_API_KEY_FILE="+master, "OPENAI_API_KEY_FILE="+ai)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("isolated runtime consumer checks failed: %v\n%s", err, output)
+	}
+}
+
+func TestPlatformRuntimeRequiresOriginalAdministratorAuthentication(t *testing.T) {
+	t.Setenv("WACALLS_PLATFORM_ISSUER", "https://platform.example")
+	t.Setenv("WACALLS_PLATFORM_TENANT_ID", "synthetic-tenant")
+	t.Setenv("WACALLS_PLATFORM_PUBLIC_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	t.Setenv("WACALLS_API_KEY", "")
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	_, err := newServer(context.Background(), "", "synthetic", "", 1, log)
+	if !errors.Is(err, errPlatformAdminAuthenticationRequired) {
+		t.Fatal("SaaS startup did not fail before database initialization")
+	}
+	t.Setenv("WACALLS_API_KEY", "synthetic-master-only")
+	_, err = newServer(context.Background(), "", "synthetic", "", 1, log)
+	if err == nil || errors.Is(err, errPlatformAdminAuthenticationRequired) || !strings.Contains(err.Error(), "WACALLS_PG_URL") {
+		t.Fatal("configured authentication did not pass the startup guard")
+	}
+	for _, name := range []string{"WACALLS_PLATFORM_ISSUER", "WACALLS_PLATFORM_TENANT_ID", "WACALLS_PLATFORM_PUBLIC_KEY", "WACALLS_API_KEY"} {
+		t.Setenv(name, "")
+	}
+	_, err = newServer(context.Background(), "", "synthetic", "", 1, log)
+	if err == nil || errors.Is(err, errPlatformAdminAuthenticationRequired) || !strings.Contains(err.Error(), "WACALLS_PG_URL") {
+		t.Fatal("changed legacy non-platform startup contract")
 	}
 }

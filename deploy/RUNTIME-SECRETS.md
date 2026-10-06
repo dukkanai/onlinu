@@ -50,6 +50,14 @@ replacement or file permission changes are performed. Keep the existing Meta
 key: replacing it can make stored credentials unreadable. File changes take
 effect only after a separately controlled restart.
 
+## SaaS administrator authentication
+
+When signed platform access is configured, startup also requires the original
+`WACALLS_API_KEY` (or its file-backed equivalent). Signed service authentication
+does not secure the separate original administrator API by itself. A missing
+administrator key now fails before database initialization. Legacy non-platform
+startup behavior is unchanged.
+
 ## Database isolation constraint
 
 The original provider creates a main database and one database per WhatsApp
@@ -69,6 +77,21 @@ exporting raw values. Malformed PostgreSQL URL diagnostics are checked for leaks
 
 Related original authentication, Meta configuration, translation, archive,
 restaurant HTTP and core/customer/tax Node/Dart integration regressions pass with
-synthetic PostgreSQL. Platform tests pass (230); full remote CI and runtime image
-acceptance for this new increment must still be recorded separately. No real
+synthetic PostgreSQL. Platform tests pass (230). Commit `38c60fe` passed all jobs in
+[CI37401147861](https://github.com/dukkanai/onlinu/actions/runs/37401147861).
+Runtime image acceptance remains separate. No real
 provider request, production credential read/rotation or deployment occurred.
+
+## Actual-main startup smoke (next increment)
+
+`TEST_RUNTIME_MAIN=1` enables the actual production entrypoint smoke in the Go
+server tests. It requires the dedicated loopback test database URL, creates a
+randomly named owned fixture database, and removes only that database after the
+owned child exits. Synthetic secret files feed the real startup loader. The test
+checks health, rejection of missing/wrong administrator keys, a successful
+file-backed key, signed service reads, and credential-free logs. It does not open
+a WhatsApp session or make provider calls. The fixture uses the test cluster
+maintenance role; it does not prove least-privilege production role isolation.
+
+The new guard and actual-main smoke pass local race tests. CI is configured to
+run the smoke; remote acceptance of this next increment is still pending.
