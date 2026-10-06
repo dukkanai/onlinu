@@ -47,7 +47,9 @@ synthetic configuration. New widget/controller and transport tests cover review,
 privacy, invalid values, changed results and unknown outcomes.
 
 Actual Chromium review/cancel/unchecked/checked execution and a Windows tax-review
-screenshot are included in remote CI, but are not yet remotely accepted for this
-increment. Full SaaS, legal/invoice requirements, actual accounts/devices and
+screenshot are included in remote CI, and passed all jobs of [CI37398729778](https://github.com/dukkanai/onlinu/actions/runs/37398729778)
+on `941056bbd6f35db91144c0d98ba63c256b62d838`. The Arabic Windows
+tax-review screenshot was inspected; reviewed facts and controls are readable
+without clipping. Full SaaS, legal/invoice requirements, actual accounts/devices and
 production rollout remain separate release gates. No production tax setting,
 real merchant identifier, payment or external account was changed.

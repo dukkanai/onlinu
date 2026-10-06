@@ -464,3 +464,14 @@ labels; no payment rule changed. The retry screenshot was inspected with readabl
 Arabic states and unobscured navigation. The later tax increment remains separate:
 local 136 Flutter/230 platform/React 80 tests, analyzer, vet/build and actual Dart
 TLS through Node/original Go pass; new tax Chromium/Windows CI remains pending.
+
+
+## Verified tax checkpoint — 2026-10-06 01:31 UTC
+
+`941056bbd6f35db91144c0d98ba63c256b62d838` passed every job in
+[CI37398729778](https://github.com/dukkanai/onlinu/actions/runs/37398729778).
+136 Flutter / 230 platform / 80 React checks, full server/client checks, actual
+Dart TLS/PKCE, Chromium tax review and Windows renderer/store/unsigned build pass.
+The Arabic Windows tax-review screenshot was inspected and is readable. No real
+merchant registration/rate or production change occurred. Whole-product work
+remains open, including provisioning/billing, WhatsApp and external release gates.

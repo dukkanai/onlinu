@@ -304,3 +304,9 @@ stale/background protection, private-field masking, inert cancel and unknown
 write recovery. Actual Dart TLS/PKCE → Node → original Go tax update/stale/restore
 passes against synthetic PostgreSQL. New Windows review capture/build and Chromium
 flow remain remote checks for the tax increment; prior CI does not cover it.
+
+Tax increment remote acceptance: all CI37398729778 jobs passed on
+941056bbd6f35db91144c0d98ba63c256b62d838. Actual Chromium tax review and
+Windows renderer/store/build passed; windows-tax-review.png was inspected with
+readable Arabic facts and checked confirmation, without clipping. All identifiers
+and changes remain synthetic; actual device/legal/production gates are separate.
