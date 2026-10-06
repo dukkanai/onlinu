@@ -54,3 +54,13 @@ and the broader local platform suite has 206 passed with 12 database skips.
 Actual Chromium save/restore and six read/write-revocation transport cases await
 remote CI; a synthetic screenshot is retained for visual review. Flutter editing
 is still pending.
+
+Browser payment-method acceptance: commit
+`bd946185cb23f62a3183ba849eb7356134e7cf5f` passed all four ordinary jobs in
+CI37488047631, verified 2026-10-06 15:40 UTC. Actual PostgreSQL and Chromium
+save/restore plus read/write-revocation checks passed. The retained synthetic
+browser screenshot was downloaded and visually reviewed: Arabic labels, per-mode
+choices, review checkboxes and provider-availability warning are legible. The
+runtime-image job was intentionally skipped; its separate accepted checkpoint
+remains `f9a965f`. Flutter payment-method editing and production acceptance remain
+pending. No production settings, provider credentials or real payments changed.
