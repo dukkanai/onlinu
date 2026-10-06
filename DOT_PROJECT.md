@@ -512,3 +512,11 @@ every job in CI37407109723; this does not establish provisioning acceptance.
 requires explicit manual input and was intentionally skipped. See
 `deploy/RUNTIME-IMAGE-ACCEPTANCE.md`; external codec execution and full image
 acceptance are pending, with no registry publication or deployment performed.
+
+## Original runtime image accepted in isolated CI
+
+Following explicit external-codec approval, `0877142` passed all five jobs in
+CI37422274567. The original root Dockerfile builds and its runtime passes UID
+10001/read-only/file-secret/health/admin-auth/restricted-DB checks on synthetic
+fixtures without publishing ports. The report was inspected; no real calls,
+registry publication, production deploy or multi-tenant isolation is implied.

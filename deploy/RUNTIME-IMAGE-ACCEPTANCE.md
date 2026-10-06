@@ -50,3 +50,17 @@ stopped in the test harness while looking up a missing host port binding on the
 internal network. The revised harness removes host publication entirely and
 probes inside the owned runtime container, with explicit startup diagnostics.
 Full image acceptance remains pending a successful revised run.
+
+## Verified image checkpoint — 2026-10-06
+
+After the owner explicitly approved the pinned external codec execution, commit
+`0877142a499e19ac1f5eabaae256105a4e0ac92c` passed all five jobs in
+[CI37422274567](https://github.com/dukkanai/onlinu/actions/runs/37422274567).
+The non-secret report records local image ID
+`sha256:60df8854d5efc824aeef1444ec78f16fc7762d82825ce5b066e24e1eeab9b31c`
+and successful linkage, UID, read-only root, file-backed secrets, health, original
+admin authentication, restricted database owner and no-published-port checks.
+It was downloaded and inspected. No registry image or production deployment was
+created; real calls, external provider accounts, production routing and
+multi-tenant isolation remain unverified. Historical pending statements above
+describe the preparation stage, not this completed checkpoint.

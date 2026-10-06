@@ -5,10 +5,10 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-06 03:41 UTC
+## Latest verified position — 2026-10-06 06:23 UTC
 
 - Active development branch: `feat/saas-core-integration`; no production deployment or merge to main.
-- Latest published and fully verified commit: `d25f00a7ccf0d07c64ac181435fb7561c1d2ec6c`, CI [37409249616](https://github.com/dukkanai/onlinu/actions/runs/37409249616), all four ordinary jobs successful. The separately opt-in runtime-image job was intentionally skipped and is not accepted.
+- Latest published and fully verified commit: `0877142a499e19ac1f5eabaae256105a4e0ac92c`, CI [37422274567](https://github.com/dukkanai/onlinu/actions/runs/37422274567), all five jobs successful, including the explicitly approved original codec-bearing runtime image build and isolated startup/authentication smoke.
 - Integrated: original core pricing/stock/order/payment/event logic; persistent subject identity and memberships; owned MCP/browser checkout; staff orders/cash/channels/stock/basic menu; reviewed quote binding and owned financial summary.
 - Native category/options/image editing, strict Dart TLS/PKCE integration, rotating refresh and actual Windows forms/store/build passed remote CI (73 Flutter unit/widget tests in the published image commit). Image-review and create-item screenshots were inspected; Arabic layout and corrected form spacing are readable. OS picker selection remains a synthetic injection in rendering tests.
 - Native team roles, granular permissions, alias/enable edits and explicit review/confirmation passed all remote CI jobs: 78 Flutter tests, 196 platform tests and real Dart/Node/Go membership read/update/stale/last-owner checks. Native membership authority cannot inherit separate platform-operator privileges. Windows team screenshots were inspected.
@@ -33,6 +33,7 @@ Existing production/security and external-account approval boundaries remain.
 - Offline resource planner `ef87ab9` passed all CI37407109723 jobs. Eight pure planner tests and all 45 local deployment/packaging tests pass. It emits non-executable, digest-identified requirements with distinct tenant resources and no Docker, network or secret operations. A provisioning executor is still absent; see `deploy/TENANT-PLAN.md`.
 - Original WhatsApp session-storage migrations under the restricted fixture role passed all CI37408369717 jobs for `1604e9e`; no WhatsApp client or external session was created.
 - Opt-in image acceptance preparation `d25f00a` passed ordinary CI37409249616, including all 49 deployment/packaging tests and fake-Docker cleanup guards. Full root-image build is deliberately disabled by default; external codec execution approval and image acceptance remain pending. See `deploy/RUNTIME-IMAGE-ACCEPTANCE.md`.
+- Approved full-image acceptance: first CI37421243686 built the image but its host-port probe failed; no acceptance was claimed. Revised internal-only probe `0877142` passed all CI37422274567 jobs, including UID 10001, read-only root, private file mounts, health/admin authentication, restricted database ownership and no published test ports. The non-secret report was downloaded and checked. This proves the tested image startup, not real calls, registry publication, production routing or multi-tenant isolation.
 - POS integration is explicitly deferred by the owner’s voice instruction; continue current development without choosing/connecting a vendor.
 - Still incomplete: broader management and Flutter parity,  WhatsApp ordering, isolated tenant provisioning and subscription billing, actual external-account acceptance, deployment/rollback rehearsal and release approval.
 - Historical verification entries below describe their exact commits; they are not a claim that the entire SaaS is complete.
