@@ -931,3 +931,14 @@ attempts can be inspected only through the caller's explicit reconciliation;
 there is no retry/delete/activation. Six new focused groups plus four fixture
 guards pass locally; actual daemon acceptance is pending. See
 `prototype/platform/PROVISIONING-VERIFICATION.md`.
+
+Stable-verifier acceptance: `813e69264da0997021bd6a8532afd22bbdbc50a9`
+passed all five jobs in CI37548290444, verified 2026-10-06 23:54 UTC on standard
+hosted runners after the authorized public conversion. Actual Docker success and
+unknown-reply reconciliation passed the shared before/auth/after verifier. Four
+runtime reports were inspected and both immutable receipts independently rehashed
+and source/identity-bound. Synthetic local image ID:
+`sha256:4397c735dd2d24de4b7495e0cbf5aa4696622ed37ab259b4ebca98d1125de043`.
+No production credential, activation, registry publication or deployment occurred.
+Local platform236 tests passed with12 DB skips; remote database/Windows/full-image
+checks passed. Production manifest/secret supply and release gates remain open.
