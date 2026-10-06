@@ -33,6 +33,9 @@ func TestStaffPaymentMethodsPatchValidation(t *testing.T) {
 
 func TestStaffPaymentMethodsPreserveOrdersAndOtherSettings(t *testing.T) {
 	orders, store, input := restaurantGeographyFixture(t)
+	// The shared fixture enables a synthetic card provider by default. This
+	// scenario deliberately starts without any provider capability.
+	orders.PaymentAvailable = nil
 	ctx := context.WithValue(context.Background(), platformStaffActorKey{}, platformStaffActor{"platform:payment-method-fixture", "staff:settings:update"})
 	receipt, err := orders.Create(ctx, input, "", uuid.NewString())
 	if err != nil {

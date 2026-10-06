@@ -32,3 +32,10 @@ skips. PostgreSQL tests cover immutable historical orders, unchanged unrelated
 settings, original provider-availability filtering, stale edits, disabled-service
 empty lists and audit rollback. Actual signed native-to-Node-to-Go read/write,
 stale/invalid/revert regression is added to CI; remote acceptance is pending.
+
+The first CI run,37483820446, failed the new PostgreSQL readiness assertion
+because the shared test fixture enables a synthetic card provider by default.
+The test now explicitly clears that callback for its unconfigured-provider
+scenario, then re-enables a synthetic callback to check the positive case.
+Production availability logic and assertions are unchanged. The other three
+ordinary jobs passed; corrected database/aggregate acceptance is pending.
