@@ -226,3 +226,31 @@ test('tax transport requires reviewed full tuple and scopes and never trusts mis
  assert.throws(()=>client.patchTax('restaurant-a',subject,{...input,reviewed:false}),{code:'invalid_request'});assert.throws(()=>client.patchTax('restaurant-a',subject,{...input,enabled:true}),{code:'invalid_request'});assert.equal(calls,1);
  const wrong=createCoreOrderClient({...config,fetchImpl:async()=>json({version:2,enabled:false,rateBps:1500,taxNumber:'',currency:'SAR',pricesIncludeTax:true})});await assert.rejects(wrong.patchTax('restaurant-a',subject,input),{code:'order_outcome_unknown'});
 });
+
+test('delivery location writes bind signed origin and preserve uncertainty on mismatched replies',async()=>{
+ const subject=randomUUID(),patch={expectedVersion:4,origin:{latitude:0,longitude:0},radiusKm:1,requireLocation:true};
+ const data={version:5,currency:'SAR',mode:'flat',feeMinor:500,minimumMinor:0,enabled:true,acceptingOrders:true,requireLocation:true,radiusKm:1,latitude:0,longitude:0,zones:[]};
+ let response=data,calls=0;
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{
+  calls++;assert.equal(url,'http://127.0.0.1:3001/platform-api/staff/delivery/location');
+  const [payload,signature]=options.headers.authorization.slice(9).split('.'),bytes=Buffer.from(payload,'base64url'),claims=JSON.parse(bytes);
+  assert.equal(verify(null,bytes,publicKey,Buffer.from(signature,'base64url')),true);
+  assert.equal(claims.subject,subject);assert.equal(claims.scope,'staff:settings:update');assert.equal(claims.path,'/platform-api/staff/delivery/location');
+  assert.equal(claims.bodySha256,createHash('sha256').update(options.body).digest('hex'));assert.deepEqual(JSON.parse(options.body),patch);
+  return json(response);
+ }});
+ assert.equal((await client.patchDelivery('restaurant-a',subject,'location',patch)).latitude,0);
+ for(const diff of [{version:4},{latitude:1},{longitude:2},{radiusKm:2},{requireLocation:false},{latitude:null,longitude:null},{latitude:undefined,longitude:undefined}]){
+  response={...data,...diff};const before=calls;
+  await assert.rejects(client.patchDelivery('restaurant-a',subject,'location',patch),{code:'order_outcome_unknown'});assert.equal(calls,before+1);
+ }
+});
+
+test('delivery location validation rejects incomplete coordinates and permits explicit clearing',async()=>{
+ const subject=randomUUID();let calls=0;
+ const data={version:5,currency:'SAR',mode:'flat',feeMinor:500,minimumMinor:0,enabled:true,acceptingOrders:true,requireLocation:false,radiusKm:0,latitude:null,longitude:null,zones:[]};
+ const client=createCoreOrderClient({...config,fetchImpl:async()=>{calls++;return json(data);}});
+ for(const patch of [{expectedVersion:4},{expectedVersion:4,origin:{}},{expectedVersion:4,origin:{latitude:0}},{expectedVersion:4,origin:{latitude:91,longitude:0}},{expectedVersion:4,origin:{latitude:0,longitude:181}},{expectedVersion:4,origin:{latitude:null,longitude:0}},{expectedVersion:4,origin:{latitude:0,longitude:0,extra:true}},{expectedVersion:4,radiusKm:-1},{expectedVersion:4,radiusKm:501},{expectedVersion:4,radiusKm:Infinity},{expectedVersion:4,radiusKm:NaN},{expectedVersion:4,requireLocation:'false'},{expectedVersion:4,feeMinor:0}])assert.throws(()=>client.patchDelivery('restaurant-a',subject,'location',patch),{code:'invalid_request'});
+ assert.equal(calls,0);
+ assert.equal((await client.patchDelivery('restaurant-a',subject,'location',{expectedVersion:4,origin:null,radiusKm:0})).latitude,null);
+});

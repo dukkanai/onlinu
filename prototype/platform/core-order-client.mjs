@@ -83,8 +83,14 @@ const profileFields={name:z.string().min(1).max(120),description:z.string().max(
 const profileView=z.object({version:z.number().int().positive(),...profileFields});
 const profilePatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),...Object.fromEntries(Object.entries(profileFields).map(([key,value])=>[key,value.optional()]))}).strict().refine(value=>Object.keys(value).length>1);
 
+const deliveryLocationPatch=z.object({expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),origin:z.object({latitude:z.number().min(-90).max(90),longitude:z.number().min(-180).max(180)}).strict().nullable().optional(),radiusKm:z.number().min(0).max(500).optional(),requireLocation:z.boolean().optional()}).strict().refine(v=>Object.keys(v).some(k=>k!=='expectedVersion'));
 const deliveryZone=z.object({districtId:menuId,enabled:z.boolean(),feeMinor:z.number().int().min(0).max(100_000_000).nullable()}).strict();
-const deliveryView=z.object({version:z.number().int().positive(),currency:z.literal('SAR'),mode:z.enum(['flat','district']),feeMinor:z.number().int().min(0).max(100_000_000),minimumMinor:z.number().int().min(0).max(100_000_000),enabled:z.boolean(),acceptingOrders:z.boolean(),requireLocation:z.boolean(),radiusKm:z.number().min(0).max(500),zones:z.array(deliveryZone.extend({nameAr:z.string().max(4096),nameEn:z.string().max(4096),cityName:z.string().max(4096),regionName:z.string().max(4096),active:z.boolean()})).max(10000)});
+const deliveryView=z.object({version:z.number().int().positive(),currency:z.literal('SAR'),mode:z.enum(['flat','district']),feeMinor:z.number().int().min(0).max(100_000_000),minimumMinor:z.number().int().min(0).max(100_000_000),enabled:z.boolean(),acceptingOrders:z.boolean(),requireLocation:z.boolean(),radiusKm:z.number().min(0).max(500),latitude:z.number().min(-90).max(90).nullable().optional(),longitude:z.number().min(-180).max(180).nullable().optional(),zones:z.array(deliveryZone.extend({nameAr:z.string().max(4096),nameEn:z.string().max(4096),cityName:z.string().max(4096),regionName:z.string().max(4096),active:z.boolean()})).max(10000)}).refine(v=>{
+ if(v.latitude===undefined&&v.longitude===undefined)return true; // Older read-only core responses.
+ if(v.latitude===undefined||v.longitude===undefined)return false;
+ if(v.latitude===null||v.longitude===null)return v.latitude===null&&v.longitude===null&&v.radiusKm===0;
+ return true;
+});
 const geographyName={id:menuId,nameAr:z.string().max(4096),nameEn:z.string().max(4096)};
 const geographyView=z.object({version:z.number().int().positive(),source:z.object({name:z.string().max(4096),revision:z.string().max(4096),license:z.string().max(100),notice:z.string().max(4096)}),regions:z.array(z.object(geographyName)).max(10000),cities:z.array(z.object({...geographyName,regionId:menuId})).max(10000),districts:z.array(z.object({...geographyName,regionId:menuId,cityId:menuId,custom:z.boolean()})).max(10000)});
 
@@ -198,9 +204,17 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     delivery(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/delivery',undefined,'','staff:settings:read',deliveryView,2_000_000);},
     patchDelivery(tenantId,subject,action,input){
       const version=z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1);
-      const schema=action==='pricing'?z.object({expectedVersion:version,mode:z.enum(['flat','district']),feeMinor:z.number().int().min(0).max(100_000_000),minimumMinor:z.number().int().min(0).max(100_000_000)}).strict():z.object({expectedVersion:version,zone:deliveryZone}).strict();
-      const parsed=schema.safeParse(input);if(!['pricing','zone'].includes(action)||!parsed.success)throw problem(400,'invalid_request');
-      return request(tenantId,subject,'POST','/platform-api/staff/delivery/'+action,parsed.data,'','staff:settings:update',deliveryView,2_000_000);
+      const schema=action==='location'?deliveryLocationPatch:action==='pricing'?z.object({expectedVersion:version,mode:z.enum(['flat','district']),feeMinor:z.number().int().min(0).max(100_000_000),minimumMinor:z.number().int().min(0).max(100_000_000)}).strict():z.object({expectedVersion:version,zone:deliveryZone}).strict();
+      const parsed=schema.safeParse(input);if(!['pricing','zone','location'].includes(action)||!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST','/platform-api/staff/delivery/'+action,parsed.data,'','staff:settings:update',deliveryView,2_000_000).then(result=>{
+        if(action==='location'){
+          const p=parsed.data;
+          if(result.version!==p.expectedVersion+1||result.latitude===undefined||result.longitude===undefined||
+            p.origin!==undefined&&(p.origin===null?result.latitude!==null||result.longitude!==null:result.latitude!==p.origin.latitude||result.longitude!==p.origin.longitude)||
+            p.radiusKm!==undefined&&result.radiusKm!==p.radiusKm||p.requireLocation!==undefined&&result.requireLocation!==p.requireLocation)throw problem(503,'order_outcome_unknown');
+        }
+        return result;
+      });
     },
     geography(tenantId,subject,kind,parent){
       if(!['regions','cities','districts'].includes(kind)||(kind==='regions'?parent!==undefined:!menuId.safeParse(parent).success))throw problem(400,'invalid_request');

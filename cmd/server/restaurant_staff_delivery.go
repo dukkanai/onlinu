@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"math"
 )
 
 // Delivery coverage/pricing only. Order snapshots and the remaining settings
@@ -16,6 +19,8 @@ type restaurantStaffDelivery struct {
 	Enabled         bool                          `json:"enabled"`
 	AcceptingOrders bool                          `json:"acceptingOrders"`
 	RequireLocation bool                          `json:"requireLocation"`
+	Latitude        *float64                      `json:"latitude"`
+	Longitude       *float64                      `json:"longitude"`
 	RadiusKm        float64                       `json:"radiusKm"`
 	Zones           []restaurantStaffDeliveryZone `json:"zones"`
 }
@@ -56,7 +61,13 @@ func (s *restaurantStore) staffDeliveryView(ctx context.Context, c restaurantCat
 		zones = append(zones, restaurantStaffDeliveryZone{restaurantDeliveryZone: zone})
 		ids = append(ids, zone.DistrictID)
 	}
-	view := restaurantStaffDelivery{c.Version, settings.Currency, mode, settings.DeliveryFeeMinor, settings.DeliveryMinimumMinor, settings.DeliveryEnabled, settings.AcceptingOrders, settings.RequireDeliveryLocation, settings.DeliveryRadiusKm, zones}
+	view := restaurantStaffDelivery{
+		Version: c.Version, Currency: settings.Currency, Mode: mode,
+		FeeMinor: settings.DeliveryFeeMinor, MinimumMinor: settings.DeliveryMinimumMinor,
+		Enabled: settings.DeliveryEnabled, AcceptingOrders: settings.AcceptingOrders,
+		RequireLocation: settings.RequireDeliveryLocation, RadiusKm: settings.DeliveryRadiusKm,
+		Latitude: settings.Latitude, Longitude: settings.Longitude, Zones: zones,
+	}
 	if len(ids) == 0 {
 		return view, nil
 	}
@@ -146,6 +157,75 @@ func (s *restaurantStore) PatchDeliveryZone(ctx context.Context, p restaurantDel
 		c.Settings.DeliveryZones = append(c.Settings.DeliveryZones, zone)
 	}
 	ctx = context.WithValue(ctx, restaurantMenuTargetKey{}, restaurantMenuTarget{Kind: "delivery_zone_update", ID: p.Zone.DistrictID})
+	saved, err := s.SaveCatalog(ctx, c)
+	if err != nil {
+		return restaurantStaffDelivery{}, err
+	}
+	return s.staffDeliveryView(ctx, saved)
+}
+
+// An omitted origin preserves both coordinates; explicit null clears both.
+// The existing catalogue remains the sole authority for pricing and coverage.
+type restaurantDeliveryLocationPatch struct {
+	ExpectedVersion int64           `json:"expectedVersion"`
+	Origin          json.RawMessage `json:"origin"`
+	RadiusKm        *float64        `json:"radiusKm"`
+	RequireLocation *bool           `json:"requireLocation"`
+}
+type restaurantDeliveryOrigin struct {
+	Latitude  *float64 `json:"latitude"`
+	Longitude *float64 `json:"longitude"`
+}
+
+func (p restaurantDeliveryLocationPatch) origin() (*restaurantDeliveryOrigin, error) {
+	invalid := func() (*restaurantDeliveryOrigin, error) { return nil, restaurantFail(400, "invalid_request") }
+	if p.ExpectedVersion < 1 || len(p.Origin) == 0 && p.RadiusKm == nil && p.RequireLocation == nil {
+		return invalid()
+	}
+	if p.RadiusKm != nil && (math.IsNaN(*p.RadiusKm) || math.IsInf(*p.RadiusKm, 0) || *p.RadiusKm < 0 || *p.RadiusKm > 500) {
+		return invalid()
+	}
+	if len(p.Origin) == 0 || bytes.Equal(bytes.TrimSpace(p.Origin), []byte("null")) {
+		return nil, nil
+	}
+	var origin restaurantDeliveryOrigin
+	decoder := json.NewDecoder(bytes.NewReader(p.Origin))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&origin); err != nil {
+		return invalid()
+	}
+	var extra any
+	if decoder.Decode(&extra) != io.EOF || origin.Latitude == nil || origin.Longitude == nil || !restaurantCoordinatesValid(*origin.Latitude, *origin.Longitude) {
+		return invalid()
+	}
+	return &origin, nil
+}
+
+func (s *restaurantStore) PatchDeliveryLocation(ctx context.Context, p restaurantDeliveryLocationPatch) (restaurantStaffDelivery, error) {
+	origin, err := p.origin()
+	if err != nil {
+		return restaurantStaffDelivery{}, err
+	}
+	c, err := s.GetCatalog(ctx, false)
+	if err != nil {
+		return restaurantStaffDelivery{}, err
+	}
+	if c.Version != p.ExpectedVersion {
+		return restaurantStaffDelivery{}, restaurantFail(409, "catalog_changed")
+	}
+	if len(p.Origin) != 0 {
+		c.Settings.Latitude, c.Settings.Longitude = nil, nil
+		if origin != nil {
+			c.Settings.Latitude, c.Settings.Longitude = origin.Latitude, origin.Longitude
+		}
+	}
+	if p.RadiusKm != nil {
+		c.Settings.DeliveryRadiusKm = *p.RadiusKm
+	}
+	if p.RequireLocation != nil {
+		c.Settings.RequireDeliveryLocation = *p.RequireLocation
+	}
+	ctx = context.WithValue(ctx, restaurantMenuTargetKey{}, restaurantMenuTarget{Kind: "delivery_location_update"})
 	saved, err := s.SaveCatalog(ctx, c)
 	if err != nil {
 		return restaurantStaffDelivery{}, err

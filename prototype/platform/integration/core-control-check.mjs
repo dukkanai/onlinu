@@ -289,6 +289,16 @@ try {
     }
     assert.deepEqual((await send('/api/restaurants/restaurant-a/staff/delivery',{cookie:alice.cookie})).data,deliveryBefore,'revoked delivery write changed the original catalogue');
   }
+  const locationPath='/native/api/restaurants/restaurant-a/staff/delivery/location';
+  const locationSet=await send(locationPath,{method:'POST',token:nativeToken,body:{expectedVersion:deliveryBefore.version,origin:{latitude:0,longitude:0},radiusKm:1,requireLocation:true}});
+  assert.equal(locationSet.status,200,JSON.stringify(locationSet.data));
+  assert.equal(locationSet.data.latitude,0);assert.equal(locationSet.data.longitude,0);assert.equal(locationSet.data.radiusKm,1);assert.equal(locationSet.data.requireLocation,true);
+  assert.equal((await send(locationPath,{method:'POST',token:nativeToken,body:{expectedVersion:deliveryBefore.version,radiusKm:2}})).status,409);
+  assert.equal((await send(locationPath,{method:'POST',token:nativeToken,body:{expectedVersion:locationSet.data.version,origin:null}})).status,400);
+  assert.equal((await send('/api/restaurants/restaurant-a/staff/delivery/location',{method:'POST',cookie:bob.cookie,headers:{origin:baseUrl,'x-csrf-token':app.auth.csrfToken({headers:{cookie:bob.cookie}})},body:{expectedVersion:locationSet.data.version,radiusKm:0}})).status,403);
+  const locationRestored=await send(locationPath,{method:'POST',token:nativeToken,body:{expectedVersion:locationSet.data.version,origin:deliveryBefore.latitude===null?null:{latitude:deliveryBefore.latitude,longitude:deliveryBefore.longitude},radiusKm:deliveryBefore.radiusKm,requireLocation:deliveryBefore.requireLocation}});
+  assert.equal(locationRestored.status,200,JSON.stringify(locationRestored.data));
+  assert.deepEqual(locationRestored.data,{...deliveryBefore,version:deliveryBefore.version+2});
   if(process.env.CORE_BROWSER_TEST==='1'){
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({executablePath:process.env.CHROME_PATH??'/usr/bin/google-chrome',headless:true,

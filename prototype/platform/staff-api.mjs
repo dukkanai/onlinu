@@ -16,7 +16,7 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
         if(assignRoute&&orderClient&&req.method==='POST'){
           if(url.search)throw problem(400,'invalid_request');const [,tenantId,number]=assignRoute;await directory.authorize(who.id,tenantId,'delivery:assign');return json(res,200,await orderClient.assignCourier(tenantId,who.id,number,await body(req)));
         }
-        const deliveryRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/delivery(?:\/(pricing|zone))?$/.exec(url.pathname);
+        const deliveryRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/delivery(?:\/(pricing|zone|location))?$/.exec(url.pathname);
         if(deliveryRoute&&orderClient){
           const [,tenantId,action]=deliveryRoute;if(url.search||!(req.method==='GET'&&!action||req.method==='POST'&&action))throw problem(400,'invalid_request');
           await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');

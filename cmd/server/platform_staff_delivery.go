@@ -20,7 +20,7 @@ func (s *server) registerPlatformStaffDeliveryRoutes(mux *http.ServeMux, wrap fu
 		}
 		writeJSON(w, 200, view)
 	}))
-	for _, action := range []string{"pricing", "zone"} {
+	for _, action := range []string{"pricing", "zone", "location"} {
 		mux.HandleFunc("POST /platform-api/staff/delivery/"+action, wrap("staff:settings:update", func(w http.ResponseWriter, r *http.Request, body []byte, actor string) {
 			if r.URL.RawQuery != "" {
 				writeRestaurantError(w, restaurantFail(400, "invalid_request"))
@@ -36,6 +36,12 @@ func (s *server) registerPlatformStaffDeliveryRoutes(mux *http.ServeMux, wrap fu
 					return
 				}
 				view, err = s.orders.store.PatchDeliveryPricing(ctx, input)
+			} else if action == "location" {
+				var input restaurantDeliveryLocationPatch
+				if !decodeRestaurantBody(w, r, &input) {
+					return
+				}
+				view, err = s.orders.store.PatchDeliveryLocation(ctx, input)
 			} else {
 				var input restaurantDeliveryZonePatch
 				if !decodeRestaurantBody(w, r, &input) {

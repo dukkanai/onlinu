@@ -86,9 +86,9 @@ test('tax writes require read and update again after body parsing',async()=>{
 });
 
 test('delivery writes recheck authority after body parsing and never retry an uncertain mutation',async t=>{
- for(const action of ['pricing','zone'])await t.test(action,async()=>{
+ for(const action of ['pricing','zone','location'])await t.test(action,async()=>{
   let granted=false,revoke=false,reads=0,writes=0;
-  const input=action==='pricing'?{expectedVersion:4,mode:'flat',feeMinor:500,minimumMinor:0}:{expectedVersion:4,zone:{districtId:'sa-d-1',enabled:true,feeMinor:500}};
+  const input=action==='location'?{expectedVersion:4,origin:{latitude:0,longitude:0},radiusKm:1}:action==='pricing'?{expectedVersion:4,mode:'flat',feeMinor:500,minimumMinor:0}:{expectedVersion:4,zone:{districtId:'sa-d-1',enabled:true,feeMinor:500}};
   const api=createStaffApi({
    directory:{async authorize(actor,tenant,permission){assert.equal(actor,'staff');assert.equal(tenant,'a');assert.equal(permission,'settings:update');if(!granted)throw Object.assign(Error(),{code:'forbidden'});}},
    body:async()=>{reads++;if(revoke)granted=false;return input;},

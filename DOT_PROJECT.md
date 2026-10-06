@@ -649,3 +649,25 @@ native-windows), verified 2026-10-06 13:01 UTC. The opt-in codec-bearing image j
 was intentionally not requested and was skipped. The real core/browser/native
 revocation regressions are accepted for this exact commit; this does not add
 restaurant origin/radius editing or change production deployment readiness.
+
+## Delivery origin/radius API — 2026-10-06, acceptance pending
+
+The original Go catalogue now exposes nullable latitude/longitude in its staff
+coverage view and a signed `staff:settings:update` location patch. Omitted
+origin preserves the coordinates; explicit null clears both; partial or invalid
+coordinates and non-finite/out-of-range radius values are rejected. Existing
+catalogue validation, optimistic versioning and transactional audit remain in
+use. Coverage is the existing straight-line radius, not road distance or per-km
+pricing. Historical order totals and all unrelated catalogue fields must remain
+unchanged.
+
+The Node staff API (including native transport) supports the same patch, rechecks
+permission after reading the body, and treats a mismatched/old-core write reply
+as uncertain without retry. Old core reads without coordinate fields remain
+compatible. No browser or Flutter location editor is included yet.
+
+Local Go input validation, build and vet pass. Database-backed Go coverage/audit
+checks are present but skipped without the disposable PostgreSQL service. Node
+focused tests pass 34/34; platform suite passes 190 with 12 database skips.
+Actual signed native-to-Node-to-Go set/stale/invalid-clear/restore checks were
+added to the remote integration fixture; remote acceptance is pending.
