@@ -1,3 +1,4 @@
+import 'support_pane.dart';
 import 'brand_pane.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -253,6 +254,16 @@ class CoreScreen extends StatelessWidget {
                             child: Text('اختر المطعم الذي تريد إدارته.')),
                       if (member != null)
                         Wrap(spacing: 12, children: [
+                          if (member.can('orders:read'))
+                            ChoiceChip(
+                                label: const Text('الإلغاء والشكاوى'),
+                                selected: c.section == CoreSection.support,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(c.selectSection(
+                                            CoreSection.support));
+                                      }),
                           if (member.can('settings:read'))
                             ChoiceChip(
                                 label: const Text('مظهر المتجر'),
@@ -368,6 +379,11 @@ class CoreScreen extends StatelessWidget {
                           member?.can('settings:read') == true)
                         BrandPane(
                             key: ValueKey('brand-${c.selectedTenant}'),
+                            controller: c),
+                      if (c.section == CoreSection.support &&
+                          member?.can('orders:read') == true)
+                        SupportPane(
+                            key: ValueKey('support-${c.selectedTenant}'),
                             controller: c),
                       if (c.section == CoreSection.service &&
                           member?.can('settings:read') == true)

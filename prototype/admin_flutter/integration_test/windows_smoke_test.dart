@@ -1,3 +1,4 @@
+import '../test/core_support_test.dart' show SupportGateway, complaintId;
 import '../test/core_brand_test.dart' show BrandGateway;
 import '../test/core_refund_test.dart' show RefundGateway;
 import 'package:restaurant_admin_prototype/core/refund_dialog.dart';
@@ -184,6 +185,56 @@ void main() {
     expect(controller.menu, isNull);
     expect(controller.stock, isEmpty);
     expect(controller.channels, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets(
+      'Windows support review separates cancellation from financial payout',
+      (tester) async {
+    final api = SupportGateway()..session.restoreAvailable = true,
+        c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    Future<void> tap(Finder f) async {
+      await tester.ensureVisible(f);
+      await tester.pumpAndSettle();
+      await tester.tap(f);
+      await tester.pumpAndSettle();
+    }
+
+    await tap(find.widgetWithText(ChoiceChip, 'الإلغاء والشكاوى'));
+    await tap(find.text('مراجعة الدعم'));
+    await tap(find.text('مراجعة الموافقة على الإلغاء'));
+    final reason = find.descendant(
+        of: find.byType(AlertDialog), matching: find.byType(TextField));
+    await tester.enterText(reason, 'Synthetic reviewed approval');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await tap(find.text('مراجعة قرار الدعم'));
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'تأكيد قرار الدعم'))
+            .onPressed,
+        isNull);
+    await tap(find.byType(CheckboxListTile));
+    await capture(tester, boundary, 'windows-support-decision-review.png');
+    await tap(find.text('تأكيد قرار الدعم'));
+    expect(api.supportWrites, 1);
+    expect(c.supportDetail!.order.status, 'cancelled');
+    expect(c.supportDetail!.order.paymentStatus, 'review');
+    await tap(find.byKey(const ValueKey('support-resolve-$complaintId')));
+    await tester.enterText(reason, 'Synthetic complaint resolved');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await tap(find.text('مراجعة قرار الدعم'));
+    await tap(find.byType(CheckboxListTile));
+    await tap(find.text('تأكيد قرار الدعم'));
+    expect(api.supportWrites, 2);
+    expect(c.support!.orders, isEmpty);
+    await tap(find.text('إغلاق الدعم'));
+    expect(c.supportDetail, isNull);
     await tester.pumpWidget(const SizedBox());
   });
   testWidgets('Windows appearance draft review and separate publication',

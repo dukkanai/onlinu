@@ -43,7 +43,35 @@ old memberships remain unchanged on initialization, and explicit owner upgrade i
 required. Browser/native support forms and their remote acceptance remain pending.
 
 Actual Node-signed original Go queue/decision/resolution now passes locally, along
-with220 platform tests, the existing121 Flutter tests, React80/build and Go vet.
+with 220 platform tests, the existing 121 Flutter tests, React 80/build and Go vet.
 This is a backend checkpoint, not native/browser support UI acceptance. The
 original `review` payment status on paid-card cancellation was verified rather
 than replacing it with a new payment-state rule.
+
+## Browser/native UI increment — 2026-10-06 (remote checks pending)
+
+The browser and Flutter core client expose the bounded queue plus an exact-order
+lookup for known orders beyond the current page. Selected detail shows the
+cancellation, complaints and last 20 historical cancellations, with truncation
+explicitly labelled. Private messages are absent from queue summaries.
+
+Approval, rejection and complaint resolution require an explanation, a separate
+review and checked confirmation. Current grants, tenant, order version and request
+ID are bound. Duplicate clicks, stale/terminal states, revoked access, dismissal,
+backgrounding and late replies cannot perform a stale decision. Unknown outcomes
+read the same order without replaying the POST; known conflicts retain their
+specific explanation. A separate, permission-checked financial dialog can be
+opened from support, without granting support staff refund authority.
+
+Local 130 Flutter tests and 222 platform tests pass, together with relevant original
+PostgreSQL/race regressions and actual Dart TLS/PKCE through Node/original Go.
+The fixture checks suspended-tenant settlement and independently denies refund
+authorization to the support-only manager. Browser-session HTTP checks cover CSRF,
+role isolation, review, unchecked and stale execution, and receipt privacy. The
+new Chromium checked-complaint flow and Windows review screenshot/build remain
+remote CI checks; do not infer them from the local HTTP/widget results.
+
+Selected-detail response budget is 512 KB, bounded by 20 history records and 10
+complaints. A multilingual-history regression verifies that valid Unicode text
+above 128 KB is not rejected. No actual customer complaint, merchant account,
+production order, or real money was changed.

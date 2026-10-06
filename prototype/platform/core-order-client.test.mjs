@@ -172,3 +172,10 @@ test('support decision binds request identity and explicit rejection without exp
  for(const bad of [{...input,reviewed:false},{...input,approve:undefined},{...input,reason:'  '},{...input,payout:true}])assert.throws(()=>client.supportCommand('restaurant-a',subject,view.number,id,'decide',bad),{code:'invalid_request'});
  const value=await client.supportCommand('restaurant-a',subject,view.number,id,'decide',input);assert.equal(calls,1);assert.equal(value.cancellation.status,'rejected');assert.equal(value.phone,undefined);assert.equal(value.trackingToken,undefined);
 });
+
+test('bounded support history accepts valid multilingual original messages beyond 128KB',async()=>{
+ const reason='😀'.repeat(1000),cancellation={id:randomUUID(),status:'rejected',reason,decisionReason:reason,requestedAt:view.updatedAt,requestedBeforePreparation:false};
+ const data={...view,demo:true,cancellationPending:false,openComplaints:0,cancellation:null,complaints:[],cancellationHistory:Array.from({length:20},()=>({...cancellation,id:randomUUID()})),historyLimit:20,historyTruncated:true};
+ assert.ok(Buffer.byteLength(JSON.stringify(data))>128000);
+ const client=createCoreOrderClient({...config,fetchImpl:async()=>json(data)});const result=await client.supportDetail('restaurant-a',randomUUID(),view.number);assert.equal(result.cancellationHistory.length,20);assert.equal(result.cancellationHistory[0].reason,reason);
+});

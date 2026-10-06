@@ -9,6 +9,7 @@ import 'service_policy.dart';
 import 'finance_models.dart';
 import 'refund_models.dart';
 import 'brand_models.dart';
+import 'support_models.dart';
 import 'transport.dart';
 
 abstract interface class CoreGateway {
@@ -26,6 +27,11 @@ abstract interface class CoreGateway {
   Future<CoreServicePolicy> service(String tenant);
   Future<void> patchService(
       CoreServicePolicy expected, Map<String, bool> changes);
+  Future<CoreSupportQueue> support(String tenant);
+  Future<CoreSupportDetail> supportDetail(String tenant, String number);
+  Future<CoreSupportDetail> supportCommand(
+      CoreSupportDetail expected, String id, String action,
+      {bool? approve, required String reason});
   Future<CoreBrandState> brand(String tenant);
   Future<CoreBrandState> brandCommand(
       CoreBrandState expected, String action, Map<String, dynamic> changes);
@@ -143,6 +149,52 @@ class CoreApi implements CoreGateway {
       '/native/api/restaurants/${tenantKey(tenant)}/staff/orders';
   void _tenant(Map<String, dynamic> data, String tenant) {
     if (data['tenantId'] != tenant) invalidResponse();
+  }
+
+  @override
+  Future<CoreSupportQueue> support(String tenant) async {
+    final data = await _request(
+        'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/support');
+    _tenant(data, tenant);
+    return CoreSupportQueue(data, tenantId: tenant);
+  }
+
+  @override
+  Future<CoreSupportDetail> supportDetail(String tenant, String number) async {
+    final data = await _request('GET',
+        '/native/api/restaurants/${tenantKey(tenant)}/staff/support/orders/${orderKey(number)}');
+    _tenant(data, tenant);
+    final value = CoreSupportDetail(data, tenantId: tenant);
+    if (value.order.number != number) invalidResponse();
+    return value;
+  }
+
+  @override
+  Future<CoreSupportDetail> supportCommand(
+      CoreSupportDetail expected, String id, String action,
+      {bool? approve, required String reason}) async {
+    expected.validate(id, action, approve: approve, reason: reason);
+    final order = expected.order,
+        data = await _request('POST',
+            '/native/api/restaurants/${tenantKey(order.tenantId)}/staff/support/orders/${orderKey(order.number)}/${principalKey(id)}/$action',
+            body: {
+              'version': order.version,
+              'reviewed': true,
+              if (approve != null) 'approve': approve,
+              'reason': reason.trim()
+            });
+    _tenant(data, order.tenantId);
+    final value = CoreSupportDetail(data, tenantId: order.tenantId);
+    if (value.order.number != order.number ||
+        value.order.version != order.version + 1 ||
+        action == 'decide' &&
+            (value.cancellation?.id != id ||
+                value.cancellation?.status !=
+                    (approve == true ? 'approved' : 'rejected')) ||
+        action == 'resolve' &&
+            !value.complaints.any((v) => v.id == id && v.status == 'resolved'))
+      throw const CoreException('order_outcome_unknown', uncertain: true);
+    return value;
   }
 
   @override

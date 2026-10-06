@@ -1,3 +1,4 @@
+import 'package:restaurant_admin_prototype/core/support_models.dart';
 import 'package:restaurant_admin_prototype/core/brand_models.dart';
 import 'package:restaurant_admin_prototype/core/refund_models.dart';
 import 'dart:typed_data';
@@ -247,6 +248,19 @@ Map<String, dynamic> menuDocument(CoreMenu menu) => {
     };
 
 class FakeCoreGateway implements CoreGateway {
+  @override
+  Future<CoreSupportQueue> support(String tenant) async =>
+      CoreSupportQueue({'orders': [], 'limit': 100, 'hasMore': false},
+          tenantId: tenant);
+  @override
+  Future<CoreSupportDetail> supportDetail(String tenant, String number) async =>
+      throw const CoreException('not_found');
+  @override
+  Future<CoreSupportDetail> supportCommand(
+          CoreSupportDetail expected, String id, String action,
+          {bool? approve, required String reason}) async =>
+      throw const CoreException('not_found');
+
   @override
   Future<CoreBrandState> brand(String tenant) async =>
       throw const CoreException('not_found');

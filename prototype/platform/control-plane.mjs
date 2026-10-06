@@ -18,7 +18,7 @@ import { createCoreOrderClient, paymentFormSources } from './core-order-client.m
 import { createCoreCheckouts } from './core-checkouts.mjs';
 import { createEvents } from './events.mjs';
 import { createCoreEventWorker } from './core-events.mjs';
-import { staffBrandPage,brandFormChoices,brandFormLabels,staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
+import { staffSupportPage,staffBrandPage,brandFormChoices,brandFormLabels,staffRefundPage, refundActions, staffFinancePage, staffServicePage, staffDispatchPage, staffDeliveryPage, staffProfilePage, staffHome, staffMembersPage, staffErrorPage, staffOrdersPage, staffChannelsPage, staffStockPage, staffMenuPage, staffMenuItemPage, menuPriceMinor } from './staff-pages.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const cookieName = '__Host-platform_session';
@@ -336,6 +336,27 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         }
         if(input.reviewed!=='yes')throw problem(400,'invalid_request');
         try{await orderClient.brandCommand(tenantId,who.id,action,{...review,...changes});}catch(error){if(error?.code==='order_outcome_unknown'||error?.status>=500)return redirect(res,path+'?outcome=unknown',303);throw error;}
+        return redirect(res,path,303);
+      }
+      const managementSupport=/^\/manage\/([a-z0-9-]{1,64})\/support(?:\/(R[0-9]{8,20})(?:\/([a-f0-9-]{36})\/(review|execute))?)?$/.exec(url.pathname);
+      if(managementSupport&&orderClient){
+        const [,tenantId,number,id,stage]=managementSupport,base='/manage/'+tenantId+'/support',path=number?base+'/'+number:base;
+        if(req.headers.authorization||!(req.method==='GET'&&!stage||req.method==='POST'&&stage))throw problem(400,'invalid_request');
+        if(req.method==='GET'&&!number&&url.search){if([...url.searchParams.keys()].length!==1||!/^R[0-9]{8,20}$/.test(url.searchParams.get('number')??''))throw problem(400,'invalid_request');return redirect(res,base+'/'+url.searchParams.get('number'));}
+        if(url.search&&!(req.method==='GET'&&number&&url.search==='?outcome=unknown'))throw problem(400,'invalid_request');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(path));
+        const who=await browser(req),member=await directory.authorize(who.id,tenantId,'orders:read');
+        if(req.method==='GET'){const value=number?{data:await orderClient.supportDetail(tenantId,who.id,number)}:{queue:await orderClient.support(tenantId,who.id)};htmlHeaders(res);res.end(staffSupportPage({tenantId,...value,canManage:member.permissions.includes('support:manage'),canFinance:member.permissions.includes('payments:read'),csrf:auth.csrfToken(req),unknown:!!url.search}));return;}
+        await directory.authorize(who.id,tenantId,'support:manage');const input=await body(req);auth.verifyCsrf(req,input.csrf);await directory.authorize(who.id,tenantId,'orders:read');await directory.authorize(who.id,tenantId,'support:manage');
+        const action=input.action,version=Number(input.version),allowed=['csrf','action','version','reason',...(action==='decide'?['approve']:[]),...(stage==='execute'?['reviewed']:[])];
+        if(!['decide','resolve'].includes(action)||Object.keys(input).some(k=>!allowed.includes(k))||!Number.isSafeInteger(version)||version<1||typeof input.reason!=='string'||!input.reason.trim()||[...input.reason].length>1000||action==='decide'&&!['true','false'].includes(input.approve))throw problem(400,'invalid_request');
+        const command={version,reviewed:true,reason:input.reason.trim(),...(action==='decide'?{approve:input.approve==='true'}:{})};
+        if(stage==='review'){
+          const data=await orderClient.supportDetail(tenantId,who.id,number);if(data.version!==version||action==='decide'&&(data.cancellation?.id!==id||data.cancellation?.status!=='requested'||['completed','cancelled'].includes(data.status))||action==='resolve'&&!data.complaints.some(c=>c.id===id&&c.status==='open'))throw problem(409,'conflict');
+          htmlHeaders(res);res.end(staffSupportPage({tenantId,data,csrf:auth.csrfToken(req),review:{id,action,...command}}));return;
+        }
+        if(input.reviewed!=='yes')throw problem(400,'invalid_request');
+        try{await orderClient.supportCommand(tenantId,who.id,number,id,action,command);}catch(error){if(error?.code==='order_outcome_unknown'||error?.status>=500)return redirect(res,path+'?outcome=unknown',303);throw error;}
         return redirect(res,path,303);
       }
       const managementService=/^\/manage\/([a-z0-9-]{1,64})\/service$/.exec(url.pathname);

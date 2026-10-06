@@ -11,6 +11,7 @@ import 'service_policy.dart';
 import 'finance_models.dart';
 import 'refund_models.dart';
 import 'brand_models.dart';
+import 'support_models.dart';
 import 'transport.dart';
 
 enum CoreSection {
@@ -24,7 +25,8 @@ enum CoreSection {
   courier,
   courierLinks,
   service,
-  appearance
+  appearance,
+  support
 }
 
 extension CoreSectionPermission on CoreSection {
@@ -39,7 +41,8 @@ extension CoreSectionPermission on CoreSection {
         CoreSection.courier => 'courier:read',
         CoreSection.courierLinks => 'couriers:link',
         CoreSection.service => 'settings:read',
-        CoreSection.appearance => 'settings:read'
+        CoreSection.appearance => 'settings:read',
+        CoreSection.support => 'orders:read'
       };
 }
 
@@ -58,6 +61,10 @@ class CoreController extends ChangeNotifier {
   CoreBusinessProfile? business;
   CoreDelivery? coverage;
   CoreServicePolicy? service;
+  CoreSupportQueue? support;
+  CoreSupportDetail? supportDetail;
+  int _supportGeneration = 0;
+  bool loadingSupport = false;
   CoreBrandState? appearance;
   CoreFinance? finance;
   CoreRefundDetail? refund;
@@ -104,6 +111,10 @@ class CoreController extends ChangeNotifier {
     coverage = null;
     service = null;
     appearance = null;
+    support = null;
+    supportDetail = null;
+    _supportGeneration++;
+    loadingSupport = false;
     finance = null;
     refund = null;
     _refundGeneration++;
@@ -249,7 +260,18 @@ class CoreController extends ChangeNotifier {
         return;
       }
       if (refund != null && !canManageRefund) closeRefund();
-      if (section == CoreSection.appearance) {
+      if (section == CoreSection.support) {
+        final value = await api.support(tenant);
+        if (!_current(generation)) return;
+        support = value;
+        if (supportDetail != null) {
+          final ticket = _supportGeneration,
+              number = supportDetail!.order.number;
+          final selected = await api.supportDetail(tenant, number);
+          if (!_current(generation)) return;
+          if (ticket == _supportGeneration) supportDetail = selected;
+        }
+      } else if (section == CoreSection.appearance) {
         final result = await api.brand(tenant);
         if (!_current(generation)) return;
         appearance = result;
@@ -346,6 +368,9 @@ class CoreController extends ChangeNotifier {
   }
 
   void _failure(Object error) {
+    supportDetail = null;
+    _supportGeneration++;
+    loadingSupport = false;
     finance = null;
     refund = null;
     _refundGeneration++;
@@ -366,10 +391,117 @@ class CoreController extends ChangeNotifier {
     }
   }
 
+  bool get canReadSupport =>
+      signedIn &&
+      !suspended &&
+      section == CoreSection.support &&
+      membership?.can('orders:read') == true;
+  bool get canManageSupport =>
+      canReadSupport && membership?.can('support:manage') == true;
+  void closeSupport() {
+    supportDetail = null;
+    loadingSupport = false;
+    _supportGeneration++;
+    _emit();
+  }
+
+  Future<void> showSupport(String number) async {
+    final tenant = selectedTenant;
+    if (tenant == null || !canReadSupport || busy) return;
+    final generation = _generation, ticket = ++_supportGeneration;
+    supportDetail = null;
+    loadingSupport = true;
+    _emit();
+    try {
+      final value = await api.supportDetail(tenant, number);
+      if (_current(generation) &&
+          ticket == _supportGeneration &&
+          canReadSupport) supportDetail = value;
+    } catch (error) {
+      if (_current(generation) && ticket == _supportGeneration) {
+        _failure(error);
+        _emit();
+      }
+    } finally {
+      if (_current(generation) && ticket == _supportGeneration) {
+        loadingSupport = false;
+        _emit();
+      }
+    }
+  }
+
+  Future<void> changeSupport(
+      CoreSupportDetail expected, String id, String action,
+      {bool? approve, required String reason}) async {
+    final order = expected.order;
+    if (!canManageSupport ||
+        !_writeGuard(order.tenantId, 'support:manage', CoreSection.support))
+      return;
+    if (supportDetail?.order.number != order.number ||
+        supportDetail?.order.version != order.version) {
+      message = 'تغير الطلب. حدّث بيانات الدعم وأعد المراجعة.';
+      _emit();
+      return;
+    }
+    try {
+      expected.validate(id, action, approve: approve, reason: reason);
+    } catch (error) {
+      message = errorMessage(error);
+      _emit();
+      return;
+    }
+    final generation = ++_generation, ticket = _supportGeneration;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    bool recover = false;
+    int? recoveryTicket;
+    try {
+      final value = await api.supportCommand(expected, id, action,
+          approve: approve, reason: reason);
+      if (_current(generation) &&
+          ticket == _supportGeneration &&
+          canReadSupport) {
+        supportDetail = value;
+        message = action == 'decide'
+            ? 'حُفظ قرار الإلغاء. الاسترداد المالي يحتاج مراجعة وتصريحًا منفصلين.'
+            : 'حُفظت معالجة الشكوى دون تغيير مبلغ الطلب.';
+      }
+    } catch (error) {
+      if (_current(generation)) {
+        recover = ticket == _supportGeneration &&
+            !(error is CoreException &&
+                (error.status == 401 || error.status == 403));
+        _failure(error);
+        recoveryTicket = _supportGeneration;
+        if (recover &&
+            (error is! CoreException ||
+                error.uncertain ||
+                {'order_outcome_unknown', 'invalid_response'}
+                    .contains(error.code) ||
+                (error.status ?? 0) >= 500))
+          message =
+              'تعذر تأكيد النتيجة. سنقرأ الطلب نفسه دون تكرار القرار تلقائيًا.';
+      }
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+        if (recover &&
+            recoveryTicket == _supportGeneration &&
+            _current(generation) &&
+            canReadSupport &&
+            selectedTenant == order.tenantId) await showSupport(order.number);
+      }
+    }
+  }
+
   bool get canManageRefund =>
       signedIn &&
       !suspended &&
-      section == CoreSection.orders &&
+      {CoreSection.orders, CoreSection.support}.contains(section) &&
       membership?.can('orders:read') == true &&
       membership?.can('payments:read') == true &&
       membership?.can('refunds:manage') == true;
@@ -408,8 +540,7 @@ class CoreController extends ChangeNotifier {
   Future<void> manageRefund(CoreRefundDetail expected, String action,
       {String? reference, String? reason}) async {
     if (!canManageRefund ||
-        !_writeGuard(expected.tenantId, 'refunds:manage', CoreSection.orders))
-      return;
+        !_writeGuard(expected.tenantId, 'refunds:manage', section)) return;
     if (refund?.id != expected.id ||
         refund?.version != expected.version ||
         !expected.supports(action)) {
@@ -441,7 +572,12 @@ class CoreController extends ChangeNotifier {
                 (error.status == 401 || error.status == 403));
         _failure(error);
         recoveryTicket = _refundGeneration;
-        if (recover)
+        if (recover &&
+            (error is! CoreException ||
+                error.uncertain ||
+                {'order_outcome_unknown', 'invalid_response'}
+                    .contains(error.code) ||
+                (error.status ?? 0) >= 500))
           message =
               'تعذر تأكيد نتيجة الإجراء. سنقرأ العملية نفسها؛ لن نكرر الإرسال تلقائيًا.';
       }
@@ -465,7 +601,7 @@ class CoreController extends ChangeNotifier {
     bool allowed() =>
         signedIn &&
         !suspended &&
-        section == CoreSection.orders &&
+        {CoreSection.orders, CoreSection.support}.contains(section) &&
         membership?.can('orders:read') == true &&
         membership?.can('payments:read') == true;
     if (tenant == null || !allowed()) return;
@@ -1265,6 +1401,7 @@ class CoreController extends ChangeNotifier {
     suspended = value;
     if (value) {
       closeRefund();
+      closeSupport();
       _timer?.cancel();
       online = false;
     } else {

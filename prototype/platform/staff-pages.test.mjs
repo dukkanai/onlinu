@@ -1,4 +1,4 @@
-import {staffBrandPage,staffRefundPage,refundActions,staffFinancePage,staffServicePage,staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
+import {staffSupportPage,staffBrandPage,staffRefundPage,refundActions,staffFinancePage,staffServicePage,staffProfilePage,staffDeliveryPage,staffDispatchPage} from './staff-pages.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {staffHome,staffOrdersPage,staffChannelsPage,staffStockPage,staffMenuPage,staffMenuItemPage,menuPriceMinor,staffMembersPage,staffErrorPage} from './staff-pages.mjs';
@@ -131,4 +131,13 @@ test('appearance browser forms keep drafts private and publication separately re
  const read=staffBrandPage({tenantId:'a',data,canUpdate:false,csrf:'test'});assert.doesNotMatch(read,/<form/);assert.match(read,/&lt;private&gt;/);
  const edit=staffBrandPage({tenantId:'a',data,canUpdate:true,csrf:'test'});assert.match(edit,/\/review/);assert.doesNotMatch(edit,/\/execute/);
  const review=staffBrandPage({tenantId:'a',data,csrf:'test',review:{action:'publish',changes:{}}});assert.match(review,/name="reviewed" value="yes" required/);assert.match(review,/name="catalogVersion" value="4"/);assert.match(review,/تأكيد نشر المسودة للعملاء/);assert.match(review,/إلغاء مراجعة المظهر/);
+});
+
+test('support pages keep queue reasons private and require explicit reviewed decisions',()=>{
+ const id='11111111-1111-4111-8111-111111111111',request={id,status:'requested',reason:'<script>private reason</script>',decisionReason:'',requestedAt:'2026-10-05T12:00:00Z',requestedBeforePreparation:false};
+ const data={...order,cancellationPending:true,openComplaints:0,demo:true,cancellation:request,complaints:[],cancellationHistory:[],historyLimit:20,historyTruncated:false};
+ const queue=staffSupportPage({tenantId:'a',queue:{orders:[{...data,reason:'queue-private'}],limit:100,hasMore:false}});assert.doesNotMatch(queue,/queue-private|private reason/);
+ const read=staffSupportPage({tenantId:'a',data,csrf:'test'});assert.doesNotMatch(read,/<form/);assert.match(read,/&lt;script&gt;/);assert.doesNotMatch(read,/<script>/);
+ const manage=staffSupportPage({tenantId:'a',data,canManage:true,csrf:'test'});assert.match(manage,/مراجعة الموافقة/);assert.match(manage,/name="approve" value="false"/);assert.doesNotMatch(manage,/\/execute/);
+ const review=staffSupportPage({tenantId:'a',data,csrf:'test',review:{id,action:'decide',approve:false,reason:'Synthetic rejected'}});assert.match(review,/name="reviewed" value="yes" required/);assert.match(review,/name="approve" value="false"/);assert.match(review,/إلغاء مراجعة الدعم/);
 });

@@ -152,6 +152,10 @@ func TestPlatformStaffSupportActualNodeCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	o, err = p.orders.ReportComplaint(context.Background(), o.Number, token, "", "", "Synthetic additional complaint", uuid.NewString(), o.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
 	public, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)

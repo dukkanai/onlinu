@@ -280,3 +280,18 @@ acceptance passed and `windows-brand-draft-review.png` was visually inspected:
 Arabic RTL, tenant, both versions and the private-draft confirmation are readable
 without clipping. This supersedes the pending appearance notes above. Color/media
 editing and actual customer-template visual preview remain in the original UI.
+
+## Customer support review increment — 2026-10-06 (remote acceptance pending)
+
+The support queue and exact-order lookup reuse original cancellation/complaint
+state. `support:manage` is independent of kitchen order-update and refund grants;
+existing memberships are not upgraded automatically. Decisions need reason,
+review and checked confirmation. Paid-card cancellation remains payment `review`,
+with an unauthorised refund intent rather than a payout. Finance can be opened
+separately when the staff member already has its grants.
+
+Local 130 Flutter tests and actual Dart TLS/Node/Go support decisions pass, including
+suspended-tenant settlement, no refund authority, late/closed/duplicate/stale
+requests and revoked-grant masking. Existing native refund tests also pass after
+allowing its independently protected dialog from the support section. Actual
+Chromium and `windows-support-decision-review.png` still need the new CI result.

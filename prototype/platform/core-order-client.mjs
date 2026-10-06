@@ -143,11 +143,11 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
     brand(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/brand',undefined,'','staff:settings:read',brandState);},
     brandCommand(tenantId,subject,action,input){if(!['draft','publish','revert'].includes(action))throw problem(400,'invalid_request');const parsed=(action==='draft'?brandPatch:brandReview).safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/brand/'+action,parsed.data,'','staff:brand:'+action,brandState);},
     support(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/support',undefined,'','staff:support:read',z.object({orders:z.array(supportSummary).max(100),limit:z.literal(100),hasMore:z.boolean()}),2_000_000);},
-    async supportDetail(tenantId,subject,number){if(!/^R[0-9]{8,20}$/.test(number??''))throw problem(400,'invalid_request');const result=await request(tenantId,subject,'GET','/platform-api/staff/support/orders/'+number,undefined,'','staff:support:read',supportDetail);if(result.number!==number)throw problem(503,'restaurant_unavailable');return result;},
+    async supportDetail(tenantId,subject,number){if(!/^R[0-9]{8,20}$/.test(number??''))throw problem(400,'invalid_request');const result=await request(tenantId,subject,'GET','/platform-api/staff/support/orders/'+number,undefined,'','staff:support:read',supportDetail,512_000);if(result.number!==number)throw problem(503,'restaurant_unavailable');return result;},
     supportCommand(tenantId,subject,number,id,action,input){
       const parsed=supportCommand.safeParse(input);
       if(!/^R[0-9]{8,20}$/.test(number??'')||!uuid.safeParse(id).success||!['decide','resolve'].includes(action)||!parsed.success||action==='decide'&&parsed.data.approve===undefined||action==='resolve'&&parsed.data.approve!==undefined)throw problem(400,'invalid_request');
-      return request(tenantId,subject,'POST','/platform-api/staff/support/orders/'+number+'/'+id+'/'+action,parsed.data,'','staff:support:'+action,supportDetail).then(value=>{
+      return request(tenantId,subject,'POST','/platform-api/staff/support/orders/'+number+'/'+id+'/'+action,parsed.data,'','staff:support:'+action,supportDetail,512_000).then(value=>{
         if(value.number!==number||value.version!==parsed.data.version+1||action==='decide'&&(value.cancellation?.id!==id||value.cancellation?.status!==(parsed.data.approve?'approved':'rejected'))||action==='resolve'&&!value.complaints.some(c=>c.id===id&&c.status==='resolved'))throw problem(503,'order_outcome_unknown');return value;
       });
     },
