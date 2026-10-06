@@ -729,3 +729,12 @@ journal/Docker fixture now writes and rereads these receipts and embeds them in
 its retained synthetic report. Ten new filesystem tests plus four fixture guards
 pass; local platform 202 passed / 12 database skips. See
 `prototype/platform/PROVISIONING-EVIDENCE.md`; actual Docker CI is pending.
+
+Evidence acceptance: `f9a965f035efea575836c4f8cff2f6bf01ce094f` passed all five
+CI37479843024 jobs, verified 2026-10-06 14:45 UTC. The full original runtime
+image and three additional isolated smoke paths passed. All four reports were
+downloaded; the two immutable receipt hashes and bindings were independently
+checked. Synthetic image ID is
+`sha256:079bdb38d79a5184a104e33e35e3beeaa409efb12b512617b56a208fb3604442`,
+not a published registry digest. Production apply, credential provisioning,
+public routing, recovery and real account acceptance remain separate gates.

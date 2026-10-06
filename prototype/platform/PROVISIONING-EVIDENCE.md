@@ -48,3 +48,11 @@ runtime receipt before committing its verification hash. Its final non-secret
 CI report embeds the read-back receipts/references so they survive scoped
 fixture cleanup. These are synthetic acceptance artifacts with CI retention,
 not production storage or deployment. Actual daemon acceptance is pending.
+
+Commit `f9a965f035efea575836c4f8cff2f6bf01ce094f` passed all five jobs in
+[CI37479843024](https://github.com/dukkanai/onlinu/actions/runs/37479843024),
+verified 2026-10-06 14:45 UTC. All four exact-commit runtime reports were
+retrieved and inspected. Both embedded receipts were independently rehashed
+and checked against their job/worker/tenant/plan references; fixture cleanup
+also passed. No production deployment, published registry image, real provider
+credential or real call is implied.
