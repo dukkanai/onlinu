@@ -77,22 +77,35 @@ docker create --name "$runtime" --network "$network" \
   --env WACALLS_PLATFORM_TENANT_ID=runtime-image-fixture \
   --env WACALLS_PLATFORM_PUBLIC_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8= \
   --env WACALLS_PUBLIC_BASE_URL=https://restaurant.example.invalid \
-  --publish 127.0.0.1::8080 "$image" >/dev/null
+  "$image" >/dev/null
 owned_runtime=true
 docker start "$runtime" >/dev/null
-port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort}}' "$runtime")"
-[[ "$port" =~ ^[0-9]+$ ]] || { echo 'No loopback test port.' >&2; exit 1; }
-base="http://127.0.0.1:$port"
+# Probe inside the owned container: an internal-only network need not provide
+# host NAT bindings. No HTTP or PostgreSQL ports are published for this smoke.
+base="http://127.0.0.1:8080"
+probe() { docker exec "$runtime" curl --noproxy '*' --silent --max-time 5 "$@"; }
+redacted_runtime_diagnostics() {
+  docker inspect --format 'Runtime status={{.State.Status}} exit={{.State.ExitCode}}' "$runtime" || true
+  docker logs --tail 40 "$runtime" 2>&1 | sed -E \
+    -e 's/synthetic-image-administrator/[fixture-redacted]/g' \
+    -e 's/synthetic-runtime-password/[fixture-redacted]/g' \
+    -e 's/synthetic-image-bootstrap/[fixture-redacted]/g' \
+    -e 's#postgres(ql)?://[^[:space:]]+#[database-url-redacted]#g' || true
+}
 healthy=false
 for attempt in $(seq 1 60); do
-  if curl --noproxy '*' --fail --silent --max-time 2 "$base/healthz" > "$root/response" && grep -qx ok "$root/response"; then healthy=true; break; fi
+  if [[ "$(docker inspect --format '{{.State.Running}}' "$runtime")" != true ]]; then
+    echo 'Runtime exited before readiness.' >&2; redacted_runtime_diagnostics; exit 1
+  fi
+  if probe --fail "$base/healthz" > "$root/response" && grep -qx ok "$root/response"; then healthy=true; break; fi
   sleep 2
 done
-[[ "$healthy" == true ]] || { echo 'Runtime image did not become healthy.' >&2; exit 1; }
+[[ "$healthy" == true ]] || { echo 'Runtime image did not become healthy.' >&2; redacted_runtime_diagnostics; exit 1; }
+[[ "$(docker inspect --format '{{len .HostConfig.PortBindings}}' "$runtime")" == 0 ]]
 [[ "$(docker inspect --format '{{.Config.User}}' "$runtime")" == '10001:10001' ]]
 [[ "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$runtime")" == true ]]
-[[ "$(curl --noproxy '*' --silent --max-time 5 --output /dev/null --write-out '%{http_code}' "$base/api/restaurant/catalog")" == 401 ]]
-[[ "$(curl --noproxy '*' --silent --max-time 5 --output /dev/null --write-out '%{http_code}' --header 'X-API-Key: synthetic-image-administrator' "$base/api/restaurant/catalog")" == 200 ]]
+[[ "$(probe --output /dev/null --write-out '%{http_code}' "$base/api/restaurant/catalog")" == 401 ]]
+[[ "$(probe --output /dev/null --write-out '%{http_code}' --header 'X-API-Key: synthetic-image-administrator' "$base/api/restaurant/catalog")" == 200 ]]
 [[ "$(docker exec "$postgres" psql -U postgres -d postgres -Atc "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='wacalls_main'")" == runtime_fixture ]]
 # Do not upload raw runtime logs: assert fixture values were not disclosed.
 if docker logs "$runtime" 2>&1 | grep -Eq 'synthetic-image-administrator|synthetic-runtime-password|synthetic-image-bootstrap|postgres://'; then
@@ -105,7 +118,7 @@ with open(sys.argv[1], 'w', encoding='utf-8') as output:
     json.dump({'sourceCommit': sys.argv[2], 'localImageId': sys.argv[3],
                'registryPublished': False, 'productionDeployed': False,
                'checks': ['codec-linkage', 'uid-10001', 'readonly-root', 'file-backed-secrets',
-                          'health', 'administrator-authentication', 'restricted-database-owner',
+                          'health', 'no-published-runtime-ports', 'administrator-authentication', 'restricted-database-owner',
                           'no-fixture-secret-in-runtime-log'],
                'notVerified': ['real-calls', 'provider-accounts', 'production-routing',
                                'multi-tenant-isolation', 'registry-digest']}, output, indent=2)
