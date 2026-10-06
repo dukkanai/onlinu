@@ -64,3 +64,15 @@ choices, review checkboxes and provider-availability warning are legible. The
 runtime-image job was intentionally skipped; its separate accepted checkpoint
 remains `f9a965f`. Flutter payment-method editing and production acceptance remain
 pending. No production settings, provider credentials or real payments changed.
+
+Native payment-method acceptance: corrected commit
+`e1249c76dcea4e49e26529e4d18a4860b226f8cf` passed all four ordinary jobs in
+CI37503661616, verified 2026-10-06 17:36 UTC. Native analysis, all widget/unit
+tests, actual Windows secure-storage/rendering tests and unsigned build passed;
+actual Dart TLS save/stale/revert passed with the original Go/Node fixture.
+The Windows review and saved-state screenshots were downloaded and visually
+inspected: Arabic warnings, choices and explicit review/save controls are
+legible. This accepts native configured payment-method management, not provider
+connection, real charging, mobile-device acceptance or production deployment.
+Full runtime image was intentionally skipped; its separate checkpoint remains
+`f9a965f`. No production account or configuration changed.
