@@ -38,4 +38,6 @@ real PostgreSQL + compiler + runner fixture also stages under the concrete Linux
 host lock after an explicit reconciliation of an expired attempt.
 
 Local platform verification passes 286 tests without skips; related actual-main
-Go race checks pass. Remote CI for this increment is pending.
+Go race checks pass. Commit `518c637` passed all four ordinary jobs in
+[CI37444321105](https://github.com/dukkanai/onlinu/actions/runs/37444321105);
+the optional unchanged runtime-image job was skipped.

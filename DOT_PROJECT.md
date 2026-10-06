@@ -603,4 +603,14 @@ It exclusively creates private per-attempt Compose/receipt files plus verified
 public bootstrap SQL, synchronizes them and retains partial evidence on failure.
 Authority and fencing are checked before/after filesystem work. No credential
 value or Docker operation is involved. See
-`prototype/platform/PROVISIONING-STAGE.md`; remote CI is pending.
+`prototype/platform/PROVISIONING-STAGE.md`; commit `518c637` passed all four
+ordinary CI37444321105 jobs, with the optional unchanged image job skipped.
+
+
+## Isolated client-cancellation/daemon-state acceptance preparation
+
+The opt-in image job now includes a guarded fixture that creates, never starts,
+one owned mount-free, port-free container, aborts its command process, and checks
+that the daemon object still exists. It then removes only that exact verified
+fixture. Three pure guards and 64 deployment tests pass locally; actual Docker
+acceptance is pending. See `deploy/PROVISIONING-CANCELLATION-SMOKE.md`.

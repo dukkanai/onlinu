@@ -76,6 +76,9 @@ jobs:
           cache: npm
           cache-dependency-path: prototype/platform/package-lock.json
 
+      - name: Test provisioning cancellation safety guards
+        run: node --test integration/provisioning-cancellation-guards.test.mjs
+
       - name: Install platform test dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: prototype/platform
@@ -266,6 +269,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Set up Node for isolated cancellation acceptance
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Build the original codec-bearing runtime image
         timeout-minutes: 35
         run: docker build --tag "onlinu-runtime-smoke:$GITHUB_SHA" .
@@ -273,6 +280,8 @@ jobs:
         run: bash integration/runtime-image-smoke.sh "onlinu-runtime-smoke:$GITHUB_SHA"
       - name: Exercise two isolated rendered tenant fixtures
         run: python3 integration/tenant-compose-smoke.py "onlinu-runtime-smoke:$GITHUB_SHA"
+      - name: Exercise owned client cancellation against daemon state
+        run: node integration/provisioning-cancellation-smoke.mjs "onlinu-runtime-smoke:$GITHUB_SHA"
       - name: Upload non-secret acceptance report
         if: success()
         uses: actions/upload-artifact@v4
@@ -281,5 +290,6 @@ jobs:
           path: |
             ${{ runner.temp }}/onlinu-runtime-image-report.json
             ${{ runner.temp }}/onlinu-tenant-compose-report.json
+            ${{ runner.temp }}/onlinu-provisioning-cancellation-report.json
           if-no-files-found: error
           retention-days: 7
