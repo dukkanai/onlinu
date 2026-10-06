@@ -858,3 +858,12 @@ rehashed and bound to the exact source and attempt. Synthetic local image ID:
 `sha256:eaeb8373b6ae3c4dfae195bae7c4753625f71d4c7b6c3fd9a7f3e26b7bf3d78e`.
 This is not registry publication or production execution. Local platform222 tests
 passed with12 database skips; remote PostgreSQL and full-runtime gates passed.
+
+The private executor now has a single-attempt fixed-command Compose transport and
+shared empty-namespace preflight. The actual isolated journal fixture uses them,
+with explicit synthetic manifest overrides kept separate from production.
+Authority/integrity/emptiness checks precede a no-pull/no-build creation attempt;
+lost replies never trigger retries or removal. Eight new focused test groups
+pass locally; remote daemon acceptance is pending. See
+`prototype/platform/PROVISIONING-COMPOSE-APPLY.md`. A production manifest/secret
+supplier, public routing, activation and release permission remain separate.

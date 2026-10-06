@@ -16,6 +16,7 @@ import { createProvisioningRunner } from '../provisioning-runner.mjs';
 import { createProvisioningStage } from '../provisioning-stage.mjs';
 import { createProvisioningEvidence } from '../provisioning-evidence.mjs';
 import { createProvisioningRuntimeProbe } from '../provisioning-runtime-probe.mjs';
+import { createProvisioningComposeApply } from '../provisioning-compose-apply.mjs';
 import { createProvisioningHostLock } from '../provisioning-host-lock.mjs';
 import { createProvisioningProcess } from '../provisioning-process.mjs';
 import { validateContext } from '../../../integration/provisioning-cancellation-smoke.mjs';
@@ -89,11 +90,8 @@ export async function runSmoke(image, env = process.env) {
     return call(['compose', '--env-file', '/dev/null', '-f', f.manifest, ...args]);
   }
   async function empty(f) {
-    if ((await ids(f)).length) throw new Error('fixture_containers_exist');
-    for (const [type, field] of [['volume', 'volumes'], ['network', 'networks']]) {
-      const existing = await names(type);
-      if (Object.values(f.spec[field]).some(x => existing.has(x.name))) throw new Error('fixture_resources_exist');
-    }
+    await runtimeProbe.assertEmpty({ tenantId: f.config.tenantId, planDigest: f.plan.planDigest,
+      projectName: f.plan.projectName, images: f.images, httpPort: f.config.httpPort, compose: f.spec });
   }
   async function verifyOwnership(f, requireHealthy = false) {
     if (requireHealthy) {
@@ -192,9 +190,13 @@ export async function runSmoke(image, env = process.env) {
           f.spec.configs.runtime_bootstrap.file = staged.bootstrapPath;
           f.manifest = join(target, 'compose.json'); const text = JSON.stringify(f.spec);
           await writeFile(f.manifest, text, { mode: 0o600, flag: 'wx' }); f.manifestHash = hash(text);
-          await compose(f, ['config', '--quiet']); await empty(f); await checkpoint();
+          const applyTransport = createProvisioningComposeApply({ processRunner,
+            verifyExecution: async () => {
+              await manifest(f);
+              return f.manifest; // Explicit synthetic overrides, not a production manifest capability.
+            }, assertEmpty: () => empty(f) });
           f.effectsPossible = true;
-          await compose(f, ['up', '--wait', '--wait-timeout', '90', '--pull', 'never', '--no-build']);
+          await applyTransport.apply({ checkpoint });
           if (number === 1) throw new Error('intentional_fixture_lost_apply_reply');
         },
         async verify(prepared) {

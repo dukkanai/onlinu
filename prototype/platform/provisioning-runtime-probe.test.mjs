@@ -80,3 +80,32 @@ test('probe snapshots caller expectations before asynchronous process results', 
   assert.equal(result.postgres.containerId, '2'.repeat(64));
   assert.ok(f.calls[4].args.includes(f.expected.projectName + '-media'));
 });
+
+test('empty gate ignores unrelated names and performs no mutation or adoption', async () => {
+  const f = setup(step => step === 2 ? '' : step === 3 ? 'unrelated-volume\n' : step === 4 ? 'bridge\nhost\nnone\n' : undefined);
+  assert.deepEqual(await f.probe.assertEmpty(f.expected), { projectName: f.expected.projectName, empty: true });
+  assert.deepEqual(f.calls.slice(2).map(v => v.args), [
+    ['--context', 'default', 'volume', 'ls', '--format', '{{.Name}}'],
+    ['--context', 'default', 'network', 'ls', '--format', '{{.Name}}'],
+  ]);
+});
+test('empty gate refuses any existing project container before further inspection', async () => {
+  const f = setup();
+  await assert.rejects(f.probe.assertEmpty(f.expected), safeError);
+  assert.equal(f.calls.length, 2);
+});
+test('empty gate refuses name collisions even without matching ownership labels', async () => {
+  for (const [step, suffix] of [[3, 'media'], [3, 'postgres'], [4, 'database'], [4, 'egress']]) {
+    const f = setup((n, data) => n === 2 ? '' : n === step ? data.expected.projectName + '-' + suffix + '\n' : n > 2 ? '' : undefined);
+    await assert.rejects(f.probe.assertEmpty(f.expected), safeError);
+    assert.equal(f.calls.length, step);
+  }
+});
+test('empty gate rejects malformed inventory and preserves cancellation', async () => {
+  const f = setup(step => step === 2 ? '' : step === 3 ? 'bad name\n' : undefined);
+  await assert.rejects(f.probe.assertEmpty(f.expected), safeError); assert.equal(f.calls.length, 3);
+  const abort = new AbortController();
+  const g = setup(step => { if (step === 2) return ''; if (step === 3) { abort.abort(); return ''; } });
+  await assert.rejects(g.probe.assertEmpty(g.expected, { signal: abort.signal }), safeError);
+  assert.equal(g.calls.length, 3);
+});

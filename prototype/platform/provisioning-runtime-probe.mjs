@@ -10,7 +10,7 @@ const sha = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 
 export function createProvisioningRuntimeProbe({ processRunner }) {
   if (typeof processRunner?.run !== 'function') throw new Error('invalid_provisioning_probe_configuration');
-  async function inspect(input, { signal } = {}) {
+  async function observe(input, { signal } = {}, requireEmpty = false) {
     try {
       if (signal !== undefined && !(signal instanceof AbortSignal)) reject();
       const expected = structuredClone(input);
@@ -43,6 +43,16 @@ export function createProvisioningRuntimeProbe({ processRunner }) {
       if (contexts[0]?.Name !== 'default' || contexts[0]?.Endpoints?.docker?.Host !== 'unix:///var/run/docker.sock') reject();
       const text = (await call(['container', 'ls', '-aq', '--no-trunc', '--filter', 'label=com.docker.compose.project=' + project])).trim();
       const ids = text ? text.split(/\s+/) : [];
+      if (requireEmpty) {
+        if (ids.length) reject();
+        for (const [type, wanted] of [['volume', volumeNames], ['network', networkNames]]) {
+          const output = (await call([type, 'ls', '--format', '{{.Name}}'])).trim();
+          const names = output ? output.split(/\r?\n/) : [];
+          if (names.some(v => !/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(v))
+              || new Set(names).size !== names.length || wanted.some(v => names.includes(v))) reject();
+        }
+        return Object.freeze({ projectName: project, empty: true });
+      }
       if (ids.length !== 2 || !ids.every(sha) || new Set(ids).size !== 2) reject();
       const containers = await array(['container', 'inspect', ...ids], 2);
       if (containers.some(v => !ids.includes(v?.Id))) reject();
@@ -51,5 +61,8 @@ export function createProvisioningRuntimeProbe({ processRunner }) {
       return inspectProvisionedRuntime(expected, { containers, networks, volumes });
     } catch { reject(); }
   }
-  return Object.freeze({ inspect });
+  return Object.freeze({
+    inspect: (input, options) => observe(input, options),
+    assertEmpty: (input, options) => observe(input, options, true),
+  });
 }
