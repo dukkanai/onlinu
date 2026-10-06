@@ -698,3 +698,10 @@ revocation, real TLS native API save/stale/restore, and Windows form/review
 screenshots. A checksum-verified Flutter SDK was restored locally, but package
 restore did not complete in this execution. Local formatting and diff review are
 not an analyzer/test pass; native analysis, tests and rendering await remote CI.
+
+Native CI37473814757 first stopped at the formatting gate, before native analysis
+or widget tests: the restored local workspace had no package configuration, so
+formatting used the SDK's latest language version rather than this package's
+Dart 3.5 language level. Explicit `dart format --language-version=3.5` now checks
+all 73 Dart files with zero changes. This corrects formatting only; rerun native
+acceptance remains required and no test gate has been weakened.

@@ -50,7 +50,8 @@ abstract interface class CoreGateway {
       {required String mode, required int fee, required int minimum});
   Future<void> setDeliveryZone(CoreDelivery expected,
       {required String district, required bool enabled, required int? fee});
-  Future<void> setDeliveryLocation(CoreDelivery expected, DeliveryLocationChange change);
+  Future<void> setDeliveryLocation(
+      CoreDelivery expected, DeliveryLocationChange change);
   Future<CoreGeography> geography(String tenant, String kind, {String? parent});
   Future<CoreBusinessProfile> businessProfile(String tenant);
   Future<void> patchBusinessProfile(
@@ -457,8 +458,7 @@ class CoreApi implements CoreGateway {
           result.latitude != change.latitude ||
           result.longitude != change.longitude ||
           result.radius != change.radius ||
-          result.requireLocation != change.requireLocation)
-        invalidResponse();
+          result.requireLocation != change.requireLocation) invalidResponse();
     } on CoreException {
       throw const CoreException('invalid_response', uncertain: true);
     }

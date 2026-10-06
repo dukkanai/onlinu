@@ -1287,7 +1287,8 @@ class CoreController extends ChangeNotifier {
     }
   }
 
-  Future<void> deliveryLocation(CoreDelivery expected, DeliveryLocationChange change) =>
+  Future<void> deliveryLocation(
+          CoreDelivery expected, DeliveryLocationChange change) =>
       _deliveryWrite(expected, () => api.setDeliveryLocation(expected, change));
   Future<void> deliveryPricing(CoreDelivery expected,
           {required String mode, required int fee, required int minimum}) =>

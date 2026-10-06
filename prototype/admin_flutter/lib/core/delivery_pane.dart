@@ -93,7 +93,6 @@ class _DeliveryPaneState extends State<DeliveryPane> {
           OutlinedButton(
               onPressed: editable ? () => editLocation(d) : null,
               child: const Text('تعديل موقع ونطاق التوصيل')),
-
         OutlinedButton(
             onPressed: editable ? () => edit(d, pricing: true) : null,
             child: const Text('تعديل تسعير التوصيل')),

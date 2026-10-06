@@ -265,13 +265,25 @@ void main() {
 
     final locationBefore = await api.delivery('restaurant-a');
     expect(locationBefore.locationKnown, true);
-    const locationChange = DeliveryLocationChange(latitude: 0, longitude: 0, radius: 1, requireLocation: true);
+    const locationChange = DeliveryLocationChange(
+        latitude: 0, longitude: 0, radius: 1, requireLocation: true);
     await api.setDeliveryLocation(locationBefore, locationChange);
     final locationAfter = await api.delivery('restaurant-a');
-    expect(locationAfter.latitude, 0); expect(locationAfter.longitude, 0);
-    expect(locationAfter.radius, 1); expect(locationAfter.requireLocation, true);
-    await expectLater(api.setDeliveryLocation(locationBefore, locationChange), throwsA(isA<CoreException>().having((e) => e.code, 'stale origin', 'catalog_changed')));
-    await api.setDeliveryLocation(locationAfter, DeliveryLocationChange(latitude: locationBefore.latitude, longitude: locationBefore.longitude, radius: locationBefore.radius, requireLocation: locationBefore.requireLocation));
+    expect(locationAfter.latitude, 0);
+    expect(locationAfter.longitude, 0);
+    expect(locationAfter.radius, 1);
+    expect(locationAfter.requireLocation, true);
+    await expectLater(
+        api.setDeliveryLocation(locationBefore, locationChange),
+        throwsA(isA<CoreException>()
+            .having((e) => e.code, 'stale origin', 'catalog_changed')));
+    await api.setDeliveryLocation(
+        locationAfter,
+        DeliveryLocationChange(
+            latitude: locationBefore.latitude,
+            longitude: locationBefore.longitude,
+            radius: locationBefore.radius,
+            requireLocation: locationBefore.requireLocation));
     final locationRestored = await api.delivery('restaurant-a');
     expect(locationRestored.latitude, locationBefore.latitude);
     expect(locationRestored.radius, locationBefore.radius);

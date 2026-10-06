@@ -554,22 +554,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.deliveryWrites, 1);
     expect(c.coverage!.zones.single.fee, 0);
-    api.deliveryData = {...api.deliveryData, 'latitude': null, 'longitude': null};
-    await c.refresh(); await tester.pumpAndSettle();
+    api.deliveryData = {
+      ...api.deliveryData,
+      'latitude': null,
+      'longitude': null
+    };
+    await c.refresh();
+    await tester.pumpAndSettle();
     await tester.tap(find.text('تعديل موقع ونطاق التوصيل'));
     await tester.pumpAndSettle();
-    for (final entry in {'خط عرض المطعم': '٠', 'خط طول المطعم': '٠', 'نطاق التوصيل بالكيلومتر': '١٫٥'}.entries) {
+    for (final entry in {
+      'خط عرض المطعم': '٠',
+      'خط طول المطعم': '٠',
+      'نطاق التوصيل بالكيلومتر': '١٫٥'
+    }.entries) {
       final field = find.widgetWithText(TextField, entry.key);
-      await tester.ensureVisible(field); await tester.pumpAndSettle();
+      await tester.ensureVisible(field);
+      await tester.pumpAndSettle();
       await tester.enterText(field, entry.value);
     }
-    FocusManager.instance.primaryFocus?.unfocus(); await tester.pumpAndSettle();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
     await capture(tester, boundary, 'windows-delivery-location.png');
-    await tester.tap(find.text('مراجعة الموقع والنطاق')); await tester.pumpAndSettle();
+    await tester.tap(find.text('مراجعة الموقع والنطاق'));
+    await tester.pumpAndSettle();
     expect(api.deliveryWrites, 1);
     await capture(tester, boundary, 'windows-delivery-location-review.png');
-    await tester.tap(find.text('تأكيد حفظ الموقع والنطاق')); await tester.pumpAndSettle();
-    expect(api.deliveryWrites, 2); expect(c.coverage!.radius, 1.5); expect(c.coverage!.latitude, 0);
+    await tester.tap(find.text('تأكيد حفظ الموقع والنطاق'));
+    await tester.pumpAndSettle();
+    expect(api.deliveryWrites, 2);
+    expect(c.coverage!.radius, 1.5);
+    expect(c.coverage!.latitude, 0);
     await tester.pumpWidget(const SizedBox());
   });
   testWidgets('Windows public business profile requires publication review',

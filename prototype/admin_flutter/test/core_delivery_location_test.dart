@@ -9,13 +9,15 @@ import 'package:restaurant_admin_prototype/core/transport.dart';
 import 'core_fakes.dart';
 
 Map<String, dynamic> locationData() => {
-  ...FakeCoreGateway().deliveryData,
-  'latitude': null,
-  'longitude': null,
-};
+      ...FakeCoreGateway().deliveryData,
+      'latitude': null,
+      'longitude': null,
+    };
 
 void main() {
-  test('location response capability preserves old core reads and rejects inconsistent origins', () {
+  test(
+      'location response capability preserves old core reads and rejects inconsistent origins',
+      () {
     expect(
       CoreDelivery(
         FakeCoreGateway().deliveryData,
@@ -104,7 +106,9 @@ void main() {
       }
     },
   );
-  test('native location write binds full intent, validates acknowledgement and never retries', () async {
+  test(
+      'native location write binds full intent, validates acknowledgement and never retries',
+      () async {
     final session = FakeCoreSession()..hasSession = true,
         api = CoreApi(session);
     final expected = CoreDelivery(locationData(), tenantId: 'demo-a');
