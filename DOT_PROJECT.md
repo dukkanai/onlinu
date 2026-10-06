@@ -582,4 +582,5 @@ private local-file checks and stable planner resource names. Real separate-proce
 contention and worker-exit tests pass; lock release never deletes the lock file.
 The PostgreSQL/compiler/coordinator fixture uses this concrete lock. It does not
 prove Docker daemon cancellation or replace uncertain-outcome reconciliation.
-See `prototype/platform/PROVISIONING-HOST-LOCK.md`. Remote CI is pending.
+See `prototype/platform/PROVISIONING-HOST-LOCK.md`. Commit `e7b6d58` passed
+all four ordinary CI37438055020 jobs; the unchanged runtime-image job was skipped.

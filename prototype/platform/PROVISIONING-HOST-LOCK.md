@@ -53,4 +53,7 @@ neighbor, releases on callback failure and owned worker process termination,
 and retains stable lock files. Unsafe files and directories are rejected.
 The real PostgreSQL/artifact-compiler/runner integration also uses this lock,
 with a synthetic apply driver. No Docker or production fixture is involved.
-Remote CI acceptance of this increment is pending.
+Local verification passes 275 platform tests without skips and related
+actual-main Go race checks. Commit `e7b6d58` passed all four ordinary jobs in
+[CI37438055020](https://github.com/dukkanai/onlinu/actions/runs/37438055020);
+the unchanged optional runtime-image job was skipped.
