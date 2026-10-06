@@ -705,3 +705,14 @@ formatting used the SDK's latest language version rather than this package's
 Dart 3.5 language level. Explicit `dart format --language-version=3.5` now checks
 all 73 Dart files with zero changes. This corrects formatting only; rerun native
 acceptance remains required and no test gate has been weakened.
+
+Native acceptance update: corrected commit
+`418812857953510d1ca1884f6be31c143ce982ea` passed all four ordinary jobs in
+CI37475052322, verified 2026-10-06 14:07 UTC. Windows analysis, unit/widget tests,
+actual OS renderer/storage tests and unsigned release build passed; real native
+TLS location save/stale/restore also passed with the server integration. Both
+Windows location editor and review screenshots were downloaded and visually
+inspected at 14:08 UTC. Arabic labels and review controls are legible. This
+accepts the location/radius management feature, not production deployment or
+per-kilometre pricing. Full runtime-image acceptance remains separately recorded
+at `147a8c1`; it was intentionally skipped in this run.
