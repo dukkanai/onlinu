@@ -548,5 +548,6 @@ The opt-in image job now includes a two-fixture renderer acceptance script:
 separate databases/media/keys, actual hardening checks, cross-network TCP denial
 and container recreation without changing the neighboring fixture. Only local
 image references and disposable host-file paths override the rendered spec.
-Local 64 Python tests pass; actual Docker acceptance is pending. See
+Local 64 Python tests pass. Actual Docker acceptance passed with all five jobs
+in CI37429655725 for `1b938f5`; the two-fixture report was inspected. See
 `deploy/TENANT-COMPOSE-SMOKE.md`. No production executor or deployment is added.

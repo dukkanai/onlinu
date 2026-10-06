@@ -60,7 +60,9 @@ Local evidence currently consists of 64 deployment/packaging and fixture guard
 tests, Python compilation, and a loopback curl probe experiment confirming that
 a connected timeout exposes its remote address while a refused connection does
 not. There is no local Docker daemon, so the two-container-pair acceptance itself
-is pending remote CI. Existing single-image and bootstrap acceptance remains
+passed in [CI37429655725](https://github.com/dukkanai/onlinu/actions/runs/37429655725)
+for `1b938f5e453d383c4c60e6936f43e1298b7f4639`. All five jobs succeeded.
+The non-secret two-fixture report was downloaded and inspected. Existing single-image and bootstrap acceptance remains
 recorded separately in `RUNTIME-IMAGE-ACCEPTANCE.md` and `TENANT-COMPOSE.md`.
 
 Real calls, public HTTPS routing, resource capacity, backup restoration,
