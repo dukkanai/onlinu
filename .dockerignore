@@ -40,3 +40,6 @@ prints
 **/node_modules
 **/__pycache__
 **/*.pyc
+
+# Reviewed bootstrap source only; never include database dumps.
+!deploy/tenant-bootstrap.sql

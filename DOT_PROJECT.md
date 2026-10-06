@@ -520,3 +520,13 @@ CI37422274567. The original root Dockerfile builds and its runtime passes UID
 10001/read-only/file-secret/health/admin-auth/restricted-DB checks on synthetic
 fixtures without publishing ports. The report was inspected; no real calls,
 registry publication, production deploy or multi-tenant isolation is implied.
+
+## Reviewed-plan Compose rendering (local increment)
+
+The offline planner now has an explicit `--compose` mode requiring an exact
+review digest. It emits separated file-secret mounts and dedicated tenant
+resources, with a digest-bound PostgreSQL 16 bootstrap asset. Local 57 Python
+tests and a negative PostgreSQL 17 bootstrap check pass. CI schema validation
+and opt-in positive bootstrap/image checks are pending. No executor, secret
+creation, tenant registration or deployment is performed by the renderer; see
+`deploy/TENANT-COMPOSE.md` for the required gates.

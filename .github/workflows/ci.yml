@@ -66,6 +66,9 @@ jobs:
       - name: Test deployment planning and safety guards
         run: python3 -m unittest discover -s deploy -p 'test_*.py' -v
 
+      - name: Validate rendered tenant Compose schema without deployment
+        run: python3 integration/check-tenant-compose.py
+
       - name: Set up Node for core adapter integration
         uses: actions/setup-node@v4
         with:

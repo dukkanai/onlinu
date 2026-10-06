@@ -220,10 +220,13 @@ PUBLIC_GEOGRAPHY_FILES = {
 }
 
 
+PUBLIC_BOOTSTRAP_FILES = {"deploy/tenant-bootstrap.sql"}
+
+
 def include_source(name):
     # Only these pinned public inputs may cross the runtime-data exclusion.
     # Check the exact name, not a normalized prefix that could admit private data.
-    if name in PUBLIC_GEOGRAPHY_FILES:
+    if name in PUBLIC_GEOGRAPHY_FILES or name in PUBLIC_BOOTSTRAP_FILES:
         return True
     path = PurePosixPath(name)
     if path.is_absolute() or ".." in path.parts or set(path.parts) & EXCLUDED_PARTS:
@@ -248,6 +251,7 @@ def package_source(version, secrets):
     required = {"Dockerfile", "deploy/release.json", "deploy/test_install.py", "META.ar.md", "deploy/INSTALL.ar.md",
                 ".env.example", "scripts/build-installer.sh", "scripts/package-release.py"}
     required.update(PUBLIC_GEOGRAPHY_FILES)
+    required.update(PUBLIC_BOOTSTRAP_FILES)
     if version == "0.3.0":
         required.add("RESTAURANT.ar.md")
     if not required.issubset(names):

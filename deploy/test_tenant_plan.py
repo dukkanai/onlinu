@@ -1,6 +1,7 @@
 """Pure plan tests: no Docker, network calls, credentials or deployment."""
 import base64
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -96,6 +97,68 @@ class TenantPlanTests(unittest.TestCase):
         for value in ([], {}, [fixture()] * 1001):
             with self.assertRaises(planner.PlanError):
                 planner.plan_fleet(value)
+
+    def test_compose_separates_secrets_networks_and_owned_resources(self):
+        config = fixture()
+        plan = planner.plan_tenant(config)
+        spec = planner.compose_tenant(config, plan['planDigest'], '/srv/onlinu/tenant-secrets')
+        app, db = spec['services']['restaurant'], spec['services']['postgres']
+        self.assertTrue(set(app['secrets']).isdisjoint(db['secrets']))
+        self.assertNotIn('ports', db)
+        self.assertEqual(db['networks'], ['database'])
+        self.assertTrue(spec['networks']['database']['internal'])
+        self.assertEqual(app['ports'][0]['host_ip'], '127.0.0.1')
+        self.assertEqual(app['user'], '10001:10001')
+        self.assertTrue(app['read_only'])
+        self.assertEqual(app['cap_drop'], ['ALL'])
+        self.assertNotIn('WACALLS_API_KEY', app['environment'])
+        self.assertNotIn('POSTGRES_PASSWORD', db['environment'])
+        self.assertFalse(spec['x-onlinu']['deployed'])
+        self.assertNotIn('docker.sock', json.dumps(spec))
+        self.assertEqual(db['configs'][0]['target'], '/docker-entrypoint-initdb.d/10-onlinu.sql')
+
+    def test_compose_requires_reviewed_digest_and_rejects_path_interpolation(self):
+        config = fixture()
+        digest = planner.plan_tenant(config)['planDigest']
+        for wrong in ('', '0' * 64, None):
+            with self.assertRaises(planner.PlanError):
+                planner.compose_tenant(config, wrong, '/srv/onlinu/tenant-secrets')
+        changed = dict(config, httpPort=18081)
+        with self.assertRaises(planner.PlanError):
+            planner.compose_tenant(changed, digest, '/srv/onlinu/tenant-secrets')
+        for path in ('/etc', '/srv/onlinu/../etc', '/srv/onlinu/a${TOKEN}', '/srv/onlinu/a b', '/srv/onlinu/', '/srv/onlinu//a', None):
+            with self.subTest(path=path), self.assertRaises(planner.PlanError):
+                planner.compose_tenant(config, digest, path)
+
+    def test_compose_two_tenants_share_no_secret_or_storage_names(self):
+        specs = [planner.compose_tenant(c, planner.plan_tenant(c)['planDigest'], '/srv/onlinu/tenant-secrets')
+                 for c in (fixture(), fixture('restaurant-b', 18081))]
+        for section in ('volumes', 'networks'):
+            a = {row['name'] for row in specs[0][section].values()}
+            b = {row['name'] for row in specs[1][section].values()}
+            self.assertTrue(a.isdisjoint(b))
+        self.assertTrue({row['file'] for row in specs[0]['secrets'].values()}.isdisjoint(
+            {row['file'] for row in specs[1]['secrets'].values()}))
+
+    def test_bootstrap_asset_hash_is_bound_to_the_review_plan(self):
+        source = Path(__file__).with_name('tenant-bootstrap.sql').read_bytes()
+        self.assertEqual(hashlib.sha256(source).hexdigest(), planner.BOOTSTRAP_SHA256)
+        self.assertEqual(planner.plan_tenant(fixture())['postgres']['bootstrapAssetSha256'], planner.BOOTSTRAP_SHA256)
+        self.assertNotIn(b'ALTER ROLE', source)
+        self.assertNotIn(b'DROP ', source)
+
+    def test_compose_cli_preserves_no_secret_input_contract(self):
+        request = {'config': fixture(), 'expectedDigest': planner.plan_tenant(fixture())['planDigest'],
+                   'secretRoot': '/srv/onlinu/tenant-secrets'}
+        path = str(Path(__file__).with_name('tenant_plan.py'))
+        result = subprocess.run([sys.executable, path, '--compose'], input=json.dumps(request).encode(), capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(set(json.loads(result.stdout)['services']), {'restaurant', 'postgres'})
+        request['secretContents'] = 'PRIVATE_MARKER'
+        result = subprocess.run([sys.executable, path, '--compose'], input=json.dumps(request).encode(), capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn(b'PRIVATE_MARKER', result.stderr)
+        self.assertEqual(result.stdout, b'')
 
     def test_cli_is_bounded_and_rejects_duplicate_json_keys(self):
         path = str(Path(__file__).with_name("tenant_plan.py"))

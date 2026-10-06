@@ -8,6 +8,7 @@ import sys
 from urllib.parse import urlsplit
 
 MAX_INPUT_BYTES = 262144
+BOOTSTRAP_SHA256 = "b0cf8b7802c6e3a1347f11b3ec59e94089cd5f483f69b65b395c8e7e1556df7e"
 TENANT_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
 IMAGE = re.compile(r"[a-z0-9][a-z0-9./:_-]{0,240}@sha256:[a-f0-9]{64}\Z")
 FIELDS = {"tenantId", "runtimeImage", "postgresImage", "httpPort", "publicOrigin", "platformIssuer", "platformPublicKey"}
@@ -106,6 +107,9 @@ def plan_tenant(config):
         "postgres": {
             "image": pinned_image(config["postgresImage"]),
             "dedicatedInstance": True,
+            "majorVersion": 16,
+            "bootstrapAssetSha256": BOOTSTRAP_SHA256,
+            "runtimePasswordSecretReference": resource + "-runtime-db-password",
             "publishedPorts": [],
             "volume": resource + "-postgres",
             "runtimeRole": {"login": True, "createdb": True, "superuser": False,
@@ -136,6 +140,80 @@ def plan_fleet(configs):
     return sorted(plans, key=lambda p: p["tenantId"])
 
 
+def compose_tenant(config, expected_digest, secret_root):
+    """Render an un-applied specification only after exact plan review identity."""
+    plan = plan_tenant(config)
+    if not isinstance(expected_digest, str) or expected_digest != plan['planDigest']:
+        raise PlanError('reviewed_plan_digest_required')
+    # Never interpolate caller data into shell, environment substitutions or
+    # arbitrary bind mounts. Files remain references; nothing is read here.
+    if (not isinstance(secret_root, str) or len(secret_root) > 240
+            or not re.fullmatch(r'/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*', secret_root)
+            or not secret_root.startswith('/srv/onlinu/')):
+        raise PlanError('approved_secret_directory_required')
+    runtime = plan['runtime']
+    postgres = plan['postgres']
+    references = runtime['secretReferences']
+    refs = {
+        'administrator': references['WACALLS_API_KEY_FILE'],
+        'runtime_pg_url': references['WACALLS_PG_URL_FILE'],
+        'meta_key': references['WACALLS_META_ENCRYPTION_KEY_FILE'],
+        'pg_bootstrap': postgres['bootstrapSecretReference'],
+        'runtime_password': postgres['runtimePasswordSecretReference'],
+    }
+    labels = {'org.onlinu.tenant': plan['tenantId'], 'org.onlinu.plan-digest': plan['planDigest']}
+    environment = dict(runtime['environment'],
+                       WACALLS_API_KEY_FILE='/run/secrets/administrator',
+                       WACALLS_PG_URL_FILE='/run/secrets/runtime_pg_url',
+                       WACALLS_META_ENCRYPTION_KEY_FILE='/run/secrets/meta_key')
+    return {
+        'name': plan['projectName'],
+        'x-onlinu': {'planDigest': plan['planDigest'], 'deployed': False,
+                     'requiredAcceptance': list(plan['requiredAcceptance']),
+                     'postgresMajorVersion': postgres['majorVersion'],
+                     'bootstrapAssetSha256': postgres['bootstrapAssetSha256']},
+        'services': {
+            'postgres': {
+                'image': postgres['image'],
+                'environment': {'POSTGRES_USER': 'postgres', 'POSTGRES_DB': 'postgres',
+                                'POSTGRES_PASSWORD_FILE': '/run/secrets/pg_bootstrap'},
+                'secrets': ['pg_bootstrap', 'runtime_password'],
+                'configs': [{'source': 'runtime_bootstrap', 'target': '/docker-entrypoint-initdb.d/10-onlinu.sql'}],
+                'volumes': [{'type': 'volume', 'source': 'postgres', 'target': '/var/lib/postgresql/data'}],
+                'networks': ['database'],
+                'healthcheck': {'test': ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U postgres -d postgres'],
+                                'interval': '5s', 'timeout': '3s', 'retries': 20},
+                'restart': 'unless-stopped', 'stop_grace_period': '30s', 'labels': dict(labels),
+                'logging': {'driver': 'json-file', 'options': {'max-size': '10m', 'max-file': '3'}},
+            },
+            'restaurant': {
+                'image': runtime['image'], 'user': '10001:10001', 'init': True,
+                'environment': environment,
+                'secrets': ['administrator', 'runtime_pg_url', 'meta_key'],
+                'volumes': [{'type': 'volume', 'source': 'media', 'target': '/data/recordings'}],
+                'networks': ['database', 'egress'],
+                'ports': [{'target': 8080, 'published': str(runtime['httpBinding']['port']),
+                           'host_ip': '127.0.0.1', 'protocol': 'tcp'}],
+                'depends_on': {'postgres': {'condition': 'service_healthy'}},
+                'read_only': True, 'cap_drop': ['ALL'], 'security_opt': ['no-new-privileges:true'],
+                'tmpfs': ['/tmp:rw,noexec,nosuid,size=128m,mode=1777'],
+                'restart': 'unless-stopped', 'stop_grace_period': '30s', 'labels': dict(labels),
+                'logging': {'driver': 'json-file', 'options': {'max-size': '10m', 'max-file': '3'}},
+            },
+        },
+        'networks': {
+            'database': {'name': plan['networks']['database'], 'driver': 'bridge', 'internal': True, 'labels': dict(labels)},
+            'egress': {'name': plan['networks']['runtimeEgress'], 'driver': 'bridge', 'labels': dict(labels)},
+        },
+        'volumes': {
+            'postgres': {'name': postgres['volume'], 'labels': dict(labels)},
+            'media': {'name': runtime['mediaVolume'], 'labels': dict(labels)},
+        },
+        'secrets': {name: {'file': secret_root + '/' + ref} for name, ref in refs.items()},
+        'configs': {'runtime_bootstrap': {'file': './tenant-bootstrap.sql'}},
+    }
+
+
 def unique_fields(pairs):
     result = {}
     for key, value in pairs:
@@ -151,7 +229,15 @@ def main():
         if len(raw) > MAX_INPUT_BYTES:
             raise PlanError("plan_input_too_large")
         configs = json.loads(raw, object_pairs_hook=unique_fields)
-        print(json.dumps(plan_fleet(configs), ensure_ascii=False, indent=2, sort_keys=True))
+        if sys.argv[1:] == ['--compose']:
+            if not isinstance(configs, dict) or set(configs) != {'config', 'expectedDigest', 'secretRoot'}:
+                raise PlanError('invalid_compose_request_fields')
+            result = compose_tenant(configs['config'], configs['expectedDigest'], configs['secretRoot'])
+        elif not sys.argv[1:]:
+            result = plan_fleet(configs)
+        else:
+            raise PlanError('invalid_plan_mode')
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
     except (ValueError, UnicodeError, RecursionError) as exc:
         print(str(exc) if isinstance(exc, PlanError) else "invalid_plan_json", file=sys.stderr)

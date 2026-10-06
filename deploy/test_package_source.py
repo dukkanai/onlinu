@@ -32,6 +32,15 @@ class SourceGeographyTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertFalse(packager.include_source(name))
 
+    def test_only_exact_reviewed_bootstrap_sql_is_allowed(self):
+        self.assertEqual(packager.PUBLIC_BOOTSTRAP_FILES, {'deploy/tenant-bootstrap.sql'})
+        self.assertTrue(packager.include_source('deploy/tenant-bootstrap.sql'))
+        for name in ('deploy/other.sql', 'deploy/tenant-bootstrap.sql.gz',
+                     'deploy//tenant-bootstrap.sql', '/deploy/tenant-bootstrap.sql',
+                     'deploy/../deploy/tenant-bootstrap.sql', 'backups/tenant-bootstrap.sql'):
+            with self.subTest(name=name):
+                self.assertFalse(packager.include_source(name))
+
     def test_ordinary_source_and_env_example_still_included(self):
         self.assertTrue(packager.include_source("cmd/server/restaurant_geography.go"))
         self.assertTrue(packager.include_source(".env.example"))

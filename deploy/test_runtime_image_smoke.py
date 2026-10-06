@@ -38,7 +38,8 @@ if [[ "$1" == exec && "$3" == curl ]]; then
   elif [[ "$*" == *synthetic-image-administrator* ]]; then printf 200;
   else printf 401; fi
 fi
-if [[ "$1" == exec && "$3" == psql && "$*" == *pg_get_userbyid* ]]; then echo runtime_fixture; fi
+if [[ "$1" == exec && "$3" == psql && "$*" == *pg_get_userbyid* ]]; then echo onlinu_runtime; fi
+if [[ "$1" == exec && "$3" == psql && "$*" == *rolsuper* ]]; then echo f; fi
 if [[ "$1" == logs && "$FAKE_MODE" == runtime-exits ]]; then
   echo 'synthetic-image-administrator synthetic-runtime-password synthetic-image-bootstrap postgres://fixture:secret@db/database'
 fi

@@ -5,7 +5,9 @@ provisioning. It accepts a strict JSON list on standard input and prints a
 reviewable, deterministic JSON plan. It never calls Docker, resolves DNS, reads
 secrets, changes files/permissions, creates credentials, bootstraps PostgreSQL,
 changes the central registry, or deploys anything. Its output is deliberately
-not a Compose file or an executable job; `executable` is always `false`.
+not a Compose file or an executable job; `executable` is always `false` in
+planning mode. A separately requested `--compose` rendering mode is documented
+in [TENANT-COMPOSE.md](TENANT-COMPOSE.md); it still does not apply anything.
 
 ## Input contract
 
