@@ -15,7 +15,7 @@ import { createProvisioningArtifacts } from '../provisioning-artifacts.mjs';
 import { createProvisioningRunner } from '../provisioning-runner.mjs';
 import { createProvisioningStage } from '../provisioning-stage.mjs';
 import { createProvisioningEvidence } from '../provisioning-evidence.mjs';
-import { inspectProvisionedRuntime } from '../provisioning-runtime-inspection.mjs';
+import { createProvisioningRuntimeProbe } from '../provisioning-runtime-probe.mjs';
 import { createProvisioningHostLock } from '../provisioning-host-lock.mjs';
 import { createProvisioningProcess } from '../provisioning-process.mjs';
 import { validateContext } from '../../../integration/provisioning-cancellation-smoke.mjs';
@@ -74,6 +74,7 @@ export async function runSmoke(image, env = process.env) {
   let pool, schemaOwned = false, report, phase = 'host-checks';
   const fixtures = [];
   const processRunner = createProvisioningProcess({ executable: '/usr/bin/docker', workingDirectory: root, timeoutMs: 120000 });
+  const runtimeProbe = createProvisioningRuntimeProbe({ processRunner });
   const call = args => processRunner.run(['--context', 'default', ...args]);
   const json = async args => JSON.parse(await call(args));
   const inspect = async (id, type = 'container') => (await json([type, 'inspect', id]))[0];
@@ -95,13 +96,16 @@ export async function runSmoke(image, env = process.env) {
     }
   }
   async function verifyOwnership(f, requireHealthy = false) {
+    if (requireHealthy) {
+      const result = await runtimeProbe.inspect({ tenantId: f.config.tenantId, planDigest: f.plan.planDigest,
+        projectName: f.plan.projectName, images: f.images, httpPort: f.config.httpPort, compose: f.spec });
+      return { restaurant: result.restaurant.containerId, postgres: result.postgres.containerId };
+    }
     const current = await ids(f);
     if (current.length > 2 || (requireHealthy && current.length !== 2)) throw new Error('fixture_container_count');
     const seen = new Set(), observed = {};
-    const snapshot = { containers: [], networks: [], volumes: [] };
     for (const id of current) {
       const info = await inspect(id);
-      snapshot.containers.push(info);
       owned(info.Config?.Labels, f);
       const service = info.Config.Labels['com.docker.compose.service'];
       if (!['postgres', 'restaurant'].includes(service) || seen.has(service)) throw new Error('fixture_service_mismatch');
@@ -113,13 +117,11 @@ export async function runSmoke(image, env = process.env) {
       for (const resource of Object.values(f.spec[field])) {
         if (existing.has(resource.name)) {
           const info = await inspect(resource.name, type);
-          owned(info.Labels, f); snapshot[field].push(info);
+          owned(info.Labels, f);
         }
         else if (requireHealthy) throw new Error('fixture_resource_missing');
       }
     }
-    if (requireHealthy) inspectProvisionedRuntime({ tenantId: f.config.tenantId, planDigest: f.plan.planDigest,
-      projectName: f.plan.projectName, images: f.images, httpPort: f.config.httpPort, compose: f.spec }, snapshot);
     return { restaurant: observed.restaurant, postgres: observed.postgres };
   }
   try {

@@ -823,3 +823,10 @@ local image ID is
 this is not a published registry digest. No production driver, real credential,
 public routing, activation or deployment is implied. Local platform tests also
 passed 211 with 12 database skips; remote CI supplied database acceptance.
+
+The next provisioning increment adds a fixed-command, local-context-only runtime
+probe over the existing bounded process transport, used by successful and
+uncertain-reply reconciliation fixtures. It verifies identifiers before building
+read-only arguments, bounds daemon responses, preserves cancellation and returns
+only validated resource identities. Seven new probe tests pass; actual daemon CI
+for this follow-on remains pending. No production apply or account setup added.

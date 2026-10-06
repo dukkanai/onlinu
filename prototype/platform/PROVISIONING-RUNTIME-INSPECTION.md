@@ -55,3 +55,26 @@ local image ID is
 this is not a published registry digest. No production driver, real credential,
 public routing, activation or deployment is implied. Local platform tests also
 passed 211 with 12 database skips; remote CI supplied database acceptance.
+
+## Bounded read-only daemon probe — pending acceptance
+
+`createProvisioningRuntimeProbe` now gathers the observations through the existing
+bounded process capability. It requires Docker's default context to point at the
+local Unix socket, lists only the reviewed deterministic project, validates the
+two full container IDs before any inspect argument, and reads only those exact
+containers and the deterministic two networks/volumes. It then applies the pure
+snapshot gate and returns the same redacted frozen identity result.
+
+There are no arbitrary command arguments, shell, apply/delete commands, external
+HTTP probes, secret-byte reads or automatic retries. Caller expectations are
+copied before awaiting. Output is bounded to 1 MiB per result; malformed JSON,
+wrong inventory, process errors and cancellation fail closed with a sanitized
+code. The trusted executor must supply the existing bounded Docker process
+capability, own its configuration and provide live authorization/host exclusion.
+This adapter itself does not grant those powers or prove a Docker daemon stopped.
+
+The actual journal/Docker fixture now uses this shared reader for both successful
+verification and explicit reconciliation. Seven new probe tests pass alongside
+five observation groups and four fixture guards. Actual Docker acceptance of
+this reader awaits its own run; the preceding snapshot-gate acceptance does not
+substitute for it.
