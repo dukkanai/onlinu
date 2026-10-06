@@ -612,5 +612,6 @@ ordinary CI37444321105 jobs, with the optional unchanged image job skipped.
 The opt-in image job now includes a guarded fixture that creates, never starts,
 one owned mount-free, port-free container, aborts its command process, and checks
 that the daemon object still exists. It then removes only that exact verified
-fixture. Three pure guards and 64 deployment tests pass locally; actual Docker
-acceptance is pending. See `deploy/PROVISIONING-CANCELLATION-SMOKE.md`.
+fixture. Three pure guards and 64 deployment tests pass locally. Commit `7dbde99`
+passed all five CI37446321930 jobs; all three runtime-image reports were inspected.
+See `deploy/PROVISIONING-CANCELLATION-SMOKE.md` for the remaining production gates.

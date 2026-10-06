@@ -31,4 +31,8 @@ end-to-end journal/Docker integration, remote daemon cancellation, real secret
 mounts or production recovery. Those remain distinct acceptance requirements.
 
 Local: three pure context/ownership/inertness guard tests and all64 deployment
-Python tests pass. Actual Docker execution for this increment is pending.
+Python tests pass. Commit `7dbde99` passed all five jobs in
+[CI37446321930](https://github.com/dukkanai/onlinu/actions/runs/37446321930).
+The exact-commit cancellation report was downloaded and inspected, together
+with the original runtime and two-tenant reports. All declared cancellation
+checks and exact owned cleanup passed; the production exclusions above remain.
