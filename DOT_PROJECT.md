@@ -1399,3 +1399,12 @@ run passed all five templates, closed/unknown/retry states, live closing of an
 already-open dish dialog, Arabic RTL, width checks, and absence of writes or
 external requests. Screenshot artifact11493214249 was uploaded but has not been
 independently visually inspected. No production or external-account acceptance.
+
+WhatsApp intake preparation adds a private, read-only cart proposal boundary with
+server-resolved scope/generation/peer binding, original-timestamp expiry, bounded
+canonical internal cart IDs, separate event/content fingerprints and deep copies.
+Original-core previews remain authoritative and do not create orders or reserve
+stock. There are no new public routes, transport hooks or enabled adapters.
+Provider mapping, durable inbox, explicit customer confirmation, send/recovery
+and live-account acceptance remain open. See
+`prototype/platform/WHATSAPP-ORDER-INTAKE.md`; hosted DB acceptance is pending.
