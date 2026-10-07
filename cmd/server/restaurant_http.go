@@ -236,6 +236,19 @@ func (s *server) registerRestaurantRoutes(mux *http.ServeMux) {
 		})
 	}
 	pub := http.NewServeMux()
+	pub.HandleFunc("GET /storefront-api/opening-status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if r.URL.RawQuery != "" {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		status, err := s.orders.OpeningStatus(r.Context())
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, status)
+	})
 	pub.HandleFunc("GET /storefront-api/catalog", func(w http.ResponseWriter, r *http.Request) {
 		c, err := s.restaurant.GetCatalog(r.Context(), true)
 		if err != nil {

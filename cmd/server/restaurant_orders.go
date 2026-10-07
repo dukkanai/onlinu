@@ -29,6 +29,8 @@ import (
 type restaurantOrders struct {
 	store *restaurantStore
 	seal  cipher.AEAD
+	// Private deterministic clock for opening-policy tests, never request input.
+	openingNow func() time.Time
 	// Injected once at server startup. An absent capability always disables
 	// card payments; creating an order must never initiate a provider charge.
 	PaymentAvailable func(context.Context, string, string) (bool, error)
@@ -150,6 +152,9 @@ func (s *restaurantOrders) quote(ctx context.Context, input restaurantOrderInput
 	if err != nil {
 		return restaurantQuote{}, err
 	}
+	if err = restaurantRequireOpening(ctx, tx, false, s.openingTime()); err != nil {
+		return restaurantQuote{}, err
+	}
 	quote, err := restaurantPriceCart(catalog, input, !preview)
 	if err != nil {
 		return restaurantQuote{}, err
@@ -207,6 +212,9 @@ func (s *restaurantOrders) Create(ctx context.Context, input restaurantOrderInpu
 		return restaurantReceipt{}, err
 	}
 	if err = restaurantRequireNewOrderChannel(ctx, tx); err != nil {
+		return restaurantReceipt{}, err
+	}
+	if err = restaurantRequireOpening(ctx, tx, true, s.openingTime()); err != nil {
 		return restaurantReceipt{}, err
 	}
 	input, err = restaurantCanonicalDeliveryInput(ctx, tx, input, true)

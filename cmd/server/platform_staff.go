@@ -37,6 +37,7 @@ type platformStaffOrderView struct {
 // control plane resolves current membership before signing each operation.
 // No restaurant master key or caller-supplied role enters this path.
 func (s *server) registerPlatformStaffOrderRoutes(mux *http.ServeMux, wrap func(string, func(http.ResponseWriter, *http.Request, []byte, string)) http.HandlerFunc) {
+	s.registerPlatformOpeningRoutes(mux, wrap)
 	s.registerPlatformStaffDeliveryRoutes(mux, wrap)
 	s.registerPlatformStaffServiceRoutes(mux, wrap)
 	s.registerPlatformStaffPaymentMethodsRoutes(mux, wrap)

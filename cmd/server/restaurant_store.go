@@ -40,6 +40,9 @@ type restaurantCatalogQueryer interface {
 }
 
 func newRestaurantStore(ctx context.Context, db *sql.DB) (*restaurantStore, error) {
+	if err := initRestaurantOpeningSchedule(ctx, db); err != nil {
+		return nil, err
+	}
 	if err := initRestaurantBrand(ctx, db); err != nil {
 		return nil, err
 	}

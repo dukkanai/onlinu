@@ -1280,3 +1280,15 @@ permissions restored with exact comparison. The downloaded APK/source/licenses
 and screenshot hashes were checked; Arabic rendering was visually inspected.
 The emulator integration target uses x86_64; the separately archived compile
 APK is arm64. Real-provider login, physical phones and release remain unverified.
+
+## Structured opening-hours core — 2026-10-07, CI pending
+
+The existing completion plan requires machine-readable hours rather than a
+free-text open-now claim. A separate default-disabled Saudi schedule now has
+reviewed signed settings updates, CAS/audit, date exceptions and explicit
+midnight boundaries. Quotes/new orders enforce it, accepted receipt retries and
+existing fulfillment remain available, and legacy profile edits preserve it.
+Public timestamped status is no-store and distinguishes unconfigured hours.
+Three local policy groups pass; five DB-dependent groups await hosted CI. See
+`prototype/platform/OPENING-SCHEDULE.md`. UI editors/filter integration are not
+included yet; no production state has been changed.
