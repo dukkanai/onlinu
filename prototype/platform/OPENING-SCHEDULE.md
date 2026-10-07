@@ -85,4 +85,8 @@ or open; only new-order controls are gated, and existing uncertain-submission
 recovery remains available. Read-only visibility-aware polling has bounded
 requests and cancellation/generation fences. Actual checkout rechecks all core
 policy/stock/price rules. Local84client tests and build passed; isolated compiled
-browser acceptance awaits CI. This is not a production deployment.
+browser acceptance passed in CI37646310938 for code c5ede0fadb24fb3cc082f3be5119b99ef6a91ad7.
+All five templates passed closed/unknown/retry states, live closure of an open
+dish dialog, Arabic RTL and width checks, without writes or external requests.
+All four ordinary CI jobs passed. The captured screenshot has not been separately
+visually reviewed. This is not a production deployment.

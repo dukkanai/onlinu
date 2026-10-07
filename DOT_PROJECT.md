@@ -1389,4 +1389,13 @@ promise is introduced. Local84client tests passed via Node's tsx import loader
 (the tsx CLI's IPC socket is unavailable here), TypeScript/Vite build passed,
 and89deployment guards passed. A new isolated compiled-React Chromium check
 covers all five templates, closure, unknown/retry/live updates and Arabic RTL.
-Hosted renderer acceptance is pending; no new screenshot has been inspected.
+Hosted renderer acceptance passed on `c5ede0fadb24fb3cc082f3be5119b99ef6a91ad7`,
+[CI37646310938](https://github.com/dukkanai/onlinu/actions/runs/37646310938):
+all four ordinary jobs passed. The first renderer run exposed an ungated dish
+dialog add button; the fix binds the live intake state to its disabled property
+and handler. The next run exposed an exact-text locator issue resolved by
+separating the unknown-status text from its retry action. The final real Chromium
+run passed all five templates, closed/unknown/retry states, live closing of an
+already-open dish dialog, Arabic RTL, width checks, and absence of writes or
+external requests. Screenshot artifact11493214249 was uploaded but has not been
+independently visually inspected. No production or external-account acceptance.
