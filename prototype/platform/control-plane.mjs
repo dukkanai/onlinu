@@ -1,3 +1,5 @@
+import { createProvisioningJournal } from './provisioning-journal.mjs';
+import { provisioningQuery, provisioningQueuePage } from './provisioning-pages.mjs';
 import {createRequestLimiter} from './request-limits.mjs';
 import {createStaffApi} from './staff-api.mjs';
 import {createNativeStaff} from './native-staff.mjs';
@@ -49,13 +51,16 @@ async function body(req,maxBytes=32768) {
   return parsed;
 }
 
-export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey, eventsEncryptionKey, nativeStaffEnabled=false, trustedProxyCidrs=[] }, { oidcClientAdapter, webhookFetch } = {}) {
+export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey, eventsEncryptionKey, nativeStaffEnabled=false, provisioningReadEnabled=false, trustedProxyCidrs=[] }, { oidcClientAdapter, webhookFetch } = {}) {
+  if(typeof provisioningReadEnabled!=='boolean')throw new Error('invalid_provisioning_read_configuration');
   if(typeof nativeStaffEnabled!=='boolean')throw new Error('invalid_native_staff_configuration');
   const rate = createRequestLimiter({trustedProxyCidrs});
   const base = new URL(baseUrl);
   if (base.protocol !== 'https:' || base.pathname !== '/' || base.username || base.password || base.search || base.hash) throw new Error('control_plane_requires_https_origin');
   const directory = createIdentityDirectory({ pool, trustedIssuers: [new URL(oidc.issuer).href] });
   await directory.init();
+  const provisioning = provisioningReadEnabled ? createProvisioningJournal({ pool }) : null;
+  if (provisioning) await provisioning.init();
   let events=null,eventWorker=null,timer;
   const auth = createAuth({ pool, baseUrl: base.origin, cookieName, allowSyntheticAuthorization: false,
     csrfKey, principalResolver: directory.resolve, redirectAllowlist,
@@ -136,6 +141,16 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         if (url.pathname === '/oauth/register') return json(res, 201, await auth.register(input));
         if (url.pathname === '/oauth/token') return json(res, 200, await auth.exchange(input));
         await auth.revoke(input.token); return json(res, 200, {});
+      }
+      if (provisioning && req.method === 'GET' && url.pathname === '/operator/provisioning') {
+        let who;
+        try { who = await browser(req); } catch(error) {
+          if(error.status===401)return redirect(res,'/auth/login?returnTo='+encodeURIComponent(url.pathname+url.search));
+          throw error;
+        }
+        const query = provisioningQuery(url.searchParams);
+        const page = await provisioning.list(who.id, query);
+        htmlHeaders(res); res.end(provisioningQueuePage(page, query)); return;
       }
       if (req.method === 'GET' && url.pathname === '/auth/login') {
         const params = fields([...url.searchParams]);
@@ -633,6 +648,8 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const who = await browser(req);
         if (req.method !== 'GET') auth.verifyCsrf(req);
         if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, { principal: who, csrfToken: auth.csrfToken(req) });
+        if (provisioning && req.method === 'GET' && url.pathname === '/api/platform/provisioning')
+          return json(res, 200, await provisioning.list(who.id, provisioningQuery(url.searchParams)));
         if (req.method === 'POST' && url.pathname === '/api/platform/restaurants') return json(res, 201, await directory.createTenant(who.id, await body(req)));
         let match = /^\/api\/platform\/restaurants\/([a-z0-9-]{1,64})\/status$/.exec(url.pathname);
         if (match && req.method === 'PATCH') return json(res, 200, await directory.setTenantStatus(who.id, match[1], await body(req)));

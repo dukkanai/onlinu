@@ -1,8 +1,9 @@
 # Private provisioning intent journal
 
 `provisioning-journal.mjs` is a durable PostgreSQL journal for a future trusted
-operator/executor path. It is not wired to public HTTP/MCP routes or automatic
-control-server startup. It never calls Docker, reads or generates credentials,
+operator/executor path. Execution and mutation are not exposed by HTTP/MCP.
+An explicit read-only operator configuration can initialize its schema and expose
+the bounded queue view described below; the default remains disabled. It never calls Docker, reads or generates credentials,
 activates a tenant, publishes a runtime URL, provisions a service or deletes an
 external resource. Initialize it only after the existing identity directory.
 
@@ -78,3 +79,28 @@ state/version or writing an audit event. It uses the same identity/tenant/job
 lock order as mutations. See `PROVISIONING-ARTIFACTS.md` for the private compiler
 bridge and its before/after authority checks. It does not hold locks across
 external effects or replace a claim.
+
+## Optional operator queue visibility — pending remote acceptance
+
+`list(actorId, filters)` offers a bounded read-only view with optional tenant and
+state filters, 1–100 rows and a retained-job UUID cursor. Ordering uses database
+`created_at,id` tuples; the cursor timestamp never loses microsecond precision
+through a JavaScript round-trip. An expired claimed lease is labeled but never
+expired, retried, cancelled or otherwise mutated by a read. Pagination is not an
+immutable snapshot; refresh from the beginning for newly created jobs.
+
+The optional control-server setting `CORE_PROVISIONING_READ_ENABLED=true` enables
+`GET /api/platform/provisioning` and the Arabic `/operator/provisioning` page.
+It initializes the existing journal schema/index only when explicitly enabled.
+The default adds no journal table or routes. The current browser session and
+currently enabled platform-administrator flag are required for every read.
+Restaurant ownership, customer OAuth tokens and actor headers do not confer
+operator access. There are no create/claim/apply/cancel/reconcile/activate routes
+or UI buttons; no Docker socket, environment values or secret bytes are exposed.
+
+The page uses GET-only filtering, escaped fields, bounded pagination and explicit
+unknown/expired status labels. It does not imply that a succeeded job is a live
+published restaurant. Runtime packaging includes only the journal and renderer,
+not the provisioning executor/daemon adapters. No deployment flag was enabled on
+a live system. Actual PostgreSQL permission/revocation/pagination and Chromium
+rendering checks are added to CI; their new acceptance is pending.

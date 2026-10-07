@@ -110,7 +110,8 @@ export function createProvisioningJournal({ pool, leaseSeconds = 120 }) {
       CHECK(state NOT IN ('claimed','unknown','succeeded') OR (claimed_by IS NOT NULL AND worker_id IS NOT NULL))
     );
     CREATE UNIQUE INDEX IF NOT EXISTS platform_provision_one_initial_job
-      ON platform_provision_jobs(tenant_id) WHERE state<>'cancelled';`);
+      ON platform_provision_jobs(tenant_id) WHERE state<>'cancelled';
+    CREATE INDEX IF NOT EXISTS platform_provision_jobs_recent ON platform_provision_jobs(created_at DESC,id DESC);`);
   }
   async function request(actorId, requestedTenant, input) {
     parse(tenantId, requestedTenant);
@@ -138,6 +139,28 @@ export function createProvisioningJournal({ pool, leaseSeconds = 120 }) {
       if (error.code === '23505' && error.constraint === 'platform_provision_jobs_pkey') throw problem(409, 'idempotency_conflict');
       throw error;
     }
+  }
+  async function list(actorId, input = {}) {
+    const args = parse(z.object({ tenantId: tenantId.optional(),
+      state: z.enum(['queued','claimed','unknown','succeeded','cancelled']).optional(),
+      after: uuid.optional(), limit: z.number().int().min(1).max(100).default(25),
+    }).strict(), input);
+    return transaction(async db => {
+      await operator(db, actorId);
+      if (args.after && !(await db.query('SELECT 1 FROM platform_provision_jobs WHERE id=$1', [args.after])).rowCount)
+        throw problem(400, 'invalid_provisioning_cursor');
+      // Cursor timestamp stays in PostgreSQL (microsecond precision), never
+      // round-trips through a JavaScript millisecond Date. Job rows are retained.
+      const { rows } = await db.query(`SELECT *,state='claimed' AND lease_until<=clock_timestamp() AS lease_expired
+        FROM platform_provision_jobs
+        WHERE ($1::text IS NULL OR tenant_id=$1) AND ($2::text IS NULL OR state=$2)
+          AND ($3::uuid IS NULL OR (created_at,id)<(SELECT created_at,id FROM platform_provision_jobs WHERE id=$3))
+        ORDER BY created_at DESC,id DESC LIMIT $4`, [args.tenantId ?? null, args.state ?? null, args.after ?? null, args.limit + 1]);
+      const page = rows.slice(0, args.limit);
+      return { jobs: page.map(row => ({ ...snapshot(row), createdAt: row.created_at.toISOString(),
+        updatedAt: row.updated_at.toISOString(), leaseExpired: row.lease_expired === true })),
+        nextCursor: rows.length > args.limit ? page.at(-1).id : null };
+    });
   }
   async function get(actorId, jobId) {
     parse(uuid, jobId);
@@ -209,5 +232,5 @@ export function createProvisioningJournal({ pool, leaseSeconds = 120 }) {
       return change(db, actorId, row, state, `reconciled_${args.decision}`, args);
     });
   }
-  return { init, request, get, review, claim, heartbeat, finish, uncertain, expire, cancelQueued, reconcile };
+  return { init, request, list, get, review, claim, heartbeat, finish, uncertain, expire, cancelQueued, reconcile };
 }

@@ -1,6 +1,7 @@
 import {checkNativeDart} from './native-dart-check.mjs';
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { createProvisioningJournal } from '../provisioning-journal.mjs';
 import { createServer, request as httpRequest } from 'node:http';
 import pg from 'pg';
 import { createControlPlane } from '../control-plane.mjs';
@@ -20,7 +21,7 @@ try {
   const callbackBodies=[];
   const webhookSecret=`whsec_${randomBytes(32).toString('base64')}`;
   const app=await createControlPlane({pool,baseUrl,csrfKey:randomBytes(32).toString('base64'),serviceSigningKey:fixture.privateKey,
-    eventsEncryptionKey:randomBytes(32).toString('base64'),nativeStaffEnabled:true,
+    eventsEncryptionKey:randomBytes(32).toString('base64'),nativeStaffEnabled:true,provisioningReadEnabled:true,
     redirectAllowlist:['https://client.example/callback'],
     oidc:{issuer,clientId:'integration-test',clientSecret:'synthetic-client-secret-only'},
     restaurants:[{id:'restaurant-a',name:'Actual Go fixture',cuisine:'saudi',baseUrl:fixture.baseUrl}],
@@ -54,6 +55,32 @@ try {
       });
     });request.on('error',reject);request.end(raw??(body?JSON.stringify(body):undefined));
   });
+  const provisionJournal=createProvisioningJournal({pool});
+  const provisionJobs=[];
+  for (const name of ['provisioning-ui-a','provisioning-ui-b']) {
+    await app.directory.createTenant(alice.id,{id:name,name,ownerId:alice.id});
+    provisionJobs.push(await provisionJournal.request(alice.id,name,{requestId:randomUUID(),expectedTenantVersion:1,planDigest:'a'.repeat(64)}));
+  }
+  const provisionClaim=await provisionJournal.claim(alice.id,provisionJobs[0].id,{expectedVersion:1,workerId:randomUUID()});
+  await provisionJournal.uncertain(alice.id,provisionClaim.id,{expectedVersion:provisionClaim.version,workerId:provisionClaim.workerId});
+  const provisioningPath='/api/platform/provisioning';
+  const provisionAuditBefore=Number((await pool.query('SELECT count(*) AS n FROM platform_identity_audit')).rows[0].n);
+  assert.equal((await send(provisioningPath)).status,401);
+  const provisionLogin=await send('/operator/provisioning');assert.equal(provisionLogin.status,302);assert.match(provisionLogin.headers.location,/returnTo=/);
+  assert.equal((await send(provisioningPath,{cookie:bob.cookie})).status,403);
+  assert.equal((await send(provisioningPath,{token:alice.token})).status,403);
+  const provisionPage=await send(provisioningPath+'?limit=1',{cookie:alice.cookie});
+  assert.equal(provisionPage.status,200);assert.equal(provisionPage.data.jobs.length,1);assert.ok(provisionPage.data.nextCursor);
+  const provisionNext=await send(provisioningPath+'?limit=1&after='+provisionPage.data.nextCursor,{cookie:alice.cookie});
+  assert.equal(provisionNext.status,200);assert.equal(provisionNext.data.jobs.length,1);
+  assert.notEqual(provisionNext.data.jobs[0].id,provisionPage.data.jobs[0].id);assert.equal(provisionNext.data.nextCursor,null);
+  assert.equal((await send(provisioningPath+'?command=apply',{cookie:alice.cookie})).status,400);
+  assert.equal((await send(provisioningPath,{method:'POST',cookie:alice.cookie,headers:{origin:baseUrl,'x-csrf-token':app.auth.csrfToken({headers:{cookie:alice.cookie}})},body:{action:'apply'}})).status,404);
+  await pool.query('UPDATE platform_identities SET platform_admin=FALSE WHERE id=$1',[alice.id]);
+  assert.equal((await send(provisioningPath,{cookie:alice.cookie})).status,403);
+  await pool.query('UPDATE platform_identities SET platform_admin=TRUE WHERE id=$1',[alice.id]);
+  assert.equal(Number((await pool.query('SELECT count(*) AS n FROM platform_identity_audit')).rows[0].n),provisionAuditBefore);
+  assert.equal((await provisionJournal.get(alice.id,provisionClaim.id)).state,'unknown');
   const rpc=async(name,args,who)=>{
     const response=await send('/mcp',{method:'POST',token:who?.token,headers:{'MCP-Protocol-Version':MCP_PROTOCOL_VERSION,'Mcp-Method':'tools/call','Mcp-Name':name},
       body:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args,_meta:{
@@ -564,6 +591,21 @@ try {
       await deliveryPayments.getByRole('button',{name:'حفظ طرق الدفع',exact:true}).click();
       await page.locator(`input[name="expectedVersion"][value="${paymentFormVersion+2}"]`).first().waitFor({state:'attached'});
       assert.deepEqual((await send(paymentSettingsPath,{token:nativeToken})).data.modes.find(v=>v.mode==='delivery').methods,originalDeliveryMethods);
+
+      await page.goto(baseUrl+'/operator/provisioning?limit=1');
+      assert.equal(await page.locator('article').count(),1);
+      const firstProvisionArticle=await page.locator('article').textContent();
+      await page.getByRole('link',{name:'الصفحة التالية',exact:true}).click();
+      assert.equal(await page.locator('article').count(),1);
+      assert.notEqual(await page.locator('article').textContent(),firstProvisionArticle);
+      await page.getByLabel('الحالة',{exact:true}).selectOption('unknown');
+      await page.getByRole('button',{name:'تصفية',exact:true}).click();
+      assert.match(await page.locator('article').textContent(),/النتيجة غير مؤكدة/);
+      assert.equal(await page.locator('form[method="post"]').count(),0);
+      if(process.env.CORE_PROVISIONING_SCREENSHOT){
+        const fs=await import('node:fs/promises'),path=await import('node:path');await fs.mkdir(path.dirname(process.env.CORE_PROVISIONING_SCREENSHOT),{recursive:true});
+        await page.screenshot({path:process.env.CORE_PROVISIONING_SCREENSHOT,fullPage:true});
+      }
 
       await page.goto(baseUrl+'/manage/restaurant-a/orders/'+order.number+'/finance');
       assert.match(await page.locator('body').innerText(),/المبلغ المحصل المؤكد/);assert.equal(await page.locator('form').count(),0);

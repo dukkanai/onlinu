@@ -51,6 +51,8 @@ test('control-plane HTTP enforces subject identity, browser CSRF and tenant auth
 
   await t.test('no fixture login, fake actor headers or OAuth staff escalation', async () => {
     assert.equal((await request('/.well-known/oauth-authorization-server/native')).status,404);
+    assert.equal((await request('/operator/provisioning',{who:root})).status,404);
+    assert.equal((await request('/api/platform/provisioning',{who:root})).status,404);
     assert.equal((await request('/dev/session', { method: 'POST', body: { identity: 'merchant-a' } })).status, 404);
     assert.equal((await request('/api/me', { headers: { 'x-actor-id': root.id, 'x-actor-role': 'owner' } })).status, 401);
     const token = await app.auth.issue(root.id, ['orders:read']);

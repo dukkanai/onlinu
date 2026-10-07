@@ -23,6 +23,14 @@ test('provisioning journal validates private worker configuration', () => {
     assert.throws(() => createProvisioningJournal({ pool, leaseSeconds }), /configuration/);
 });
 
+test('provisioning queue query rejects unbounded or unexpected filters before database access', async () => {
+  let touched = false;
+  const journal = createProvisioningJournal({ pool: { query() {}, connect() { touched = true; throw new Error('must not connect'); } } });
+  for (const input of [{limit:0},{limit:101},{limit:1.2},{limit:'10'},{after:'bad'},{state:'running'},{tenantId:'../other'},{extra:true},null])
+    await assert.rejects(journal.list(randomUUID(),input),{code:'invalid_request'});
+  assert.equal(touched,false);
+});
+
 test('durable operator provisioning intents and fenced outcomes', { skip: !process.env.IDENTITY_TEST_DATABASE_URL }, async t => {
   const url = new URL(process.env.IDENTITY_TEST_DATABASE_URL);
   assert.ok(['postgres:', 'postgresql:'].includes(url.protocol));
@@ -42,9 +50,45 @@ test('durable operator provisioning intents and fenced outcomes', { skip: !proce
   await pool.query('UPDATE platform_identities SET platform_admin=TRUE WHERE id=ANY($1::uuid[])', [[actor.id, otherActor.id]]);
   const journal = createProvisioningJournal({ pool });
   await journal.init();
+  await t.test('empty private queue denies restaurant owners and contains no state changes', async () => {
+    await assert.rejects(journal.list(owner.id), { code: 'forbidden' });
+    assert.deepEqual(await journal.list(actor.id), { jobs: [], nextCursor: null });
+  });
   async function tenant(name) { await directory.createTenant(actor.id, { id: name, name, ownerId: owner.id }); }
   const request = () => ({ requestId: randomUUID(), expectedTenantVersion: 1, planDigest: hash });
   const claiming = row => ({ expectedVersion: row.version, workerId: randomUUID() });
+
+  await t.test('operator queue pagination preserves microseconds, filters states and never expires jobs', async () => {
+    const ids = [];
+    for (let i=0;i<4;i++) {
+      const name='queue-page-'+i;
+      await tenant(name);
+      const job=await journal.request(actor.id,name,request()); ids.push(job.id);
+      await pool.query("UPDATE platform_provision_jobs SET created_at='2026-10-06 01:00:00.000001+00'::timestamptz + $2::int * interval '1 microsecond' WHERE id=$1",[job.id,i]);
+    }
+    const auditBefore=Number((await pool.query('SELECT count(*) AS n FROM platform_identity_audit')).rows[0].n);
+    const seen=[];let after;
+    do {
+      const page=await journal.list(actor.id,{state:'queued',limit:2,...(after?{after}:{})});
+      seen.push(...page.jobs.map(v=>v.id)); after=page.nextCursor;
+      assert.ok(page.jobs.every(v=>v.state==='queued' && v.leaseExpired===false));
+    } while(after);
+    assert.deepEqual(seen,[...ids].reverse());
+    const filtered=await journal.list(actor.id,{tenantId:'queue-page-1'});
+    assert.equal(filtered.jobs.length,1);assert.equal(filtered.jobs[0].id,ids[1]);
+    assert.equal(filtered.nextCursor,null);
+    assert.equal(Number((await pool.query('SELECT count(*) AS n FROM platform_identity_audit')).rows[0].n),auditBefore);
+    const queued=await journal.get(actor.id,ids[0]);
+    const claimed=await journal.claim(actor.id,queued.id,{expectedVersion:queued.version,workerId:randomUUID()});
+    await pool.query("UPDATE platform_provision_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",[claimed.id]);
+    const expired=await journal.list(actor.id,{state:'claimed',tenantId:'queue-page-0'});
+    assert.equal(expired.jobs[0].leaseExpired,true);assert.equal(expired.jobs[0].state,'claimed');
+    assert.equal((await journal.get(actor.id,claimed.id)).version,claimed.version);
+    await assert.rejects(journal.list(actor.id,{after:randomUUID()}),{code:'invalid_provisioning_cursor'});
+    await pool.query('UPDATE platform_identities SET enabled=FALSE WHERE id=$1',[otherActor.id]);
+    await assert.rejects(journal.list(otherActor.id),{code:'identity_disabled'});
+    await pool.query('UPDATE platform_identities SET enabled=TRUE WHERE id=$1',[otherActor.id]);
+  });
 
   await t.test('restaurant owners and disabled identities are not operators', async () => {
     await tenant('authority');

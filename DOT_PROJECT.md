@@ -942,3 +942,14 @@ and source/identity-bound. Synthetic local image ID:
 No production credential, activation, registry publication or deployment occurred.
 Local platform236 tests passed with12 DB skips; remote database/Windows/full-image
 checks passed. Production manifest/secret supply and release gates remain open.
+
+## Optional operator provisioning queue — 2026-10-07, CI pending
+
+The private journal gains bounded filtered cursor reads, preserving PostgreSQL
+microsecond ordering and labeling expired claims without mutating them. An
+explicit, default-off control-plane flag enables browser-session/operator-only
+JSON and Arabic GET-only views; owner/OAuth/header privilege escalation remains
+blocked. No executor commands or activation controls are exposed. Pure parser,
+renderer/configuration tests pass; actual database and Chromium pagination,
+revocation and screenshot acceptance are pending. A local packaging guard caught
+missing new runtime COPY entries, now corrected without adding executor modules.

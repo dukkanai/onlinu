@@ -13,6 +13,9 @@ test('control deployment configuration fails closed and supports secret files',a
     DATABASE_URL:'postgres://fixture@127.0.0.1/disposable',CSRF_KEY:Buffer.alloc(32).toString('base64'),
     OIDC_ISSUER:'https://identity.example/',OIDC_CLIENT_ID:'test',OIDC_CLIENT_SECRET_FILE:secret};
   const config=controlConfiguration(env);assert.equal(config.oidc.clientSecret,'synthetic-parser-secret');
+  assert.equal(config.provisioningReadEnabled,false);
+  assert.equal(controlConfiguration({...env,CORE_PROVISIONING_READ_ENABLED:'true'}).provisioningReadEnabled,true);
+  assert.throws(()=>controlConfiguration({...env,CORE_PROVISIONING_READ_ENABLED:'yes'}));
   assert.equal(config.bind,'127.0.0.1');assert.equal(config.port,18789);assert.deepEqual(config.restaurants,[]);
   assert.deepEqual(config.trustedProxyCidrs,[]);
   assert.deepEqual(controlConfiguration({...env,CORE_TRUSTED_PROXY_CIDRS:'["127.0.0.1/32","::1/128"]'}).trustedProxyCidrs,['127.0.0.1/32','::1/128']);
