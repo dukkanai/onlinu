@@ -77,7 +77,7 @@ class AndroidSmokeTests(unittest.TestCase):
                         raise subprocess.CalledProcessError(1, args)
                     if args[-1] == 'sys.boot_completed': return '1\n'
                     if args[-1] == 'ro.boot.qemu.avd_name': return 'other' if wrong_name else 'onlinu-ci-1-aaaaaaaaaaaa'
-                    if args[-1] == 'cache/onlinu-android-orders.png': return smoke.base64.b64encode(bytes.fromhex('89504e470d0a1a0a') + b'fixture')
+                    if args[-1] == 'code_cache/onlinu-android-orders.png': return smoke.base64.b64encode(bytes.fromhex('89504e470d0a1a0a') + b'fixture')
                     self.fail('Unexpected external read')
                 def command(args, **kwargs):
                     if failed_test and 'test' in args:

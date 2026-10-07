@@ -1262,3 +1262,12 @@ mode. No KVM permission was changed in that attempt. The fixtures now explicitly
 isolate software mode while separately testing KVM access validation. All 89
 local guards pass with the outer environment set to KVM; the actual accelerated
 trial and screenshot transfer remain pending.
+
+Accelerated retry CI37610729654: KVM grant succeeded, API35 boot completed,
+and all three real Android tests passed in nine seconds. The always-run step
+restored and compared the original KVM ACL successfully. Aggregate still failed
+at screenshot transfer. The new device log establishes the exact cause:
+Directory.systemTemp is this app's code_cache, while retrieval used cache.
+The fixed reader now uses only the observed code_cache filename, retaining
+strict base64/PNG checks and all cleanup guards. Local 89 tests pass; corrected
+artifact/aggregate acceptance awaits the current trial's retry.

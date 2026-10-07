@@ -201,8 +201,10 @@ def emulator_checks(flutter, project, output, sdk):
                            cwd=project, env=env, check=True, timeout=900)
             verify_avd_name(subprocess.check_output([str(adb), '-s', serial, 'shell', 'getprop', 'ro.boot.qemu.avd_name'],
                                                    text=True, timeout=10), name)
+            # The pinned Flutter Android runtime reports Directory.systemTemp
+            # inside this app's code_cache, not its ordinary cache directory.
             encoded = subprocess.check_output([str(adb), '-s', serial, 'exec-out', 'run-as', PACKAGE,
-                                               'base64', 'cache/onlinu-android-orders.png'], timeout=30)
+                                               'base64', 'code_cache/onlinu-android-orders.png'], timeout=30)
             picture = decode_rendering_png(encoded)
             (output / 'android-orders.png').write_bytes(picture)
             result = {'systemImage': image, 'acceleration': mode,
