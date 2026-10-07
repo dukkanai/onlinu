@@ -27,6 +27,8 @@ export const english = {
   "errors.invalid_whatsapp_cart": "The proposed cart contains invalid items or quantities.",
   "errors.whatsapp_scope_mismatch": "This cart proposal does not belong to the current conversation.",
   "errors.invalid_whatsapp_mode": "Choose pickup or delivery for this cart proposal.",
+  "errors.whatsapp_message_conflict": "This message conflicts with a previously recorded cart proposal.",
+  "errors.whatsapp_inbox_inconsistent": "The saved cart proposal could not be verified. No new order was created.",
   "errors.quote_changed": "The order details or tax changed. Review a new quote before confirming.",
   "errors.mode_unavailable": "This order method is currently unavailable.",
   "errors.item_unavailable": "A dish in your order is no longer available.",

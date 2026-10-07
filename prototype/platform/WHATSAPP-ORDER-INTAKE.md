@@ -58,3 +58,24 @@ storefront browser checks passed, together with Windows and control-image gates.
 The earlier run failed the existing translation-coverage guard; all five new
 validation messages now have Arabic/English entries. No provider extraction,
 durable inbox, final order creation or live-account acceptance is claimed.
+
+## Private durable inbox increment (acceptance pending)
+
+`restaurant_whatsapp_inbox.go` provides an immutable PostgreSQL intake journal.
+Its initializer is not called by normal server startup and it has no public route,
+provider hook or send worker. Only synthetic fixtures currently construct it.
+
+The scope-bound event key is unique. Concurrent identical proposals converge on
+one receipt; a changed payload under that key is a conflict, never an overwrite.
+Restart reads preserve the original first-seen/expiry timestamps. A duplicate
+may return an expired receipt, explicitly marked expired; it cannot renew a cart
+or authorize order execution. Previously unseen expired proposals are rejected.
+Derived identity/content/expiry fields are revalidated before persistence, and
+stored payload mismatches are rejected rather than repaired or guessed.
+
+Only hashes, internal cart IDs/quantities/options and timestamps are stored; raw
+message text, sender identity, account tokens and provider prices are absent.
+Hashing is not anonymization or an authorization mechanism. Original restaurant
+DB isolation and a verified current transport binding are still required.
+No automatic deletion/retention or outgoing replay is introduced. Durable intake
+is not durable customer confirmation, order creation or message delivery.

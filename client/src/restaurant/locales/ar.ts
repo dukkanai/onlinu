@@ -106,6 +106,8 @@ export const ar = {
   "errors.invalid_whatsapp_cart": "تحتوي السلة المقترحة على أصناف أو كميات غير صالحة.",
   "errors.whatsapp_scope_mismatch": "السلة المقترحة لا تخص المحادثة الحالية.",
   "errors.invalid_whatsapp_mode": "اختر الاستلام أو التوصيل لهذه السلة المقترحة.",
+  "errors.whatsapp_message_conflict": "تتعارض هذه الرسالة مع سلة مقترحة مسجلة سابقًا.",
+  "errors.whatsapp_inbox_inconsistent": "تعذّر التحقق من السلة المقترحة المحفوظة. لم يُنشأ طلب جديد.",
   "errors.quote_changed": "تغيّرت تفاصيل الطلب أو الضريبة. راجع عرضًا جديدًا قبل التأكيد.",
   "errors.item_unavailable": "أحد أطباق طلبك لم يعد متاحًا.", "errors.invalid_quantity": "تحقق من كمية كل طبق.",
   "errors.invalid_option": "أحد الخيارات المحددة غير متاح أو غير صالح.",

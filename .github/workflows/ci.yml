@@ -190,6 +190,11 @@ jobs:
           CGO_ENABLED: "1"
         run: go test -race -count=1 -v ./cmd/server -run '^TestPlatformOrderNodeSignatureCompatibility$'
 
+      - name: Test private WhatsApp proposal and durable inbox boundaries
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=1 -v ./cmd/server -run '^TestRestaurantWhatsapp'
+
       - name: Test
         env:
           CGO_ENABLED: "1"

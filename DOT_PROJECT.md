@@ -1415,3 +1415,9 @@ ran with disposable PostgreSQL configured; 396 platform cases/no skips,84client
 cases/build/browser and Windows gates passed. Arabic/English error translations
 fixed the first aggregate run's coverage failure. This accepts the private
 read-only proposal boundary only, not a live WhatsApp shopping adapter.
+
+Private WhatsApp inbox increment adds an immutable per-event PostgreSQL journal,
+concurrent duplicate receipts, conflicting-payload rejection and unchanged expiry
+across restarts. It is not initialized at startup or connected to a transport.
+Local pure tests/vet and client checks are separate from its pending hosted
+PostgreSQL concurrency/restart acceptance; no live message or order is created.
