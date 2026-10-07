@@ -1,12 +1,12 @@
 # onlinu — project reference
 
-Updated: 2026-10-05 UTC. Initial inspected upstream: `main` at
+Updated: 2026-10-07 UTC. Initial inspected upstream: `main` at
 `90b16a000c2cad908e51e78d01a07bfb4e785410`.
 
 ## Workspace and source of truth
 
 - Working directory: `/workspace/scratch/46a62ae0b82b/onlinu`.
-- Remote: `https://github.com/dukkanai/onlinu.git` (private).
+- Remote: `https://github.com/dukkanai/onlinu.git` (public since the owner-authorized conversion on 2026-10-06 23:38 UTC).
 - Authenticated full Git clone completed after user-approved GitHub CLI device
   authorization. All 565 tracked files were reconciled byte-for-byte against
   the inspected snapshot, including the two Windows DLLs; full `.git` history
@@ -990,3 +990,18 @@ are not uploaded. Four new guards pass; all68 deployment/packaging checks pass.
 Actual database restoration is pending full-image CI. Production/session/media
 backup, off-host retention, recovery objectives and rollback remain separate.
 See `deploy/FIXTURE-DATABASE-RESTORE.md`.
+
+
+Manifest/backup acceptance: `7685020ebc885d2dac99f15fc5384abe79fbd32c`
+passed all five jobs in [CI37553654551](https://github.com/dukkanai/onlinu/actions/runs/37553654551),
+verified 2026-10-07 00:54 UTC. The private manifest/metadata tests passed ordinary
+regression. The actual disposable PostgreSQL archive (89,070 bytes) restored
+into a fresh collision-checked database: all43 public-table and6 sequence
+fingerprints matched and the source remained unchanged. Neighbor uptime,
+recreation and isolation checks passed. Four exact-source runtime reports were
+inspected and both immutable verification receipts independently rehashed and
+identity-bound. Synthetic local runtime image ID:
+`sha256:7a4ef457b9c2e19efdee65ded24dbd4514f2a188680d74529c44fb2cb866f868`.
+No archive bytes were uploaded, and no production deployment, registry publication,
+real credential creation or activation occurred. Production/session/media backups,
+off-host recovery and real credential/mount acceptance remain separate gates.

@@ -31,3 +31,18 @@ Four new local guards cover disposable target identity, binary archive handling,
 collision refusal and unsafe relation identifiers. All68 deployment/packaging
 unit tests pass; actual dump/restore requires the opt-in full-image CI fixture
 and is pending for this increment.
+
+
+Manifest/backup acceptance: `7685020ebc885d2dac99f15fc5384abe79fbd32c`
+passed all five jobs in [CI37553654551](https://github.com/dukkanai/onlinu/actions/runs/37553654551),
+verified 2026-10-07 00:54 UTC. The private manifest/metadata tests passed ordinary
+regression. The actual disposable PostgreSQL archive (89,070 bytes) restored
+into a fresh collision-checked database: all43 public-table and6 sequence
+fingerprints matched and the source remained unchanged. Neighbor uptime,
+recreation and isolation checks passed. Four exact-source runtime reports were
+inspected and both immutable verification receipts independently rehashed and
+identity-bound. Synthetic local runtime image ID:
+`sha256:7a4ef457b9c2e19efdee65ded24dbd4514f2a188680d74529c44fb2cb866f868`.
+No archive bytes were uploaded, and no production deployment, registry publication,
+real credential creation or activation occurred. Production/session/media backups,
+off-host recovery and real credential/mount acceptance remain separate gates.
