@@ -1,3 +1,4 @@
+import 'opening_schedule.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'api.dart';
@@ -27,6 +28,7 @@ enum CoreSection {
   courier,
   courierLinks,
   service,
+  opening,
   paymentMethods,
   tax,
   appearance,
@@ -45,6 +47,7 @@ extension CoreSectionPermission on CoreSection {
         CoreSection.courier => 'courier:read',
         CoreSection.courierLinks => 'couriers:link',
         CoreSection.service => 'settings:read',
+        CoreSection.opening => 'settings:read',
         CoreSection.paymentMethods => 'settings:read',
         CoreSection.tax => 'settings:read',
         CoreSection.appearance => 'settings:read',
@@ -67,6 +70,7 @@ class CoreController extends ChangeNotifier {
   CoreBusinessProfile? business;
   CoreDelivery? coverage;
   CoreServicePolicy? service;
+  CoreOpeningSchedule? opening;
   CorePaymentMethods? paymentMethods;
   CoreTaxConfig? tax;
   CoreSupportQueue? support;
@@ -118,6 +122,7 @@ class CoreController extends ChangeNotifier {
     business = null;
     coverage = null;
     service = null;
+    opening = null;
     paymentMethods = null;
     tax = null;
     appearance = null;
@@ -293,6 +298,10 @@ class CoreController extends ChangeNotifier {
         final result = await api.paymentMethods(tenant);
         if (!_current(generation)) return;
         paymentMethods = result;
+      } else if (section == CoreSection.opening) {
+        final result = await api.openingSchedule(tenant);
+        if (!_current(generation)) return;
+        opening = result;
       } else if (section == CoreSection.service) {
         final result = await api.service(tenant);
         if (!_current(generation)) return;
@@ -790,6 +799,34 @@ class CoreController extends ChangeNotifier {
     try {
       await api.patchPaymentMethods(expected, mode, methods);
       if (_current(generation)) message = 'حُفظت طرق الدفع للطلبات الجديدة.';
+    } catch (error) {
+      if (_current(generation)) _failure(error);
+    } finally {
+      if (_current(generation)) {
+        busy = false;
+        _emit();
+        await refresh();
+      }
+    }
+  }
+
+  Future<void> patchOpeningSchedule(
+      CoreOpeningSchedule expected, CoreOpeningSchedule replacement) async {
+    if (!_writeGuard(expected.tenantId, 'settings:update', CoreSection.opening))
+      return;
+    if (opening?.version != expected.version) {
+      message = 'تغيرت المواعيد. حدّث البيانات وأعد المراجعة.';
+      _emit();
+      return;
+    }
+    final generation = ++_generation;
+    busy = true;
+    online = false;
+    message = null;
+    _emit();
+    try {
+      await api.patchOpeningSchedule(expected, replacement);
+      if (_current(generation)) message = 'حُفظت مواعيد العمل للطلبات الجديدة.';
     } catch (error) {
       if (_current(generation)) _failure(error);
     } finally {

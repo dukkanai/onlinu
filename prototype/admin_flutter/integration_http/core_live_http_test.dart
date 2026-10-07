@@ -180,6 +180,28 @@ void main() {
     await api.patchService(paused, {'acceptingOrders': true});
     expect((await api.service('restaurant-a')).flags, intake.flags);
 
+    final opening = await api.openingSchedule('restaurant-a');
+    final changedOpening = opening.edited(
+        enabled: false,
+        days: List.filled(7, '09:00-18:00'),
+        dates: '2028-02-29 =');
+    await api.patchOpeningSchedule(opening, changedOpening);
+    final savedOpening = await api.openingSchedule('restaurant-a');
+    expect(savedOpening.version, opening.version + 1);
+    expect(savedOpening.sameDocument(changedOpening), true);
+    await expectLater(
+        api.patchOpeningSchedule(opening, changedOpening),
+        throwsA(isA<CoreException>()
+            .having((e) => e.code, 'stale opening', 'conflict')));
+    await api.patchOpeningSchedule(
+        savedOpening,
+        savedOpening.edited(
+            enabled: opening.enabled,
+            days: List.generate(7, opening.dayText),
+            dates: opening.exceptionsText));
+    expect((await api.openingSchedule('restaurant-a')).sameDocument(opening),
+        true);
+
     final paymentChoices = await api.paymentMethods('restaurant-a');
     await api
         .patchPaymentMethods(paymentChoices, 'delivery', ['cash_on_delivery']);

@@ -1,3 +1,4 @@
+import 'opening_pane.dart';
 import 'support_pane.dart';
 import 'brand_pane.dart';
 import 'dart:async';
@@ -288,6 +289,16 @@ class CoreScreen extends StatelessWidget {
                                       }),
                           if (member.can('settings:read'))
                             ChoiceChip(
+                                label: const Text('مواعيد العمل'),
+                                selected: c.section == CoreSection.opening,
+                                onSelected: c.busy
+                                    ? null
+                                    : (_) {
+                                        unawaited(c.selectSection(
+                                            CoreSection.opening));
+                                      }),
+                          if (member.can('settings:read'))
+                            ChoiceChip(
                                 label: const Text('طرق الدفع'),
                                 selected:
                                     c.section == CoreSection.paymentMethods,
@@ -412,6 +423,11 @@ class CoreScreen extends StatelessWidget {
                           member?.can('settings:read') == true)
                         ServicePane(
                             key: ValueKey('service-${c.selectedTenant}'),
+                            controller: c),
+                      if (c.section == CoreSection.opening &&
+                          member?.can('settings:read') == true)
+                        OpeningPane(
+                            key: ValueKey('opening-${c.selectedTenant}'),
                             controller: c),
                       if (c.section == CoreSection.paymentMethods &&
                           member?.can('settings:read') == true)

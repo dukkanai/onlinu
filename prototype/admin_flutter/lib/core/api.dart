@@ -1,3 +1,4 @@
+import 'opening_schedule.dart';
 import 'dart:typed_data';
 import 'auth.dart';
 import 'models.dart';
@@ -32,6 +33,9 @@ abstract interface class CoreGateway {
   Future<CorePaymentMethods> paymentMethods(String tenant);
   Future<void> patchPaymentMethods(
       CorePaymentMethods expected, String mode, List<String> methods);
+  Future<CoreOpeningSchedule> openingSchedule(String tenant);
+  Future<void> patchOpeningSchedule(
+      CoreOpeningSchedule expected, CoreOpeningSchedule replacement);
   Future<CoreServicePolicy> service(String tenant);
   Future<void> patchService(
       CoreServicePolicy expected, Map<String, bool> changes);
@@ -335,6 +339,39 @@ class CoreApi implements CoreGateway {
                 v.methods.length != wanted.length ||
                 !v.methods.toSet().containsAll(wanted);
           })) invalidResponse();
+    } catch (_) {
+      throw const CoreException('order_outcome_unknown', uncertain: true);
+    }
+  }
+
+  @override
+  Future<CoreOpeningSchedule> openingSchedule(String tenant) async {
+    final data = await _request('GET',
+        '/native/api/restaurants/${tenantKey(tenant)}/staff/opening-schedule');
+    _tenant(data, tenant);
+    return CoreOpeningSchedule(data, tenantId: tenant);
+  }
+
+  @override
+  Future<void> patchOpeningSchedule(
+      CoreOpeningSchedule expected, CoreOpeningSchedule replacement) async {
+    if (expected.tenantId != replacement.tenantId ||
+        expected.version != replacement.version)
+      throw const CoreException('invalid_request');
+    final data = await _request('POST',
+        '/native/api/restaurants/${tenantKey(expected.tenantId)}/staff/opening-schedule',
+        body: {
+          'expectedVersion': expected.version,
+          'reviewed': true,
+          ...replacement.document
+        });
+    try {
+      _tenant(data, expected.tenantId);
+      final saved = CoreOpeningSchedule(data, tenantId: expected.tenantId);
+      if (saved.version != expected.version + 1 ||
+          !saved.sameDocument(replacement)) {
+        throw const CoreException('order_outcome_unknown', uncertain: true);
+      }
     } catch (_) {
       throw const CoreException('order_outcome_unknown', uncertain: true);
     }

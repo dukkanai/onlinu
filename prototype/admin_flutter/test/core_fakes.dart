@@ -1,3 +1,4 @@
+import 'package:restaurant_admin_prototype/core/opening_schedule.dart';
 import 'package:restaurant_admin_prototype/core/support_models.dart';
 import 'package:restaurant_admin_prototype/core/brand_models.dart';
 import 'package:restaurant_admin_prototype/core/refund_models.dart';
@@ -370,6 +371,24 @@ class FakeCoreGateway implements CoreGateway {
     'tableEnabled': false
   };
   int serviceWrites = 0;
+  Map<String, dynamic> openingData = {
+    'version': 1,
+    'enabled': false,
+    'timeZone': 'Asia/Riyadh',
+    'weekly': List.generate(7, (_) => <dynamic>[]),
+    'exceptions': <dynamic>[]
+  };
+  int openingWrites = 0;
+  @override
+  Future<CoreOpeningSchedule> openingSchedule(String tenant) async =>
+      CoreOpeningSchedule(openingData, tenantId: tenant);
+  @override
+  Future<void> patchOpeningSchedule(
+      CoreOpeningSchedule expected, CoreOpeningSchedule replacement) async {
+    openingWrites++;
+    openingData = {'version': expected.version + 1, ...replacement.document};
+  }
+
   @override
   Future<CoreServicePolicy> service(String tenant) async =>
       CoreServicePolicy(serviceData, tenantId: tenant);

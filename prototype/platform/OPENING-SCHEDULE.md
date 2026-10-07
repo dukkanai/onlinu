@@ -50,3 +50,10 @@ reloads durable state. Days use bounded HH:MM-HH:MM comma-separated intervals;
 date exceptions are explicit `YYYY-MM-DD = intervals`, including empty closure.
 Actual HTTP/Chromium acceptance and screenshot review are pending CI. There is
 no Flutter schedule editor or public-directory open-now filter in this increment.
+
+Flutter now has an independent opening-hours management section using the same
+staff API. The editor retains the loaded schedule revision and tenant, discards
+cancelled edits, has a distinct review state and confirmation checkbox, and
+blocks stale/offline/cross-section saves. A successful-looking malformed response
+is treated as uncertain and not retried. All 155 local Flutter unit/widget tests
+pass; actual Dart HTTP and Windows native renderer acceptance awaits CI.

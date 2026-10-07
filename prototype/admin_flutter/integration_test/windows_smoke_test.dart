@@ -421,6 +421,47 @@ void main() {
     await capture(tester, boundary, 'windows-payment-methods-saved.png');
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets(
+      'Windows opening-hours editor reviews and saves synthetic schedule',
+      (tester) async {
+    final api = FakeCoreGateway()
+      ..currentProfile =
+          profileFixture(permissions: ['settings:read', 'settings:update']);
+    final c = CoreController(api, pollInterval: const Duration(hours: 1)),
+        boundary = GlobalKey();
+    await tester.pumpWidget(
+        RepaintBoundary(key: boundary, child: CoreApp(controller: c)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الدخول عبر المتصفح'));
+    await tester.pumpAndSettle();
+    final tab = find.widgetWithText(ChoiceChip, 'مواعيد العمل');
+    await tester.ensureVisible(tab);
+    await tester.pumpAndSettle();
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    final edit = find.text('تعديل مواعيد العمل');
+    await tester.ensureVisible(edit);
+    await tester.pumpAndSettle();
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'الأحد'), '09:00-14:00, 17:00-24:00');
+    await tester.tap(find.widgetWithText(FilledButton, 'مراجعة المواعيد'));
+    await tester.pumpAndSettle();
+    expect(api.openingWrites, 0);
+    await capture(tester, boundary, 'windows-opening-review.png');
+    final check = find.byType(CheckboxListTile);
+    await tester.ensureVisible(check);
+    await tester.pumpAndSettle();
+    await tester.tap(check);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تطبيق المواعيد'));
+    await tester.pumpAndSettle();
+    expect(api.openingWrites, 1);
+    expect(c.opening!.weekly[0].last.end, 1440);
+    await capture(tester, boundary, 'windows-opening-saved.png');
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('Windows service intake review preserves existing work',
       (tester) async {
     final api = FakeCoreGateway()

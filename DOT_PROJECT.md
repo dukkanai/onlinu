@@ -1322,3 +1322,11 @@ rendering also could not start its process-singleton socket in the sandbox.
 No screenshot was visually inspected or delivered; visual acceptance remains
 open. These limits do not negate the recorded hosted browser assertions, and
 no access restriction was bypassed. Flutter editor/directory integration remain.
+
+Flutter opening editor increment: immutable bounded schedule/date models, exact
+native response binding, tenant/section/version write fences, stale/offline
+blocking, explicit edit-to-review-to-apply UI, cancel/back and fresh reads after
+uncertainty. Long interval lists wrap beneath day labels. Locally all 155 Flutter
+unit/widget tests and analyzer pass. New actual Dart TLS-to-Node-to-Go and Windows
+renderer tests are prepared but await ordinary hosted CI; no Android/iOS rerun or
+release acceptance is implied. Browser visual-review restriction remains open.
