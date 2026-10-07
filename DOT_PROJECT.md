@@ -1441,3 +1441,11 @@ CI37666341094 all four ordinary jobs passed. Focused Go race logs verify typed
 synthetic direct-message extraction and rejection cases together with durable
 inbox/core-price tests. Full Go race and396platform cases/no skips passed.
 No live session event hook, QR login, incoming/outgoing message or final order.
+
+Private WhatsApp review-store implementation is prepared: original-core complete
+checkout quote/input fingerprints, per-conversation CAS/supersession, bounded
+expiry, presentation binding and durable confirm/cancel intent with concurrent
+replay protection. It has no startup/HTTP/provider hook or final-order dispatch.
+Local compile/vet/pure/client checks are separate from pending hosted PostgreSQL
+concurrency/restart/price-change acceptance. Details and limitations are in
+`prototype/platform/WHATSAPP-CONVERSATION-DESIGN.md`.

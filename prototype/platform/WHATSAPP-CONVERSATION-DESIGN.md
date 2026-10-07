@@ -70,3 +70,30 @@ paths. Re-enabling never blindly drains old pending messages or confirmations.
 
 No production route, review table, worker, model prompt, transport connection or
 send permission is created by this design document.
+
+## Private review-store increment (hosted acceptance pending)
+
+`restaurant_whatsapp_reviews.go` now implements private PostgreSQL conversation
+heads and immutable review versions with pending/confirmed/cancelled intent.
+It is not initialized at server startup and has no route, live transport or send
+worker. Tests alone construct it. The stored complete checkout input includes
+customer data when supplied; production use requires authorized collection and
+restaurant database isolation. It must not be logged or published in artifacts.
+
+Preparation validates the cart against its proposal, uses original-core checkout
+quoting, freezes complete input and quote hashes, and uses a conversation-version
+CAS. A later review invalidates earlier pending reviews. Expiry is the earlier of
+five minutes and the source proposal expiry. Presentation binds an exact review
+fingerprint to a provider message ID; this method is only an internal receipt
+boundary, not independent proof that a message was sent or delivered.
+
+Confirmation/cancel needs a validated direct event, expected review context and
+presentation ID. The original cart message cannot confirm itself. Concurrent
+identical confirmation events converge; changed event content, stale versions,
+wrong peers and changed presentation IDs are rejected. A fresh original-core quote
+check precedes confirmation. It deliberately occurs outside the locked review
+transaction to avoid pool starvation; eventual order creation MUST atomically
+recheck prices/stock/policy again. No order dispatch exists in this increment.
+An idempotent historical confirmation receipt is never permission for a new order
+or charge after expiry. Presentation/decision adapters and final dispatch remain
+unimplemented; no natural-language yes parser is introduced.
