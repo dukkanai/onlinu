@@ -1217,3 +1217,12 @@ compilation and actual iOS own-scheme callback/Keychain/Arabic rendering tests
 passed; downloaded artifacts and owned Simulator cleanup were checked. This
 is synthetic callback acceptance, not a real provider login or Android device
 execution. No production or release-signing configuration changed.
+
+## Android emulator prerequisites — read-only probe, 2026-10-07
+
+An explicit `android_probe` CI input inspects preinstalled SDK image metadata,
+emulator availability, current KVM access and disk space. It installs nothing,
+starts no device, accepts no new agreement and changes no security permissions.
+Its report is diagnostic evidence only, never Android execution acceptance.
+The default ordinary CI gates remain unchanged. Local deployment tests: 83 pass;
+hosted prerequisite facts are pending the probe run.

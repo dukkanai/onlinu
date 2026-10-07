@@ -13,6 +13,11 @@ on:
         type: boolean
         required: false
         default: false
+      android_probe:
+        description: Inspect preinstalled Android emulator prerequisites without installing or changing permissions
+        type: boolean
+        required: false
+        default: false
       ios_smoke:
         description: Compile isolated non-production iOS Simulator debug application
         type: boolean
@@ -36,6 +41,20 @@ permissions:
   contents: read
 
 jobs:
+  android-emulator-preflight:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.android_probe }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect installed SDK images and current acceleration access
+        run: python3 integration/android-emulator-preflight.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-android-emulator-preflight-${{ github.sha }}
+          path: artifacts/android-emulator-preflight/report.json
+          if-no-files-found: error
+          retention-days: 3
   control-image:
     name: control-image
     runs-on: ubuntu-latest
