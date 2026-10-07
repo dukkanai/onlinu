@@ -1209,3 +1209,11 @@ A new iOS native-plugin self-callback test uses synthetic transport and OS secur
 storage, not a real provider login. Compilation and actual Simulator execution
 of this increment are pending CI; production identity, signing and login remain
 separate acceptance gates.
+
+Mobile callback acceptance: commit `7b141aad9bffa5d601db9dbd83772a09ac4a6e52`,
+[CI37599337539](https://github.com/dukkanai/onlinu/actions/runs/37599337539),
+all six requested jobs successful, verified 2026-10-07 09:31 UTC. Android
+compilation and actual iOS own-scheme callback/Keychain/Arabic rendering tests
+passed; downloaded artifacts and owned Simulator cleanup were checked. This
+is synthetic callback acceptance, not a real provider login or Android device
+execution. No production or release-signing configuration changed.

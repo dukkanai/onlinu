@@ -110,3 +110,11 @@ An additional test opens only this disposable app's own URL scheme and checks
 active PKCE state/issuer handling, synthetic token exchange and real secured
 storage/logout. It does not open a real provider or browser account. Full CI
 and actual Simulator results for this increment remain pending.
+
+Mobile callback acceptance: commit `7b141aad9bffa5d601db9dbd83772a09ac4a6e52`,
+[CI37599337539](https://github.com/dukkanai/onlinu/actions/runs/37599337539),
+all six requested jobs successful, verified 2026-10-07 09:31 UTC. Android
+compilation and actual iOS own-scheme callback/Keychain/Arabic rendering tests
+passed; downloaded artifacts and owned Simulator cleanup were checked. This
+is synthetic callback acceptance, not a real provider login or Android device
+execution. No production or release-signing configuration changed.

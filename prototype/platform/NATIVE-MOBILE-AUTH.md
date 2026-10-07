@@ -69,3 +69,11 @@ real release manifests must bind the approved production domain separately.
 Local formatter/analyzer and 151 Flutter tests pass. A new iOS Simulator test
 will exercise the real URL handler and secure storage with synthetic replies;
 that does not substitute for an external-browser identity-provider login.
+
+Mobile callback acceptance: commit `7b141aad9bffa5d601db9dbd83772a09ac4a6e52`,
+[CI37599337539](https://github.com/dukkanai/onlinu/actions/runs/37599337539),
+all six requested jobs successful, verified 2026-10-07 09:31 UTC. Android
+compilation and actual iOS own-scheme callback/Keychain/Arabic rendering tests
+passed; downloaded artifacts and owned Simulator cleanup were checked. This
+is synthetic callback acceptance, not a real provider login or Android device
+execution. No production or release-signing configuration changed.
