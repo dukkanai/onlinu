@@ -1146,3 +1146,19 @@ in the pinned SDK source. The supported `--no-uninstall` option now keeps only
 that new test app until evidence is copied, then the same verified device cleanup
 runs. A local lifecycle test covers retention and collection. Aggregate and
 visual acceptance remain pending the corrected run; no functional guard changed.
+
+
+iOS execution acceptance: `28b3c73237fc298eb6114b1fab55cf83b8369452`
+passed all five requested jobs in [CI37566678856](https://github.com/dukkanai/onlinu/actions/runs/37566678856),
+verified 2026-10-07 03:42 UTC. The new owned iPhone17 Pro Simulator on iOS26.5
+passed actual Keychain isolation/readback/removal and Arabic order-detail/logout
+tests, screenshot collection and verified device cleanup. The downloaded PNG
+hash `1a4feada43fbf54b9580cc414009ac915c5bba439a9614ea4d1128cbf336b532`
+was independently checked and the image visually inspected: Arabic detail,
+amount, note and close control are readable without clipping. The55,116,203-byte
+compile archive independently hashes to
+`32807fa57eea2a5661e58210e4a251ee2cf7a1c59a32fbae49e1dd4c16cf7a9c`;
+its source, built plist and preserved licenses were checked. This is synthetic
+Simulator execution, not a physical iPhone, mobile login or store release.
+Android/runtime-image reruns were intentionally skipped; their latest separate
+checkpoints remain44431e9 and dfebcae respectively.
