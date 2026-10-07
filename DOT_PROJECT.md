@@ -1310,3 +1310,15 @@ Local browser/API increment checks: 277 platform tests passed, 13 DB-dependent
 cases skipped; all 89 deployment guards passed. The first runtime-packaging
 check caught the new modules missing from the explicit Docker allowlist; that
 was corrected and the complete local suite rerun successfully.
+
+Browser/API functional acceptance: `3142f2427a126769b18cd050114e83ec6dbbddaa`,
+[CI37619297901](https://github.com/dukkanai/onlinu/actions/runs/37619297901),
+all four ordinary jobs successful. Server logs confirm 390 platform tests with
+zero skips, uncached Go race success and actual HTTP/Chromium core-control flow.
+Browser review/cancel/reload/save, native shared route, stale/review/authority
+checks and restoration completed. CI screenshot was uploaded, but downloading
+its blob was blocked by the execution network policy. Local standalone Chromium
+rendering also could not start its process-singleton socket in the sandbox.
+No screenshot was visually inspected or delivered; visual acceptance remains
+open. These limits do not negate the recorded hosted browser assertions, and
+no access restriction was bypassed. Flutter editor/directory integration remain.
