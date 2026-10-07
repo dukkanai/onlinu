@@ -1005,3 +1005,13 @@ identity-bound. Synthetic local runtime image ID:
 No archive bytes were uploaded, and no production deployment, registry publication,
 real credential creation or activation occurred. Production/session/media backups,
 off-host recovery and real credential/mount acceptance remain separate gates.
+
+## Shared loopback authentication — 2026-10-07, CI pending
+
+A private bounded direct-HTTP capability now checks health plus missing, wrong
+and approved administrator-key responses without redirects, proxies, retries,
+cookies or body retention. The trusted caller supplies an approved bounded key
+loader; no real key is read, generated or configured here. Seven real loopback
+checks and local platform255pass/12DBskips pass. The journal/Docker fixture now
+uses the shared capability with public synthetic credentials. Remote acceptance
+is pending; see `prototype/platform/PROVISIONING-AUTHENTICATION.md`.

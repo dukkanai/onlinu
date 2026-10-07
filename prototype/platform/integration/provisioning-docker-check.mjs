@@ -17,6 +17,7 @@ import { createProvisioningStage } from '../provisioning-stage.mjs';
 import { createProvisioningEvidence } from '../provisioning-evidence.mjs';
 import { createProvisioningRuntimeProbe } from '../provisioning-runtime-probe.mjs';
 import { createProvisioningComposeApply } from '../provisioning-compose-apply.mjs';
+import { createProvisioningAuthentication } from '../provisioning-authentication.mjs';
 import { createProvisioningVerification } from '../provisioning-verification.mjs';
 import { createProvisioningHostLock } from '../provisioning-host-lock.mjs';
 import { createProvisioningProcess } from '../provisioning-process.mjs';
@@ -60,11 +61,6 @@ async function freePort() {
   const port = server.address().port;
   await new Promise((accept, reject) => server.close(error => error ? reject(error) : accept()));
   return port;
-}
-async function status(port, path, key) {
-  const response = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'error', signal: AbortSignal.timeout(5000),
-    headers: key ? { 'X-API-Key': key } : {} });
-  await response.body?.cancel(); return response.status;
 }
 
 export async function runSmoke(image, env = process.env) {
@@ -204,10 +200,10 @@ export async function runSmoke(image, env = process.env) {
           const verification = createProvisioningVerification({ probe: runtimeProbe, evidence: {
             write: report => evidenceStore.write(report),
             read: reference => createProvisioningEvidence({ directory: evidenceRoot }).read(reference),
-          }, sourceCommit: env.GITHUB_SHA, scope: 'fixture', authenticate: async ({ port }) => ({
-            authenticated: await status(port, '/healthz') === 200 && await status(port, '/api/restaurant/catalog', f.key) === 200,
-            unauthorizedRejected: await status(port, '/api/restaurant/catalog', 'wrong-public-fixture-key') === 401,
-          }) });
+          }, sourceCommit: env.GITHUB_SHA, scope: 'fixture', authenticate: createProvisioningAuthentication({ loadAdministratorKey: async requestedTenant => {
+            if (requestedTenant !== tenantId) throw new Error('fixture_authentication_tenant_mismatch');
+            return f.key; // Public synthetic fixture key, never a production credential loader.
+          } }).authenticate });
           const result = await verification.verify({ job: prepared.job,
             expected: { tenantId, planDigest: plan.planDigest, projectName: plan.projectName,
               images, httpPort: config.httpPort, compose: f.spec } });
