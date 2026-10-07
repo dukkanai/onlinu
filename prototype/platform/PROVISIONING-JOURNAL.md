@@ -104,3 +104,13 @@ published restaurant. Runtime packaging includes only the journal and renderer,
 not the provisioning executor/daemon adapters. No deployment flag was enabled on
 a live system. Actual PostgreSQL permission/revocation/pagination and Chromium
 rendering checks are added to CI; their new acceptance is pending.
+
+Operator queue acceptance: corrected commit
+`43c94a81b55a258cc96bf195c0433056ecea8116` passed all four ordinary jobs in
+CI37550903838, verified 2026-10-07 00:22 UTC. Actual PostgreSQL microsecond cursor
+pagination, filtered reads, expired-claim non-mutation and operator revocation
+passed; real HTTP and Chromium GET filtering/paging passed. The synthetic Arabic
+queue screenshot was downloaded and inspected: labels, unknown state, references
+and UTC times are legible. Runtime-image was intentionally skipped; the separate
+latest full-image checkpoint remains813e692. The new operator view remains
+explicitly default-off, and no live deployment or execution controls were added.

@@ -959,3 +959,13 @@ Chromium exact accessible-label lookup for the state selector: its enclosing
 label included option text. Labels now use explicit separate `for`/`id` bindings;
 the exact-label browser assertion is retained. Database-suite and aggregate
 acceptance remain pending the corrected run; no gate was weakened.
+
+Operator queue acceptance: corrected commit
+`43c94a81b55a258cc96bf195c0433056ecea8116` passed all four ordinary jobs in
+CI37550903838, verified 2026-10-07 00:22 UTC. Actual PostgreSQL microsecond cursor
+pagination, filtered reads, expired-claim non-mutation and operator revocation
+passed; real HTTP and Chromium GET filtering/paging passed. The synthetic Arabic
+queue screenshot was downloaded and inspected: labels, unknown state, references
+and UTC times are legible. Runtime-image was intentionally skipped; the separate
+latest full-image checkpoint remains813e692. The new operator view remains
+explicitly default-off, and no live deployment or execution controls were added.
