@@ -106,3 +106,12 @@ current approved trial addresses the software-boot timeout and rechecks the
 still-unverified base64 screenshot transfer. Local 89 guard tests and both
 permission-step shell syntax checks pass. Actual accelerated execution and ACL
 restoration remain to be verified in CI.
+
+Android execution acceptance: `28cb34e2de0c12ca0f8af69f1833e15fcf4ee775`,
+[CI37612156244](https://github.com/dukkanai/onlinu/actions/runs/37612156244),
+all five requested jobs passed, verified 2026-10-07 11:21 UTC. Three actual
+API35 emulator tests passed, own screenshot/cleanup verified, and original KVM
+permissions restored with exact comparison. The downloaded APK/source/licenses
+and screenshot hashes were checked; Arabic rendering was visually inspected.
+The emulator integration target uses x86_64; the separately archived compile
+APK is arm64. Real-provider login, physical phones and release remain unverified.
