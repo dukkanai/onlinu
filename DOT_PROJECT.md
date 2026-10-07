@@ -1172,4 +1172,4 @@ No registration, real provider access or mobile login is performed. See
 `prototype/platform/NATIVE-MOBILE-AUTH.md` for integration and release gates.
 Local platform tests: 269 passed, 12 database-dependent cases skipped; the
 initial runtime packaging omission was caught and corrected before this result.
-Aggregate CI for this increment is pending.
+Aggregate CI37593760469 passed all four ordinary jobs for `1c515984fbb8db48500ce4c1327dcc959ae0bc18`, verified 2026-10-07 08:36 UTC. Mobile and full runtime-image jobs were intentionally skipped.
