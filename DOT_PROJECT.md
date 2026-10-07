@@ -1015,3 +1015,15 @@ loader; no real key is read, generated or configured here. Seven real loopback
 checks and local platform255pass/12DBskips pass. The journal/Docker fixture now
 uses the shared capability with public synthetic credentials. Remote acceptance
 is pending; see `prototype/platform/PROVISIONING-AUTHENTICATION.md`.
+
+
+Loopback-auth acceptance: `dfebcaebea60489d63c2efe4057ccd4165f15265`
+passed all five jobs in [CI37554750785](https://github.com/dukkanai/onlinu/actions/runs/37554750785),
+verified 2026-10-07 01:07 UTC. Both actual successful and unknown-reply runtime
+verification paths passed the shared health/missing-key/wrong-key/valid-key
+transport. Four source-bound runtime reports were inspected and both immutable
+receipt hashes and job/worker/tenant/plan bindings independently verified.
+Synthetic local image ID:
+`sha256:4e7e053fb159789289d686b9720b0f3027102e7c022f3241db6ff8741af5e35b`.
+Production key loading, registry publication, activation and deployment remain
+separate; no real credential or provider account was used.
