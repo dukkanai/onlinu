@@ -1057,3 +1057,13 @@ journal, covering success/uncertainty and no replay. Original relative bootstrap
 mount resolution is mirrored without changing the staged manifest. Production
 host/credential/release acceptance remains open; see
 `prototype/platform/PROVISIONING-HOST-DRIVER.md`.
+
+
+Host-driver assembly regression: `fba4361a8abf59303bd99875ba4ad7acc8b1eb70`
+passed all four ordinary jobs in [CI37556938885](https://github.com/dukkanai/onlinu/actions/runs/37556938885),
+verified 2026-10-07 01:32 UTC. Local platform265 pass/12 database skips were
+followed by successful actual database/browser/native TLS and Windows CI checks.
+The composed-driver-specific tests use real coordinator/compiler/stager/manifest
+components with explicitly synthetic external capabilities and a mock journal.
+This remains component assembly acceptance, not an actual production-host apply.
+Runtime-image was intentionally skipped; latest full-image remains dfebcae.
