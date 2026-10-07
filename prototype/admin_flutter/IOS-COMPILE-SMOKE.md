@@ -33,3 +33,19 @@ Windows-specific. Actual mobile authentication and distribution are later gates.
 Three local iOS guard groups and four Android guard groups pass. The macOS SDK
 metadata is verified; actual iOS compilation and the license-bearing Android
 artifact rerun remain pending CI.
+
+
+iOS/Android compilation acceptance: `44431e9aca475723d2f21fdd428b390f66048f70`
+passed all six requested jobs in [CI37561928593](https://github.com/dukkanai/onlinu/actions/runs/37561928593),
+verified 2026-10-07 02:35 UTC: server, Windows, control image, Android, iOS and web.
+Runtime-image was intentionally skipped. Xcode26.6 built a dual arm64/x86_64 iOS
+Simulator bundle. Its55,116,192-byte archive hashes to
+`1c5edfd40cb79ab8e9e6510e2a8affbe34efe08fdd53394e452264b7a41c1580`.
+The Android89,727,246-byte debug APK hashes to
+`500c8ece004b99a77a28506f03e52e0772ddc3c9a1c95f7663a4e916fcdc3367`.
+Both downloads were independently source/hash/size/license checked. The iOS built
+plist was independently parsed from the archive and its Simulator identity,
+transport/file-sharing flags and absence of a device profile verified. Android's
+arm64 Flutter engine was independently checked. Neither mobile application was
+run on a device or Simulator; login, platform storage, rendering and release
+acceptance remain separate. Latest full Docker-image checkpoint remains dfebcae.
