@@ -15,6 +15,7 @@ export const ar = {
   "store.heroText": "تصفح القائمة، واختر طريقة استلام طلبك، وتابع حالته هنا. لا تحتاج إلى حساب.",
   "store.browse": "استكشف القائمة", "store.guest": "اطلب دون تسجيل", "store.all": "كل الأطباق",
   "store.search": "ابحث في القائمة", "store.noItems": "لا توجد أطباق مطابقة", "store.noItemsHint": "جرب بحثًا أو تصنيفًا آخر.",
+  "store.availabilityUnknown": "تعذر التحقق من استقبال الطلبات. يمكنك التصفح ومتابعة طلباتك الحالية؛ أعد المحاولة قبل طلب جديد.",
   "store.closed": "المطعم لا يستقبل طلبات جديدة حاليًا.",
   "store.emptyCart": "هنا مكان وجبتك الشهية", "store.emptyCartHint": "أضف أطباقك المفضلة لتبدأ.",
   "store.checkout": "المتابعة لإتمام الطلب", "store.subtotal": "المجموع الفرعي", "store.deliveryFee": "رسوم التوصيل",

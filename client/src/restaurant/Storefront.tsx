@@ -1,3 +1,4 @@
+import { useOpeningStatus } from "./customer/useOpeningStatus";
 import {
   cloneElement,
   isValidElement,
@@ -2220,7 +2221,12 @@ function AccountPage({
 export function Storefront() {
   const locale: L10n = useLocale();
   const { t, dir, applyDefaultLocale } = locale;
-  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [rawCatalog, setCatalog] = useState<Catalog | null>(null);
+  const {status: openingStatus, refresh: refreshOpening} = useOpeningStatus();
+  const catalog = useMemo(() => rawCatalog ? {
+    ...rawCatalog,
+    settings: {...rawCatalog.settings, acceptingOrders: openingStatus?.acceptingOrders === true},
+  } : null, [rawCatalog, openingStatus]);
   const [cart, setCart] = useState<OrderLineInput[]>([]);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [accountReady, setAccountReady] = useState(false);
@@ -2461,9 +2467,14 @@ export function Storefront() {
         ) : (
           catalog && (
             <>
-              {!catalog.settings.acceptingOrders && (
+              {openingStatus === null ? (
+                <Notice>
+                  {t("store.availabilityUnknown")}
+                  <button type="button" className="rs-link-button" onClick={refreshOpening}>{t("common.retry")}</button>
+                </Notice>
+              ) : !catalog.settings.acceptingOrders ? (
                 <Notice>{t("store.closed")}</Notice>
-              )}
+              ) : null}
               {path === "/order" && !accountReady ? (
                 <div className="rs-loading">
                   <button

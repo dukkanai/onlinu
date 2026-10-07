@@ -281,6 +281,21 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install pinned browser-test dependencies
+        run: npm ci --prefix ../prototype/platform
+
+      - name: Verify compiled storefront opening-state behavior
+        run: node --import tsx ../prototype/platform/integration/storefront-opening-check.mjs
+
+      - name: Preserve synthetic storefront opening rendering
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-storefront-opening-${{ github.sha }}
+          path: artifacts/storefront-opening/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
   native-windows:
     name: native-windows
     runs-on: windows-latest

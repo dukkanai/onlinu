@@ -77,3 +77,12 @@ freshness checks. Pages are changing snapshots, not a comprehensive atomic view
 or stock/delivery/payment guarantee. There is no automatic polling or full-list
 fan-out. Local cases and actual core search/restore integration are separate;
 hosted aggregate acceptance for the search increment remains pending.
+
+The original React storefront now consumes `/storefront-api/opening-status`
+through its credential-stripping public transport. It keeps raw catalogue data
+separate from the live intake hint. Unknown is not rendered as confirmed closed
+or open; only new-order controls are gated, and existing uncertain-submission
+recovery remains available. Read-only visibility-aware polling has bounded
+requests and cancellation/generation fences. Actual checkout rechecks all core
+policy/stock/price rules. Local84client tests and build passed; isolated compiled
+browser acceptance awaits CI. This is not a production deployment.

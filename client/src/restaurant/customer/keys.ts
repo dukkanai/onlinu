@@ -29,6 +29,7 @@ export const storefrontEnglish = {
   "store.search": "Search the menu",
   "store.noItems": "No dishes found",
   "store.noItemsHint": "Try another search or category.",
+  "store.availabilityUnknown": "Order acceptance could not be verified. You can browse and track existing orders; retry before placing a new order.",
   "store.closed": "The restaurant is not accepting new orders right now.",
   "store.emptyCart": "Something delicious belongs here",
   "store.emptyCartHint": "Add your favourite dishes to get started.",

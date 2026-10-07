@@ -1377,3 +1377,16 @@ suites and 396 platform tests without skips. Actual published-core MCP fixtures
 prove unconfigured exclusion, reviewed always-open policy, matching search and
 restoration. Pagination/concurrency/uncertainty checks also pass. This is not
 external-account acceptance or evidence of a complete live restaurant directory.
+
+Original React storefront intake increment: public opening-status snapshots now
+supply the displayed new-order gate instead of the catalogue's stale manual-only
+flag. Unknown/unavailable status is labeled separately and blocks fresh ordering,
+while original tracking/account and uncertain accepted-order recovery remain
+available. Polling is read-only every30seconds with a5second bound, pauses while
+hidden, aborts obsolete reads, and fences late replies/unmounted effects. The
+server remains authoritative; no client timezone calculation or availability
+promise is introduced. Local84client tests passed via Node's tsx import loader
+(the tsx CLI's IPC socket is unavailable here), TypeScript/Vite build passed,
+and89deployment guards passed. A new isolated compiled-React Chromium check
+covers all five templates, closure, unknown/retry/live updates and Arabic RTL.
+Hosted renderer acceptance is pending; no new screenshot has been inspected.
