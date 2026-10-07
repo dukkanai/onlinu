@@ -145,3 +145,23 @@ Full uncached Go race and396platform tests/no skips passed; client84/build/brows
 Windows and control-image checks passed. Transport authority was synthetic and no
 provider was contacted. Live account binding, conversation/rendered review delivery
 and outgoing receipt reconciliation remain unimplemented acceptance gates.
+
+## Complete review text preparation (hosted acceptance pending)
+
+The private renderer prepares deterministic Arabic/English plain text from the
+verified immutable checkout and quote. It includes every item/option/quantity,
+unit and line money, subtotal/delivery/tax/total, service method, contact,
+complete supplied delivery details, payment choice, notes, expiry and review ID.
+It explicitly distinguishes review, order creation and card charging. Dynamic
+text is quoted/escaped so a newline or bidi control cannot impersonate a total.
+A conservative internal3000-byte limit rejects an oversized review in full;
+there is no truncation or claim about the provider's actual message limit. A
+complete alternative review path is still required for oversized carts.
+
+Preparation now freezes authoritative delivery labels resolved from the selected
+geography IDs instead of displaying forged client labels. The frozen input is
+reused on dispatch retries; labels are not re-resolved before retry hashing.
+Reading a stored rendered review requires current transaction-scoped authority,
+enabled channel intent and the active pending unexpired review. Rendering does
+not record a presentation, create an order, send a message or establish delivery.
+String-level tests are not WhatsApp-device visual or provider acceptance.

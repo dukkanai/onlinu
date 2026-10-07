@@ -104,6 +104,7 @@ export const ar = {
   "errors.unsupported_whatsapp_message": "نوع هذه الرسالة غير مدعوم لطلبات المطعم.",
   "errors.whatsapp_review_changed": "تغيّرت هذه المراجعة أو انتهت صلاحيتها أو لم تعد نشطة. اطلب مراجعة جديدة.",
   "errors.whatsapp_review_not_presented": "هذا التأكيد غير مرتبط بالمراجعة المعروضة.",
+  "errors.whatsapp_review_too_large": "هذه المراجعة أطول من صيغة الرسالة المتاحة. يلزم عرض مراجعة كاملة بصيغة بديلة.",
   "errors.invalid_whatsapp_proposal": "لا يمكن استخدام هذه الرسالة لاقتراح سلة جديدة.",
   "errors.whatsapp_message_expired": "انتهت صلاحية السلة المقترحة. يرجى بدء سلة جديدة.",
   "errors.invalid_whatsapp_cart": "تحتوي السلة المقترحة على أصناف أو كميات غير صالحة.",

@@ -1473,3 +1473,10 @@ one original-core order/reservation from12 concurrent attempts for each WhatsApp
 channel identity, with stable-key lost-result recovery and stale/changed/revoked
 rejection. Full Go race and396platform cases/no skips passed. Authority is synthetic
 in these fixtures; live transport remains unwired/default-off with no messages.
+
+Private complete Arabic/English review text is prepared from the immutable
+checkout/quote with escaped dynamic text, full money/tax/contact/delivery/payment
+details and an explicit internal byte bound. Oversized reviews fail without
+truncation. Geography labels are frozen authoritatively at preparation. There
+is no send/provider hook or presentation claim; local string tests/vet/build
+and client checks precede hosted database authority/canonical-address acceptance.

@@ -74,6 +74,13 @@ func (s *restaurantWhatsappReviews) Prepare(ctx context.Context, p *restaurantWh
 		return empty, restaurantFail(409, "whatsapp_review_changed")
 	}
 	input.Items = canonical.items
+	input = restaurantNormalizeOrderInput(input)
+	// Freeze authoritative delivery labels once; retries reuse this stored
+	// snapshot rather than resolving labels before hashing each submission.
+	input, err = restaurantCanonicalDeliveryInput(ctx, s.orders.store.db, input, false)
+	if err != nil {
+		return empty, err
+	}
 	// Core handles required contact/address, catalogue, availability and money.
 	quote, err := s.orders.Quote(ctx, input)
 	if err != nil {

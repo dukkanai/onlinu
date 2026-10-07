@@ -25,6 +25,7 @@ export const english = {
   "errors.unsupported_whatsapp_message": "This message type is not supported for restaurant ordering.",
   "errors.whatsapp_review_changed": "This review has changed, expired or is no longer active. Request a new review.",
   "errors.whatsapp_review_not_presented": "This confirmation is not linked to the presented review.",
+  "errors.whatsapp_review_too_large": "This review is too long for this message format. A complete alternative review is required.",
   "errors.invalid_whatsapp_proposal": "This message cannot be used as a new cart proposal.",
   "errors.whatsapp_message_expired": "This cart proposal has expired. Please start a new one.",
   "errors.invalid_whatsapp_cart": "The proposed cart contains invalid items or quantities.",
