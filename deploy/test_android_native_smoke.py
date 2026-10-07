@@ -48,7 +48,7 @@ class AndroidSmokeTests(unittest.TestCase):
                         raise subprocess.CalledProcessError(1, args)
                     if args[-1] == 'sys.boot_completed': return '1\n'
                     if args[-1] == 'ro.boot.qemu.avd_name': return 'other' if wrong_name else 'onlinu-ci-1-aaaaaaaaaaaa'
-                    if args[-1] == 'cache/onlinu-android-orders.png': return b'\x89PNG\r\n\x1a\nfixture'
+                    if args[-1] == 'cache/onlinu-android-orders.png': return smoke.base64.b64encode(bytes.fromhex('89504e470d0a1a0a') + b'fixture')
                     self.fail('Unexpected external read')
                 def command(args, **kwargs):
                     if failed_test and 'test' in args:
@@ -89,6 +89,15 @@ class AndroidSmokeTests(unittest.TestCase):
                     smoke.emulator_checks(['flutter'], root, root, root)
                 self.assertEqual(install.call_args.kwargs['input'], 'n\n')
                 launch.assert_not_called()
+
+    def test_png_transfer_decodes_wrapping_but_never_remote_error_text(self):
+        picture = bytes.fromhex('89504e470d0a1a0a') + b'synthetic fixture'
+        encoded = smoke.base64.b64encode(picture)
+        self.assertEqual(smoke.decode_rendering_png(encoded), picture)
+        self.assertEqual(smoke.decode_rendering_png(encoded[:12] + bytes([13, 10]) + encoded[12:]), picture)
+        for invalid in [b'', b'cat: file missing', smoke.base64.b64encode(b'not a PNG')]:
+            with self.assertRaises(ValueError):
+                smoke.decode_rendering_png(invalid)
 
     def test_only_explicit_ephemeral_owner_workflow_is_allowed(self):
         env = {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_REPOSITORY': 'dukkanai/onlinu',

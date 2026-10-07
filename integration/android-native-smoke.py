@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Opt-in Android compile/software-emulator checks. No physical device, store or live API."""
 import hashlib
+import base64
+import binascii
 import json
 import os
 from pathlib import Path
@@ -114,6 +116,18 @@ def verify_avd_name(actual, expected):
         raise ValueError('Emulator identity differs from the newly created owned AVD.')
 
 
+def decode_rendering_png(encoded):
+    if not isinstance(encoded, bytes) or not 0 < len(encoded) <= 24 * 1024**2:
+        raise ValueError('Android screenshot transfer exceeds its encoded bound.')
+    try:
+        picture = base64.b64decode(b''.join(encoded.split()), validate=True)
+    except binascii.Error as error:
+        raise ValueError(f'Android screenshot transfer is not base64: bytes={len(encoded)}, prefixHex={encoded[:32].hex()}') from error
+    if not 8 < len(picture) <= 16 * 1024**2 or not picture.startswith(bytes.fromhex('89504e470d0a1a0a')):
+        raise ValueError(f'Android screenshot is not bounded PNG: bytes={len(picture)}, prefixHex={picture[:16].hex()}')
+    return picture
+
+
 def emulator_checks(flutter, project, output, sdk):
     image = 'system-images;android-35;google_apis;x86_64'
     tools = sorted(sdk.glob('cmdline-tools/*/bin/sdkmanager'))
@@ -174,10 +188,9 @@ def emulator_checks(flutter, project, output, sdk):
                            cwd=project, env=env, check=True, timeout=900)
             verify_avd_name(subprocess.check_output([str(adb), '-s', serial, 'shell', 'getprop', 'ro.boot.qemu.avd_name'],
                                                    text=True, timeout=10), name)
-            picture = subprocess.check_output([str(adb), '-s', serial, 'exec-out', 'run-as', PACKAGE,
-                                               'cat', 'cache/onlinu-android-orders.png'], timeout=30)
-            if not 8 < len(picture) <= 16 * 1024**2 or not picture.startswith(b'\x89PNG\r\n\x1a\n'):
-                raise ValueError('Expected bounded Android rendering evidence is missing.')
+            encoded = subprocess.check_output([str(adb), '-s', serial, 'exec-out', 'run-as', PACKAGE,
+                                               'base64', 'cache/onlinu-android-orders.png'], timeout=30)
+            picture = decode_rendering_png(encoded)
             (output / 'android-orders.png').write_bytes(picture)
             result = {'systemImage': image, 'acceleration': 'software-only',
                       'screenshotSha256': hashlib.sha256(picture).hexdigest(),

@@ -122,6 +122,8 @@ void main() {
     expect(bytes, isNotNull);
     await File('${Directory.systemTemp.path}/onlinu-android-orders.png')
         .writeAsBytes(bytes!.buffer.asUint8List());
+    debugPrint(
+        'Owned Android screenshot: ${Directory.systemTemp.path}/onlinu-android-orders.png; ${bytes.lengthInBytes} bytes');
     await tester.tap(find.byTooltip('إغلاق التفاصيل'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('تسجيل الخروج'));

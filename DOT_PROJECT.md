@@ -1233,3 +1233,12 @@ next explicit android_execute trial uses software emulation with no permission
 changes, only official packages under already-accepted licenses, owned AVD
 identity checks and bounded cleanup. Local 86 deployment guards/analyzer pass;
 actual execution is pending. No new agreement or host security change is made.
+
+First Android software-emulator execution CI37603475763: all four ordinary
+jobs passed. API35 boot and owned identity were verified, and all three actual
+Android tests passed (Keystore, owned callback, Arabic detail/logout). Aggregate
+acceptance failed afterward while validating screenshot transfer. The subsequent
+change uses bounded, strictly decoded base64 for the single owned PNG and adds
+safe length/header diagnostics; it does not weaken PNG checks or cleanup. Local
+87 deployment guards and Flutter analyzer pass; the corrected aggregate remains
+pending. No KVM permission or license-acceptance change occurred.
