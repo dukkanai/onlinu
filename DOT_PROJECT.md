@@ -953,3 +953,9 @@ blocked. No executor commands or activation controls are exposed. Pure parser,
 renderer/configuration tests pass; actual database and Chromium pagination,
 revocation and screenshot acceptance are pending. A local packaging guard caught
 missing new runtime COPY entries, now corrected without adding executor modules.
+
+Queue first CI37550183973 reached the actual operator HTTP checks but failed the
+Chromium exact accessible-label lookup for the state selector: its enclosing
+label included option text. Labels now use explicit separate `for`/`id` bindings;
+the exact-label browser assertion is retained. Database-suite and aggregate
+acceptance remain pending the corrected run; no gate was weakened.

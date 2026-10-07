@@ -15,9 +15,9 @@ export function provisioningQueuePage(page,query) {
   const next=page.nextCursor?'/operator/provisioning?'+new URLSearchParams({...query,after:page.nextCursor}):null;
   return `<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>سجل تجهيز المطاعم</title>
 <h1>سجل تجهيز المطاعم</h1><p>عرض للمشغّل فقط. لا تنفّذ هذه الصفحة أو تعيد أو تلغي أي عملية. نجاح التجهيز لا يعني نشر المطعم أو تفعيله.</p>
-<form method="get" action="/operator/provisioning"><label>المطعم <input name="tenantId" value="${escape(query.tenantId)}" maxlength="64"></label>
-<label>الحالة <select name="state"><option value="">كل الحالات</option>${Object.entries(states).map(([key,label])=>`<option value="${key}"${query.state===key?' selected':''}>${label}</option>`).join('')}</select></label>
-<label>عدد النتائج <input name="limit" type="number" min="1" max="100" value="${escape(query.limit??25)}"></label><button>تصفية</button></form>
+<form method="get" action="/operator/provisioning"><label for="provision-tenant">المطعم</label> <input id="provision-tenant" name="tenantId" value="${escape(query.tenantId)}" maxlength="64">
+<label for="provision-state">الحالة</label> <select id="provision-state" name="state"><option value="">كل الحالات</option>${Object.entries(states).map(([key,label])=>`<option value="${key}"${query.state===key?' selected':''}>${label}</option>`).join('')}</select>
+<label for="provision-limit">عدد النتائج</label> <input id="provision-limit" name="limit" type="number" min="1" max="100" value="${escape(query.limit??25)}"><button>تصفية</button></form>
 <p>ترتيب الأحدث أولًا. النتائج قد تتغير أثناء التصفح؛ حدّث القائمة لرؤية الطلبات الجديدة.</p>
 ${page.jobs.length?'':'<p>لا توجد طلبات مطابقة.</p>'}
 ${page.jobs.map(job=>`<article><h2>${escape(job.tenantId)}</h2><p>${escape(states[job.state]??'حالة غير معروفة')}${job.leaseExpired?' — انتهت مهلة العامل، وتحتاج مراجعة صريحة.':''}</p>

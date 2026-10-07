@@ -12,5 +12,6 @@ test('queue page escapes data and has no mutation action or implicit expiry',()=
   assert.match(html,/انتهت مهلة العامل/);assert.match(html,/لا يعني نشر المطعم/);assert.match(html,/method="get"/);
   assert.ok(!/method="post"|onclick=|<script|password|accessToken/.test(html));
   assert.ok(html.includes('state=claimed&amp;limit=1&amp;after='));
+  assert.match(html,/<label for="provision-state">الحالة<\/label> <select id="provision-state"/);
   assert.match(provisioningQueuePage({jobs:[],nextCursor:null},{}),/لا توجد طلبات مطابقة/);
 });
