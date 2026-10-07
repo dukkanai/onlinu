@@ -1137,3 +1137,12 @@ Subsequent ownership checks now request only device inventory with a bounded
 180-second deadline; no identity check, test or cleanup guard was removed. A new
 fault-injection test proves a post-boot read timeout stops test execution and
 cleans only the exact reverified created device. Actual execution remains pending.
+
+
+Second iOS execution run CI37564269290 passed both actual Keychain and Arabic
+order-detail/logout tests and confirmed owned device cleanup. Screenshot
+collection failed because Flutter test uninstalls by default; this was verified
+in the pinned SDK source. The supported `--no-uninstall` option now keeps only
+that new test app until evidence is copied, then the same verified device cleanup
+runs. A local lifecycle test covers retention and collection. Aggregate and
+visual acceptance remain pending the corrected run; no functional guard changed.

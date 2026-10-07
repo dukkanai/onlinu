@@ -134,3 +134,59 @@ class IosSmokeTests(unittest.TestCase):
                 smoke.simulator_checks(['flutter'], Path('/unused-project'), Path('/unused-output'))
         self.assertTrue(state['deleted'])
         self.assertEqual([args[2] for args in commands], ['boot', 'bootstatus', 'shutdown', 'delete'])
+
+    def test_owned_app_is_retained_only_until_screenshot_copy_and_device_cleanup(self):
+        import copy
+        import hashlib
+        import json
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        inventory, runtime, _, identifier = self.simulator_inventory()
+        name = 'onlinu-ci-123-abcdef012345'
+        state = {'created': False, 'deleted': False, 'boot': 'Shutdown'}
+        invocations = []
+        picture = b'\x89PNG\r\n\x1a\nsynthetic transport fixture'
+        with tempfile.TemporaryDirectory(prefix='onlinu-capture-test-') as temporary:
+            destination = Path(temporary) / 'output'
+            destination.mkdir()
+            container = Path(temporary) / identifier / 'application'
+            (container / 'tmp').mkdir(parents=True)
+
+            def output(args, **kwargs):
+                if args[:3] == ['xcrun', 'simctl', 'create']:
+                    state['created'] = True
+                    return identifier
+                if args[:3] == ['xcrun', 'simctl', 'get_app_container']:
+                    self.assertEqual(args[3:], [identifier, smoke.PACKAGE, 'data'])
+                    self.assertFalse(state['deleted'])
+                    return str(container)
+                self.assertEqual(args[:3], ['xcrun', 'simctl', 'list'])
+                result = copy.deepcopy(inventory)
+                if state['deleted']:
+                    result['devices'][runtime] = []
+                elif state['created']:
+                    result['devices'][runtime][0].update(name=name, state=state['boot'])
+                return json.dumps(result)
+
+            def run(args, *unused, **kwargs):
+                invocations.append(args)
+                if args[0] == 'flutter':
+                    self.assertEqual(args[1], 'test')
+                    self.assertIn('--no-uninstall', args)
+                    self.assertIn('integration_test/ios_smoke_test.dart', args)
+                    (container / 'tmp/onlinu-ios-orders.png').write_bytes(picture)
+                elif args[2] == 'boot':
+                    state['boot'] = 'Booted'
+                elif args[2] == 'shutdown':
+                    state['boot'] = 'Shutdown'
+                elif args[2] == 'delete':
+                    state['deleted'] = True
+
+            with patch.dict(smoke.os.environ, {'GITHUB_RUN_ID': '123'}), \
+                 patch.object(smoke.uuid, 'uuid4', return_value=SimpleNamespace(hex='abcdef0123456789')), \
+                 patch.object(smoke.subprocess, 'check_output', side_effect=output), patch.object(smoke, 'run', side_effect=run):
+                result = smoke.simulator_checks(['flutter'], destination, destination)
+            self.assertEqual(result['screenshotSha256'], hashlib.sha256(picture).hexdigest())
+            self.assertEqual((destination / 'ios-orders.png').read_bytes(), picture)
+            self.assertTrue(state['deleted'])
+            self.assertEqual(sum(args[0] == 'flutter' for args in invocations), 1)

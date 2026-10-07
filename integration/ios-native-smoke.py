@@ -83,8 +83,10 @@ def simulator_checks(flutter, project, output):
         print('Checking owned Simulator after initial boot.', flush=True)
         owned_simulator(inventory(devices_only=True), runtime, identifier, name)
         print('Running actual iOS Keychain and rendering tests.', flush=True)
-        run([*flutter, 'test', 'integration_test/ios_smoke_test.dart', '--no-pub', '-d', identifier,
+        run([*flutter, 'test', 'integration_test/ios_smoke_test.dart', '--no-pub', '--no-uninstall', '-d', identifier,
              '--reporter=expanded'], project, timeout=900)
+        # Flutter test uninstalls by default. Keep only this owned test app until
+        # its PNG is copied; the entire owned Simulator is deleted in finally.
         container = Path(subprocess.check_output(['xcrun', 'simctl', 'get_app_container', identifier, PACKAGE, 'data'], text=True, timeout=60).strip()).resolve(strict=True)
         if not container.is_absolute() or '/' + identifier + '/' not in str(container).upper():
             raise ValueError('Unexpected owned Simulator application container.')

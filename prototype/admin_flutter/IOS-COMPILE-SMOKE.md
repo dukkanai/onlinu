@@ -74,3 +74,15 @@ Physical-device behavior, mobile authentication, lifecycle/notifications and
 release signing/distribution remain outside this check. New local guard tests
 cover observed-runtime selection, exact device ownership and uncertain-create
 refusal. Actual Keychain/rendering and screenshot acceptance are pending CI.
+
+
+The second execution run CI37564269290 passed both actual iOS tests (Keychain
+and Arabic order detail/logout) and confirmed owned Simulator cleanup. Its job
+then failed while collecting the screenshot because Flutter test uninstalls the
+app by default. This default and the supported `--no-uninstall` option were
+verified in the exact Flutter3.47.5 SDK source. The harness now retains only its
+new test app until the PNG is copied from its verified container; the entire
+owned Simulator is still shut down and deleted in `finally`. The functional
+checks and screenshot requirement are unchanged. A local lifecycle test covers
+retention, exact app/container lookup, copied evidence and device cleanup.
+Corrected aggregate acceptance and visual inspection remain pending.
