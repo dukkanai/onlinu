@@ -1,7 +1,7 @@
 import { McpServer, ProtocolError, SUPPORTED_PROTOCOL_VERSIONS as SDK_LEGACY_VERSIONS, createMcpHandler as createSdkHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { z } from 'zod';
-import { coreCatalogSchema, coreQuoteSchema, corePreviewInput } from './core-adapter.mjs';
+import { coreCatalogSchema, coreQuoteSchema, corePreviewInput, coreOpeningStatusSchema } from './core-adapter.mjs';
 import { coreOrderView } from './core-order-client.mjs';
 
 export const MCP_PROTOCOL_VERSION = '2026-07-28';
@@ -176,6 +176,8 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
       register('search_restaurants', 'Find restaurants', 'Search the configured restaurant directory. No personal data or order creation.', searchArgs,
         z.object({ restaurants: z.array(z.object({ id: identifier, name: z.string().max(4096), cuisine: z.string().max(4096) })).max(1000) }),
         async args => ({ restaurants: await coreAdapter.listRestaurants(args) }), { scope: catalogScope });
+      if(typeof coreAdapter.openingStatus==='function')register('get_restaurant_opening_status','Read current restaurant acceptance','Read a fresh server-evaluated Saudi opening-schedule and manual intake snapshot for a published restaurant. Disabled schedule means opening hours are not configured; acceptingOrders is not proof of stock, delivery coverage or payment availability. Checkout remains authoritative.',
+        z.object({tenantId:identifier}).strict(),coreOpeningStatusSchema.safeExtend({tenantId:identifier}),args=>coreAdapter.openingStatus(args.tenantId),{scope:catalogScope});
       register('get_restaurant_menu', 'Read the restaurant menu', 'Read original menu categories, available items/options, prices and published appearance. Availability is not a stock reservation.',
         z.object({ tenantId: identifier }).strict(), coreCatalogSchema.extend({ tenantId: identifier }),
         args => coreAdapter.getMenu(args.tenantId), { scope: catalogScope });

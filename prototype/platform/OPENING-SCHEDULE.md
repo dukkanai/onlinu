@@ -57,3 +57,10 @@ cancelled edits, has a distinct review state and confirmation checkbox, and
 blocks stale/offline/cross-section saves. A successful-looking malformed response
 is treated as uncertain and not retried. All 155 local Flutter unit/widget tests
 pass; actual Dart HTTP and Windows native renderer acceptance awaits CI.
+
+The public adapter now exposes a fresh snapshot to
+`get_restaurant_opening_status` in the original-core MCP mode. It checks
+publication both before and after the bounded read, rejects contradictory or
+stale/future timestamps, and accepts no customer-selected time. This read does
+not mutate any restaurant or payment state. Full-directory open-now filtering
+is not yet implemented; do not claim all restaurants have been checked.

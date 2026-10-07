@@ -260,6 +260,13 @@ try {
   assert.equal((await imageUpload(alice,beforeImage.version)).status,409,'Stale upload form cannot overwrite a newer image');
   const afterImage=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
   assert.match(afterImage.item.imageUrl,/^\/restaurant-media\/[a-f0-9]{64}\.png$/);assert.deepEqual(afterImage.item.options,beforeImage.item.options);
+  const publicOpening=await rpc('get_restaurant_opening_status',{tenantId:'restaurant-a'});
+  assert.equal(publicOpening.isError,undefined,JSON.stringify(publicOpening));
+  assert.equal(publicOpening.structuredContent.tenantId,'restaurant-a');
+  assert.equal(publicOpening.structuredContent.timeZone,'Asia/Riyadh');
+  assert.equal(publicOpening.structuredContent.withinHours,null);
+  const unknownOpening=await rpc('get_restaurant_opening_status',{tenantId:'not-published'});
+  assert.equal(unknownOpening.isError,true);
   const publicMenu=await rpc('get_restaurant_menu',{tenantId:'restaurant-a'});
   assert.equal(publicMenu.isError,undefined);
   const publicImageURL=publicMenu.structuredContent.items.find(item=>item.id==='rice').imageUrl;

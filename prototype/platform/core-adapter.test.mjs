@@ -112,3 +112,12 @@ test('preview excludes contact/payment/price fields and routes only to preview',
     assert.throws(() => adapter.preview('a', { mode: 'pickup', items: input.items, ...extra }), { code: 'invalid_request' });
   }
 });
+
+test('opening snapshot is fresh and rejects contradictory or stale source claims',async()=>{
+ const at=Date.parse('2026-10-07T12:00:00Z'),valid={version:1,scheduleEnabled:true,withinHours:true,acceptingOrders:true,timeZone:'Asia/Riyadh',evaluatedAt:new Date(at).toISOString()};let current=valid,calls=0;
+ const adapter=createCoreAdapter({restaurants,now:()=>at,fetchImpl:async(url,options)=>{calls++;assert.equal(url,'https://a.example/storefront-api/opening-status');assert.equal(options.method,'GET');assert.equal(options.redirect,'error');return json(current);}});
+ assert.equal((await adapter.openingStatus('a')).acceptingOrders,true);
+ for(const change of [{withinHours:null},{withinHours:false},{scheduleEnabled:false},{timeZone:'UTC'},{evaluatedAt:new Date(at-60001).toISOString()},{evaluatedAt:new Date(at+30001).toISOString()}]){current={...valid,...change};await assert.rejects(adapter.openingStatus('a'),{code:'invalid_restaurant_response'});}
+ current={...valid,scheduleEnabled:false,withinHours:null};assert.equal((await adapter.openingStatus('a')).withinHours,null);
+ const before=calls;await assert.rejects(adapter.openingStatus('other'),{code:'restaurant_not_found'});assert.equal(calls,before);
+});

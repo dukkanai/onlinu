@@ -350,3 +350,12 @@ test('HTTP boundary rejects wrong host/origin, oversized bodies, batches and non
   const stream = await fixture.send(envelope('subscriptions/listen'));
   assert.equal(stream.body.error.code, -32601);
 });
+
+test('core opening status is read-only, scoped and rejects caller clocks',async t=>{
+ let reads=0;
+ const value={tenantId:'demo-a',version:1,scheduleEnabled:false,withinHours:null,acceptingOrders:true,timeZone:'Asia/Riyadh',evaluatedAt:new Date().toISOString()};
+ const fixture=await setup(t,{requireCatalogAuth:true,coreAdapter:{async listRestaurants(){return[];},async getMenu(){throw Error('unused');},async preview(){throw Error('unused');},async openingStatus(id){reads++;assert.equal(id,'demo-a');return value;}}});
+ const denied=await fixture.call('get_restaurant_opening_status',{tenantId:'demo-a'});assert.equal(denied.body.result.isError,true);assert.equal(reads,0);
+ const bad=await fixture.call('get_restaurant_opening_status',{tenantId:'demo-a',at:'yesterday'},{token:'alice'});assert.ok(bad.body.error||bad.body.result.isError);assert.equal(reads,0);
+ const response=await fixture.call('get_restaurant_opening_status',{tenantId:'demo-a'},{token:'alice'});assert.deepEqual(response.body.result.structuredContent,value);assert.equal(reads,1);
+});

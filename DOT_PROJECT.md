@@ -1330,3 +1330,21 @@ uncertainty. Long interval lists wrap beneath day labels. Locally all 155 Flutte
 unit/widget tests and analyzer pass. New actual Dart TLS-to-Node-to-Go and Windows
 renderer tests are prepared but await ordinary hosted CI; no Android/iOS rerun or
 release acceptance is implied. Browser visual-review restriction remains open.
+
+Flutter opening-hours functional acceptance: `ccc07c730e6f890bcf6b51388af685c1cf8c7732`,
+[CI37621806474](https://github.com/dukkanai/onlinu/actions/runs/37621806474),
+all four ordinary jobs passed. Logs confirm 155 Flutter tests, 17 actual Windows
+native tests (including schedule review/save), original uncached Go race suites,
+390 platform tests with no skips, and actual Dart fixture-TLS/Node/Go integration.
+Mobile jobs were not requested; no new Android/iOS claim. Retained screenshots
+have not been independently downloaded/visually inspected under the current
+artifact-access restriction. Public status/MCP directory integration remains.
+
+Public opening-status adapter/MCP increment: pinned original-core GET, strict
+consistent response schema and bounded timestamp age (60s past/30s future), with
+published-restaurant checks before and after the read. A read-only MCP tool uses
+the current catalogue auth scope; caller timestamps are rejected. Disabled
+schedules remain explicitly unknown hours, and intake is not a promise of stock,
+coverage or payment availability. Locally 279 platform tests passed, 13 DB cases
+skipped. Actual published-core/MCP integration awaits CI; no bulk open-now search
+filter or broad fan-out was added.

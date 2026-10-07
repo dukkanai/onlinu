@@ -62,6 +62,7 @@ export const coreQuoteSchema = z.object({ currency: z.literal('SAR'), totalMinor
     unitPriceMinor: money, totalMinor: money, options: z.array(option).nullish(),
   })).min(1).max(50),
 });
+export const coreOpeningStatusSchema=z.object({version:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),scheduleEnabled:z.boolean(),withinHours:z.boolean().nullable(),acceptingOrders:z.boolean(),timeZone:z.literal('Asia/Riyadh'),evaluatedAt:z.string().datetime({offset:true})}).strict().refine(value=>value.scheduleEnabled?value.withinHours!==null&&(!value.acceptingOrders||value.withinHours):value.withinHours===null);
 const publicErrors = new Set(['invalid_request', 'invalid_quantity', 'invalid_option', 'phone_required',
   'store_closed', 'mode_unavailable', 'item_unavailable', 'out_of_stock', 'invalid_address',
   'delivery_unavailable', 'delivery_minimum', 'table_unavailable', 'payment_unavailable',
@@ -69,7 +70,7 @@ const publicErrors = new Set(['invalid_request', 'invalid_quantity', 'invalid_op
   'address_required', 'location_required', 'outside_delivery_area', 'delivery_area_unavailable', 'rate_limited']);
 function failure(code, status = 503) { return Object.assign(new Error(code), { code, status }); }
 
-export function createCoreAdapter({ restaurants, fetchImpl = fetch, timeoutMs = 5000, maxBytes = 2_000_000 }) {
+export function createCoreAdapter({ restaurants, fetchImpl = fetch, timeoutMs = 5000, maxBytes = 2_000_000, now = Date.now }) {
   if (!Array.isArray(restaurants) || restaurants.length > 1000
       || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000
       || !Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 4_000_000) throw new Error('invalid_core_configuration');
@@ -122,6 +123,12 @@ export function createCoreAdapter({ restaurants, fetchImpl = fetch, timeoutMs = 
       const term = query.trim().toLocaleLowerCase();
       return [...routes.values()].filter(row => (!term || `${row.name} ${row.cuisine}`.toLocaleLowerCase().includes(term))
         && (!cuisine || row.cuisine === cuisine)).map(({ id, name, cuisine }) => ({ id, name, cuisine }));
+    },
+    async openingStatus(tenantId){
+      const value=await read(tenantId,'/storefront-api/opening-status',coreOpeningStatusSchema);
+      const age=now()-Date.parse(value.evaluatedAt);
+      if(!Number.isFinite(age)||age < -30_000||age > 60_000)throw failure('invalid_restaurant_response',502);
+      return value;
     },
     getMenu: tenantId => read(tenantId, '/storefront-api/catalog', coreCatalogSchema),
     payments: tenantId => read(tenantId, '/storefront-api/payments', z.object({ providers: z.array(z.object({

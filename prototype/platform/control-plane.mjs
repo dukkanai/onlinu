@@ -82,6 +82,13 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       const published = new Map((await directory.published(configured.map(row => row.id))).map(row => [row.id, row]));
       return configured.filter(row => published.has(row.id)).map(row => ({ ...row, name: published.get(row.id).name }));
     },
+    async openingStatus(tenantId){
+      if(!(await directory.published([tenantId])).length)throw problem(404,'restaurant_not_found');
+      const result=await core.openingStatus(tenantId);
+      // Suspension may occur while the bounded core read is in flight.
+      if(!(await directory.published([tenantId])).length)throw problem(404,'restaurant_not_found');
+      return result;
+    },
     async getMenu(tenantId) {
       if (!(await directory.published([tenantId])).length) throw problem(404, 'restaurant_not_found');
       return publicMenuImages(base.origin,tenantId,await core.getMenu(tenantId));
