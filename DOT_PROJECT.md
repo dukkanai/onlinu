@@ -1078,3 +1078,16 @@ are inspected after compilation. No device, release key, mobile login audience,
 store publication or new SDK agreement is configured. Four local guards pass;
 actual scaffold/build remains pending. See
 `prototype/admin_flutter/ANDROID-COMPILE-SMOKE.md`.
+
+
+Android compilation acceptance: `c7ca1bc9c1ba39315f8af0f78a1911e8ca2df7c2`
+passed all five requested jobs in [CI37558220905](https://github.com/dukkanai/onlinu/actions/runs/37558220905),
+verified 2026-10-07 02:10 UTC: Android compile, Windows, server, client and control
+image. Runtime-image was intentionally skipped. The downloaded debug arm64 APK
+is89,727,234 bytes, independently hashed to
+`cbf438982d00ae8ef4d08c38c506233979f09b260bad011c5123500df91b9a3f`;
+its ABI and source-bound report were independently checked. CI decoded and
+validated the built manifest. The reserved control.invalid origin, debug status,
+synthetic package identity and all device/login/distribution limitations above
+remain. This is the first Android compilation checkpoint, not mobile release
+or actual-device acceptance. Latest full Docker-image checkpoint remains dfebcae.
