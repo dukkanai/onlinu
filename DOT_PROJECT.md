@@ -1067,3 +1067,14 @@ The composed-driver-specific tests use real coordinator/compiler/stager/manifest
 components with explicitly synthetic external capabilities and a mock journal.
 This remains component assembly acceptance, not an actual production-host apply.
 Runtime-image was intentionally skipped; latest full-image remains dfebcae.
+
+## Opt-in Android compile smoke — 2026-10-07, CI pending
+
+The existing Dart client gains a manual, isolated standard-Linux Android build
+check generated from official checksum-pinned Flutter templates. It preserves
+Windows sources and the reviewed dependency lock. Only an arm64 debug APK using
+control.invalid may be retained; manifest backup/cleartext/debug/package and ABI
+are inspected after compilation. No device, release key, mobile login audience,
+store publication or new SDK agreement is configured. Four local guards pass;
+actual scaffold/build remains pending. See
+`prototype/admin_flutter/ANDROID-COMPILE-SMOKE.md`.
