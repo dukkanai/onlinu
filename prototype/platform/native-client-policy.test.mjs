@@ -67,7 +67,7 @@ test('mobile schemes derive only from canonical public-shaped HTTPS DNS origins'
   }
 });
 
-test('policy preparation does not enable mobile authorization in the existing broker', async () => {
+test('mobile authorization stays disabled by default in the broker', async () => {
   let queries = 0;
   const auth = createAuth({pool:{query(){queries++;}}, baseUrl:'https://platform.example/native',
     profile:'native_staff', csrfKey:Buffer.alloc(32,1).toString('base64'),
@@ -76,4 +76,28 @@ test('policy preparation does not enable mobile authorization in the existing br
     await assert.rejects(auth.validateAuthorization({client_id}), {code:'invalid_client_metadata'});
   }
   assert.equal(queries, 0, 'Mobile clients are rejected before database access');
+});
+
+test('enabled broker checks stored registration and client-bound mobile redirect before grants', async () => {
+  const redirects = mobileRedirects('https://platform.example');
+  const pool = {async query(sql, values) {
+    assert.match(sql, /SELECT redirect_uris/);
+    return {rows:[{redirect_uris:[values[0] === IOS_CLIENT_ID ? redirects.ios : redirects.android]}]};
+  }};
+  const config = {pool,baseUrl:'https://platform.example/native',profile:'native_staff',
+    csrfKey:Buffer.alloc(32,1).toString('base64'),allowSyntheticAuthorization:false,
+    principalResolver:async()=>null};
+  for (const nativeMobileEnabled of ['true',1,null]) {
+    assert.throws(() => createAuth({...config,nativeMobileEnabled}), /invalid_native_mobile_configuration/);
+  }
+  assert.throws(() => createAuth({...config,profile:'customer',nativeMobileEnabled:true}), /invalid_native_mobile_configuration/);
+  const auth = createAuth({...config,nativeMobileEnabled:true});
+  const input = {client_id:IOS_CLIENT_ID,redirect_uri:redirects.ios,
+    resource:'https://platform.example/native/api',response_type:'code',scope:'staff:access',
+    state:'synthetic-state',code_challenge_method:'S256',code_challenge:'a'.repeat(43)};
+  assert.deepEqual(await auth.validateAuthorization(input), {scopes:['staff:access']});
+  for (const redirect_uri of [redirects.android,redirects.ios+'?extra=1']) {
+    await assert.rejects(auth.validateAuthorization({...input,redirect_uri}), {code:'invalid_redirect_uri'});
+  }
+  await assert.rejects(auth.validateAuthorization({...input,client_id:ANDROID_CLIENT_ID}), {code:'invalid_redirect_uri'});
 });

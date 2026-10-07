@@ -1,4 +1,6 @@
-import {createAuth,NATIVE_CLIENT_ID,NATIVE_SCOPE,problem} from './auth.mjs';
+import {createAuth,NATIVE_SCOPE,problem} from './auth.mjs';
+
+import {nativeClientPolicy} from './native-client-policy.mjs';
 
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const page=(title,body)=>`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)}</title><h1>${escape(title)}</h1>${body}</html>`;
@@ -8,9 +10,10 @@ function grantInput(entries){
  if(new Set(entries.map(([key])=>key)).size!==entries.length||entries.some(([key,value])=>!grantFields.includes(key)||typeof value!=='string'))throw problem(400,'invalid_authorization_request');
  return Object.fromEntries(entries);
 }
-export async function createNativeStaff({pool,baseUrl,csrfKey,directory,browserAuth,staffApi,body,json,htmlHeaders,redirect}){
+export async function createNativeStaff({pool,baseUrl,csrfKey,directory,browserAuth,staffApi,body,json,htmlHeaders,redirect,nativeMobileEnabled=false}){
  const issuer=baseUrl+'/native';
- const auth=createAuth({pool,baseUrl:issuer,profile:'native_staff',csrfKey,allowSyntheticAuthorization:false,
+ const clients=nativeClientPolicy({origin:baseUrl,mobileEnabled:nativeMobileEnabled});
+ const auth=createAuth({pool,baseUrl:issuer,profile:'native_staff',csrfKey,allowSyntheticAuthorization:false,nativeMobileEnabled,
   principalResolver:async id=>{const who=await directory.resolve(id);return who?.memberships.length?who:null;}});
  await auth.init();
  async function browser(req){
@@ -18,7 +21,9 @@ export async function createNativeStaff({pool,baseUrl,csrfKey,directory,browserA
   const who=await browserAuth.authenticate(req,{cookieOnly:true});if(!who)throw problem(401,'authentication_required');return who;
  }
  function consentHeaders(res,input){
-  res.setHeader('content-security-policy',`default-src 'none'; form-action 'self' ${new URL(input.redirect_uri).origin}; frame-ancestors 'none'; base-uri 'none'`);
+  const callback=new URL(input.redirect_uri);
+  const target=callback.protocol==='http:'?callback.origin:callback.protocol;
+  res.setHeader('content-security-policy',`default-src 'none'; form-action 'self' ${target}; frame-ancestors 'none'; base-uri 'none'`);
  }
  async function handle(req,res,url){
   const path=url.pathname;
@@ -40,7 +45,7 @@ export async function createNativeStaff({pool,baseUrl,csrfKey,directory,browserA
   if(req.method==='POST'&&['/native/oauth/token','/native/oauth/revoke'].includes(path)){
    if(req.headers.cookie||req.headers.authorization||req.headers.origin)throw problem(403,'native_client_required');
    if(url.search)throw problem(400,'invalid_request');
-   const input=await body(req);if(input.client_id!==NATIVE_CLIENT_ID)throw problem(400,'invalid_client_metadata');
+   const input=await body(req);if(!clients.get(input.client_id))throw problem(400,'invalid_client_metadata');
    if(path.endsWith('/token'))return json(res,200,await auth.exchange(input));
    await auth.revoke(input.token);return json(res,200,{});
   }
@@ -53,7 +58,7 @@ export async function createNativeStaff({pool,baseUrl,csrfKey,directory,browserA
    const hidden=Object.entries(input).map(([key,value])=>`<input type="hidden" name="${key}" value="${escape(value)}">`).join('');
    const memberships=who.memberships.map(row=>`<li>${escape(row.tenantId)}: ${escape(roleLabel[row.role]??row.role)}</li>`).join('');
    consentHeaders(res,input);htmlHeaders(res);
-   res.end(page('ربط تطبيق إدارة Onlinu',`<p>وافق فقط إذا بدأت الدخول من نسختك الموثوقة من تطبيق Windows. سيعود المتصفح إلى التطبيق على جهازك.</p><p>يتيح الربط وظائف الإدارة وفق صلاحياتك الحالية في المطاعم أدناه، لمدة أقصاها 8 ساعات. لا يمنح صلاحيات إضافية؛ يمكنك إبطاله من صفحة جلسات التطبيق.</p><ul>${memberships}</ul><form method="post" action="/native/oauth/authorize">${hidden}<input type="hidden" name="csrf" value="${escape(browserAuth.csrfToken(req))}"><button name="approve" value="yes">ربط تطبيق الإدارة</button><button name="approve" value="no">إلغاء الربط</button></form>`));return;
+   res.end(page('ربط تطبيق إدارة Onlinu',`<p>وافق فقط إذا بدأت الدخول من نسختك الموثوقة من تطبيق ${escape(clients.get(input.client_id).label)}. سيعود المتصفح إلى التطبيق على جهازك.</p><p>يتيح الربط وظائف الإدارة وفق صلاحياتك الحالية في المطاعم أدناه، لمدة أقصاها 8 ساعات. لا يمنح صلاحيات إضافية؛ يمكنك إبطاله من صفحة جلسات التطبيق.</p><ul>${memberships}</ul><form method="post" action="/native/oauth/authorize">${hidden}<input type="hidden" name="csrf" value="${escape(browserAuth.csrfToken(req))}"><button name="approve" value="yes">ربط تطبيق الإدارة</button><button name="approve" value="no">إلغاء الربط</button></form>`));return;
   }
   if(path==='/native/oauth/authorize'&&req.method==='POST'){
    if(req.headers.origin!==baseUrl||url.search)throw problem(403,'origin_required');

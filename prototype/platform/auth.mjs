@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { WINDOWS_CLIENT_ID, WINDOWS_REDIRECT_TEMPLATE, windowsRedirectAllowed } from './native-client-policy.mjs';
+import { WINDOWS_CLIENT_ID, WINDOWS_REDIRECT_TEMPLATE, nativeClientPolicy } from './native-client-policy.mjs';
 
 export const NATIVE_CLIENT_ID=WINDOWS_CLIENT_ID;
 export const NATIVE_SCOPE='staff:access';
@@ -32,10 +32,12 @@ export function verifyPkce(verifier, challenge) {
 // separately verified OIDC provider. This broker authorizes synthetic data only.
 export function createAuth({ pool, baseUrl, redirectAllowlist = [],
   cookieName = 'prototype_session', allowSyntheticAuthorization = true, csrfKey, principalResolver,
-  onRegistrationRejected = () => {}, onGrantRevoked = async () => {}, profile='customer' }) {
+  onRegistrationRejected = () => {}, onGrantRevoked = async () => {}, profile='customer', nativeMobileEnabled=false }) {
   if(!['customer','native_staff'].includes(profile))throw new Error('invalid_auth_profile');
   const native=profile==='native_staff';
+  if(typeof nativeMobileEnabled!=='boolean'||(!native&&nativeMobileEnabled))throw new Error('invalid_native_mobile_configuration');
   if(native&&(allowSyntheticAuthorization||typeof principalResolver!=='function'||new URL(baseUrl).protocol!=='https:'||baseUrl!==new URL(baseUrl).origin+'/native'||redirectAllowlist.length))throw new Error('invalid_native_auth_configuration');
+  const nativeClients=native?nativeClientPolicy({origin:new URL(baseUrl).origin,mobileEnabled:nativeMobileEnabled}):null;
   const supportedScopes=Object.freeze(native?[NATIVE_SCOPE]:[...CUSTOMER_SCOPES]);
   const accessSeconds=native?900:1800,familySeconds=native?8*3600:7*86400,refreshSeconds=native?8*3600:86400;
   if (principalResolver !== undefined && (typeof principalResolver !== 'function' || allowSyntheticAuthorization)) throw new Error('persistent_identity_requires_verified_login');
@@ -45,11 +47,11 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
   if (typeof onGrantRevoked !== 'function') throw new Error('invalid_grant_reporter');
   const resource = `${baseUrl}/${native?'api':'mcp'}`;
   const allowedRedirects = new Set(native?[nativeRedirectTemplate]:redirectAllowlist);
-  function redirectAllowed(value){
+  function redirectAllowed(value,clientId){
     if(!native)return allowedRedirects.has(value);
-    return windowsRedirectAllowed(value);
+    return nativeClients.redirectAllowed(clientId,value);
   }
-  const registeredRedirect=(uris,value)=>redirectAllowed(value)&&uris.includes(native?nativeRedirectTemplate:value);
+  const registeredRedirect=(uris,value,clientId)=>redirectAllowed(value,clientId)&&uris.includes(native?nativeClients.get(clientId)?.redirect:value);
   const metadata = {
     issuer: baseUrl,
     authorization_endpoint: `${baseUrl}/oauth/authorize`,
@@ -92,9 +94,11 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
       ALTER TABLE demo_sessions ADD COLUMN IF NOT EXISTS oauth_family_id TEXT REFERENCES demo_oauth_grants(id);
     `);
     if(native){
-      await pool.query('INSERT INTO demo_oauth_clients(id,redirect_uris,grant_types) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[NATIVE_CLIENT_ID,JSON.stringify([nativeRedirectTemplate]),JSON.stringify(['authorization_code','refresh_token'])]);
-      const {rows}=await pool.query('SELECT redirect_uris,grant_types FROM demo_oauth_clients WHERE id=$1',[NATIVE_CLIENT_ID]);
-      if(JSON.stringify(rows[0]?.redirect_uris)!==JSON.stringify([nativeRedirectTemplate])||JSON.stringify(rows[0]?.grant_types)!==JSON.stringify(['authorization_code','refresh_token']))throw new Error('native_client_registration_mismatch');
+      for(const registered of nativeClients.registrations){
+        await pool.query('INSERT INTO demo_oauth_clients(id,redirect_uris,grant_types) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[registered.id,JSON.stringify([registered.redirect]),JSON.stringify(['authorization_code','refresh_token'])]);
+        const {rows}=await pool.query('SELECT redirect_uris,grant_types FROM demo_oauth_clients WHERE id=$1',[registered.id]);
+        if(JSON.stringify(rows[0]?.redirect_uris)!==JSON.stringify([registered.redirect])||JSON.stringify(rows[0]?.grant_types)!==JSON.stringify(['authorization_code','refresh_token']))throw new Error('native_client_registration_mismatch');
+      }
     }
     for (const id of principalResolver ? [] : Object.keys(FIXTURES)) {
       await pool.query('INSERT INTO demo_identities(id) VALUES($1) ON CONFLICT DO NOTHING', [id]);
@@ -155,10 +159,11 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
       token = browserToken(req);
     }
     if (!token) return null;
-    const { rows } = await pool.query(`SELECT s.principal_id,s.scopes,s.session_kind,s.expires_at,g.expires_at AS grant_expires_at FROM demo_sessions s
+    const { rows } = await pool.query(`SELECT s.principal_id,s.scopes,s.session_kind,s.expires_at,g.expires_at AS grant_expires_at,g.client_id AS grant_client_id FROM demo_sessions s
       LEFT JOIN demo_oauth_grants g ON g.id=s.oauth_family_id
       WHERE s.token_hash=$1 AND s.issuer=$2 AND s.audience=$3 AND s.expires_at>now()
       AND (s.oauth_family_id IS NULL OR (g.revoked=FALSE AND g.expires_at>now()))`, [hash(token), baseUrl, resource]);
+    if(native&&rows[0]&&!nativeClients.get(rows[0].grant_client_id))return null;
     if((cookieOnly || !authorization) && rows[0]?.session_kind!=='browser')return null;
     if(!allowSyntheticAuthorization && authorization && !cookieOnly && rows[0]?.session_kind!=='oauth')return null;
     const identity=rows[0]?await principal(rows[0].principal_id,rows[0].scopes):null;
@@ -196,9 +201,9 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
       token_endpoint_auth_method: 'none', grant_types: grants, response_types: ['code'] };
   }
   async function validateAuthorization(input) {
-    if(native&&input.client_id!==NATIVE_CLIENT_ID)throw problem(400,'invalid_client_metadata');
+    if(native&&!nativeClients.get(input.client_id))throw problem(400,'invalid_client_metadata');
     const { rows } = await pool.query('SELECT redirect_uris FROM demo_oauth_clients WHERE id=$1', [input.client_id ?? '']);
-    if (!rows[0] || !registeredRedirect(rows[0].redirect_uris,input.redirect_uri)) {
+    if (!rows[0] || !registeredRedirect(rows[0].redirect_uris,input.redirect_uri,input.client_id)) {
       throw problem(400, 'invalid_redirect_uri');
     }
     if (input.resource !== resource || input.response_type !== 'code' || input.code_challenge_method !== 'S256'
@@ -229,7 +234,7 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
   }
   async function exchange(input) {
     if (input.grant_type === 'refresh_token') return refresh(input);
-    if (input.grant_type !== 'authorization_code' || input.resource !== resource || typeof input.code !== 'string'||(native&&input.client_id!==NATIVE_CLIENT_ID)) {
+    if (input.grant_type !== 'authorization_code' || input.resource !== resource || typeof input.code !== 'string'||(native&&!nativeClients.get(input.client_id))) {
       throw problem(400, 'invalid_grant');
     }
     const client = await pool.connect();
@@ -240,7 +245,7 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
         WHERE code.code_hash=$1 AND code.expires_at>now() FOR UPDATE OF code`, [hash(input.code)]);
       const row = rows[0];
       if (!row || row.client_id !== input.client_id || row.redirect_uri !== input.redirect_uri
-        || row.resource !== input.resource || !redirectAllowed(input.redirect_uri)
+        || row.resource !== input.resource || !redirectAllowed(input.redirect_uri,input.client_id)
         || !verifyPkce(input.code_verifier, row.challenge)) throw problem(400, 'invalid_grant');
       // Code consumption, access-token minting and optional refresh family are
       // atomic. A committed authorization code can never be exchanged twice.
@@ -283,7 +288,7 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
   }
 
   async function refresh(input) {
-    if (input.resource!==resource || typeof input.client_id!=='string' || input.client_id.length>128 || typeof input.refresh_token!=='string'
+    if ((native&&!nativeClients.get(input.client_id)) || input.resource!==resource || typeof input.client_id!=='string' || input.client_id.length>128 || typeof input.refresh_token!=='string'
       || !/^[A-Za-z0-9_-]{43}$/.test(input.refresh_token ?? '')) throw problem(400,'invalid_grant');
     const client = await pool.connect();
     let committed = false;

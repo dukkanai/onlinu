@@ -14,6 +14,9 @@ test('control deployment configuration fails closed and supports secret files',a
     OIDC_ISSUER:'https://identity.example/',OIDC_CLIENT_ID:'test',OIDC_CLIENT_SECRET_FILE:secret};
   const config=controlConfiguration(env);assert.equal(config.oidc.clientSecret,'synthetic-parser-secret');
   assert.equal(config.provisioningReadEnabled,false);
+  assert.equal(config.nativeMobileEnabled,false);
+  assert.equal(controlConfiguration({...env,CORE_NATIVE_STAFF_ENABLED:'true',CORE_NATIVE_MOBILE_ENABLED:'true'}).nativeMobileEnabled,true);
+  for(const change of [{CORE_NATIVE_MOBILE_ENABLED:'true'},{CORE_NATIVE_MOBILE_ENABLED:'yes'}])assert.throws(()=>controlConfiguration({...env,...change}));
   assert.equal(controlConfiguration({...env,CORE_PROVISIONING_READ_ENABLED:'true'}).provisioningReadEnabled,true);
   assert.throws(()=>controlConfiguration({...env,CORE_PROVISIONING_READ_ENABLED:'yes'}));
   assert.equal(config.bind,'127.0.0.1');assert.equal(config.port,18789);assert.deepEqual(config.restaurants,[]);

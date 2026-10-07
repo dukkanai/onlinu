@@ -1,3 +1,4 @@
+import {ANDROID_CLIENT_ID,IOS_CLIENT_ID,mobileRedirects} from './native-client-policy.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomBytes,generateKeyPairSync} from 'node:crypto';
@@ -6,14 +7,14 @@ import pg from 'pg';
 import {createControlPlane} from './control-plane.mjs';
 import {NATIVE_CLIENT_ID,NATIVE_SCOPE,pkceChallenge} from './auth.mjs';
 
-test('native HTTP consent, audience isolation, membership limits and own-device revocation',{skip:!process.env.IDENTITY_TEST_DATABASE_URL},async t=>{
+for(const nativeMobileEnabled of [false,true])test(`native HTTP consent, audience isolation, membership limits and own-device revocation (mobile=${nativeMobileEnabled})`,{skip:!process.env.IDENTITY_TEST_DATABASE_URL},async t=>{
  const url=new URL(process.env.IDENTITY_TEST_DATABASE_URL);assert.equal(url.pathname,'/astracalls_identity_test');assert.equal(url.searchParams.has('dbname'),false);
  const schema='native_http_'+randomBytes(8).toString('hex'),admin=new pg.Pool({connectionString:url.href});await admin.query(`CREATE SCHEMA ${schema}`);
  const pool=new pg.Pool({connectionString:url.href,options:`-c search_path=${schema}`,max:12}),base='https://platform.example',issuer='https://identity.example/';
  let server;
  t.after(async()=>{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await pool.end();await admin.query(`DROP SCHEMA ${schema} CASCADE`);await admin.end();});
  const {privateKey}=generateKeyPairSync('ed25519');
- const app=await createControlPlane({pool,baseUrl:base,csrfKey:randomBytes(32).toString('base64'),serviceSigningKey:privateKey,nativeStaffEnabled:true,trustedProxyCidrs:['127.0.0.1/32'],
+ const app=await createControlPlane({pool,baseUrl:base,csrfKey:randomBytes(32).toString('base64'),serviceSigningKey:privateKey,nativeStaffEnabled:true,nativeMobileEnabled,trustedProxyCidrs:['127.0.0.1/32'],
   oidc:{issuer,clientId:'test',clientSecret:'synthetic-secret-never-production'},restaurants:[{id:'a',name:'A',cuisine:'saudi',baseUrl:'http://127.0.0.1:9'},{id:'b',name:'B',cuisine:'saudi',baseUrl:'http://127.0.0.1:10'}]},
   {oidcClientAdapter:{async authorizationUrl(){return issuer+'authorize';},async exchange(){throw Error('unused');}}});
  server=createServer(app.handle);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const local='http://127.0.0.1:'+server.address().port;
@@ -44,6 +45,27 @@ test('native HTTP consent, audience isolation, membership limits and own-device 
   const consent=await send(path,{who:alice});assert.equal(consent.status,200);assert.match(consent.data,/ربط تطبيق الإدارة/);assert.match(consent.headers['content-security-policy'],/http:\/\/127\.0\.0\.1:43123/);
   assert.equal((await send('/native/oauth/authorize',{method:'POST',who:alice,body:{...grant,csrf:'bad',approve:'yes'}})).status,403);
   const denied=await send('/native/oauth/authorize',{method:'POST',who:alice,body:{...grant,csrf:alice.csrf,approve:'no'}});assert.equal(denied.status,303);assert.equal(new URL(denied.headers.location).searchParams.get('error'),'access_denied');
+ });
+ await t.test('mobile HTTP consent and token exchange require opt-in and exact platform',async()=>{
+  const redirects=mobileRedirects(base);
+  for(const [clientId,platform,redirectUri] of [[ANDROID_CLIENT_ID,'Android',redirects.android],[IOS_CLIENT_ID,'iOS',redirects.ios]]){
+   const {grant,verifier}=input();Object.assign(grant,{client_id:clientId,redirect_uri:redirectUri});
+   const path='/native/oauth/authorize?'+new URLSearchParams(grant),consent=await send(path,{who:alice});
+   if(!nativeMobileEnabled){assert.equal(consent.status,400);continue;}
+   assert.equal(consent.status,200);assert.ok(consent.data.includes('تطبيق '+platform));
+   assert.ok(consent.headers['content-security-policy'].includes(new URL(redirectUri).protocol));
+   assert.equal(consent.headers['content-security-policy'].includes(' null'),false);
+   const denied=await send('/native/oauth/authorize',{method:'POST',who:alice,body:{...grant,csrf:alice.csrf,approve:'no'}});
+   assert.equal(denied.status,303);assert.equal(new URL(denied.headers.location).searchParams.get('error'),'access_denied');
+   const approval=await send('/native/oauth/authorize',{method:'POST',who:alice,body:{...grant,csrf:alice.csrf,approve:'yes'}});assert.equal(approval.status,303);
+   const callback=new URL(approval.headers.location);assert.equal(callback.searchParams.get('state'),grant.state);assert.equal(callback.searchParams.get('iss'),base+'/native');
+   const tokenInput={grant_type:'authorization_code',client_id:clientId,redirect_uri:redirectUri,resource:grant.resource,code:callback.searchParams.get('code'),code_verifier:verifier};
+   assert.equal((await send('/native/oauth/token',{method:'POST',body:{...tokenInput,client_id:NATIVE_CLIENT_ID}})).status,400);
+   const token=await send('/native/oauth/token',{method:'POST',body:tokenInput});assert.equal(token.status,200);
+   assert.equal((await send('/native/api/me',{token:token.data.access_token})).status,200);
+   assert.equal((await send('/native/oauth/revoke',{method:'POST',body:{client_id:clientId,token:token.data.refresh_token}})).status,200);
+   assert.equal((await send('/native/api/me',{token:token.data.access_token})).status,401);
+  }
  });
  const pending=await authorize(alice);
  await t.test('native token exchange excludes ambient browser credentials and is single-use',async()=>{

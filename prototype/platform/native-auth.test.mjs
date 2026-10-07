@@ -4,6 +4,7 @@ import {randomBytes} from 'node:crypto';
 import pg from 'pg';
 import {createAuth,NATIVE_CLIENT_ID,NATIVE_SCOPE,pkceChallenge,hash} from './auth.mjs';
 import {createIdentityDirectory} from './identity-directory.mjs';
+import {ANDROID_CLIENT_ID,IOS_CLIENT_ID,mobileRedirects} from './native-client-policy.mjs';
 
 test('native profile refuses fixture identity and exposes only bounded loopback PKCE metadata',async()=>{
  const config={pool:{query(){}},baseUrl:'https://platform.example/native',profile:'native_staff',csrfKey:randomBytes(32).toString('base64')};
@@ -70,6 +71,34 @@ test('native PKCE grants, rotating refresh and customer-audience isolation on Po
   await assert.rejects(native.revokeNativeGrant(owner.id,otherGrant.id),{code:'not_found'});
   await native.revokeNativeGrant(owner.id,'all');assert.equal(await who(native,own.access_token),null);assert.ok(await who(native,other.access_token));
   await native.revokeNativeGrant(otherStaff.id,otherGrant.id);assert.equal(await who(native,other.access_token),null);
+ });
+ await t.test('opt-in mobile grants bind client and callback; disabled mobile cannot authenticate or refresh',async()=>{
+  const mobile=createAuth({pool,baseUrl:base+'/native',profile:'native_staff',csrfKey,allowSyntheticAuthorization:false,principalResolver:resolveStaff,nativeMobileEnabled:true});
+  await mobile.init();await mobile.init();
+  const redirects=mobileRedirects(base);
+  for(const [clientId,callbackUri] of [[ANDROID_CLIENT_ID,redirects.android],[IOS_CLIENT_ID,redirects.ios]]){
+   const {input,verifier}=prepare();const request={...input,client_id:clientId,redirect_uri:callbackUri};
+   for(const wrong of [redirect,callbackUri+'?x=1',callbackUri+'#x',callbackUri.replace(':/','://'),clientId===IOS_CLIENT_ID?redirects.android:redirects.ios]){
+    await assert.rejects(mobile.validateAuthorization({...request,redirect_uri:wrong}),{code:'invalid_redirect_uri'});
+   }
+   await assert.rejects(native.validateAuthorization(request),{code:'invalid_client_metadata'});
+   const callback=new URL(await mobile.authorize(request,owner));
+   assert.equal(callback.searchParams.get('state'),input.state);assert.equal(callback.searchParams.get('iss'),base+'/native');
+   const exchange={grant_type:'authorization_code',client_id:clientId,redirect_uri:callbackUri,resource,code:callback.searchParams.get('code'),code_verifier:verifier};
+   await assert.rejects(native.exchange(exchange),{code:'invalid_grant'});
+   await assert.rejects(mobile.exchange({...exchange,client_id:NATIVE_CLIENT_ID}),{code:'invalid_grant'});
+   await assert.rejects(mobile.exchange({...exchange,redirect_uri:callbackUri+'/'}),{code:'invalid_grant'});
+   const session=await mobile.exchange(exchange);assert.ok(await who(mobile,session.access_token));
+   assert.equal(await who(native,session.access_token),null);assert.equal(await who(customer,session.access_token),null);
+   const refreshInput={grant_type:'refresh_token',client_id:clientId,resource,refresh_token:session.refresh_token};
+   await assert.rejects(native.exchange(refreshInput),{code:'invalid_grant'});
+   await assert.rejects(mobile.exchange({...refreshInput,client_id:NATIVE_CLIENT_ID}),{code:'invalid_grant'});
+   const rotated=await mobile.exchange(refreshInput);assert.ok(await who(mobile,rotated.access_token));
+   await mobile.revoke(rotated.refresh_token);assert.equal(await who(mobile,rotated.access_token),null);
+  }
+  await pool.query('UPDATE demo_oauth_clients SET redirect_uris=$2 WHERE id=$1',[IOS_CLIENT_ID,JSON.stringify(['evil:/oauth/callback'])]);
+  await assert.rejects(mobile.init(),/native_client_registration_mismatch/);
+  await pool.query('UPDATE demo_oauth_clients SET redirect_uris=$2 WHERE id=$1',[IOS_CLIENT_ID,JSON.stringify([redirects.ios])]);
  });
  await t.test('live identity/membership resolution still controls every native request',async()=>{
   const session=await grant();await pool.query('UPDATE platform_memberships SET enabled=FALSE WHERE tenant_id=$1 AND principal_id=$2',['a',owner.id]);

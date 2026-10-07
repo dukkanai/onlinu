@@ -1,3 +1,4 @@
+import {nativeClientPolicy} from './native-client-policy.mjs';
 import { createProvisioningJournal } from './provisioning-journal.mjs';
 import { provisioningQuery, provisioningQueuePage } from './provisioning-pages.mjs';
 import {createRequestLimiter} from './request-limits.mjs';
@@ -51,9 +52,11 @@ async function body(req,maxBytes=32768) {
   return parsed;
 }
 
-export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey, eventsEncryptionKey, nativeStaffEnabled=false, provisioningReadEnabled=false, trustedProxyCidrs=[] }, { oidcClientAdapter, webhookFetch } = {}) {
+export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaurants = [], redirectAllowlist = [], serviceSigningKey, eventsEncryptionKey, nativeStaffEnabled=false, nativeMobileEnabled=false, provisioningReadEnabled=false, trustedProxyCidrs=[] }, { oidcClientAdapter, webhookFetch } = {}) {
   if(typeof provisioningReadEnabled!=='boolean')throw new Error('invalid_provisioning_read_configuration');
   if(typeof nativeStaffEnabled!=='boolean')throw new Error('invalid_native_staff_configuration');
+  if(typeof nativeMobileEnabled!=='boolean'||(nativeMobileEnabled&&!nativeStaffEnabled))throw new Error('invalid_native_mobile_configuration');
+  if(nativeMobileEnabled)nativeClientPolicy({origin:baseUrl,mobileEnabled:true});
   const rate = createRequestLimiter({trustedProxyCidrs});
   const base = new URL(baseUrl);
   if (base.protocol !== 'https:' || base.pathname !== '/' || base.username || base.password || base.search || base.hash) throw new Error('control_plane_requires_https_origin');
@@ -107,7 +110,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
   const mcp = createMcpHandler({ baseUrl: base.origin, authenticate: req => auth.authenticate(req, { bearerOnly: true }), coreAdapter: publicCore, coreCheckouts: checkouts,events });
   const staffApi=createStaffApi({directory,orderClient,body,json,uploadSlots:uploads});
   if(nativeStaffEnabled&&!orderClient)throw new Error('native_staff_requires_core_signing');
-  const nativeStaff=nativeStaffEnabled?await createNativeStaff({pool,baseUrl:base.origin,csrfKey,directory,browserAuth:auth,staffApi,body,json,htmlHeaders,redirect}):null;
+  const nativeStaff=nativeStaffEnabled?await createNativeStaff({pool,baseUrl:base.origin,csrfKey,nativeMobileEnabled,directory,browserAuth:auth,staffApi,body,json,htmlHeaders,redirect}):null;
   async function browser(req) {
     // Customer OAuth grants never confer staff/control-plane privileges.
     if (req.headers.authorization) throw problem(403, 'browser_session_required');

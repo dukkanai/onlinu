@@ -1,14 +1,23 @@
 # Mobile authentication preparation
 
-The running native broker still accepts only the Windows public client. Mobile
-login is **not enabled or accepted** by this increment. No mobile configuration
-flag, client registration, browser handoff, deep-link handler or credential is
-created by the new pure policy module.
+The broker accepts only the Windows public client by default. The new
+`CORE_NATIVE_MOBILE_ENABLED=true` flag additionally requires
+`CORE_NATIVE_STAFF_ENABLED=true`. No deployed environment has been changed.
+This server-side preparation is **not end-to-end mobile login acceptance**;
+Flutter handoff and native deep-link integration remain incomplete.
 
 `native-client-policy.mjs` now owns the unchanged Windows identifier, loopback
 template and strict non-privileged-port check used by `auth.mjs`. Its separate
-opt-in policy constructor prepares two distinct public client identifiers and
-exact private-use callbacks for Android and iOS. It is not wired into the broker.
+opt-in policy constructor defines two distinct public client identifiers and
+exact private-use callbacks for Android and iOS. The broker registers only
+enabled clients and refuses to overwrite mismatched existing registrations.
+Codes and refresh grants remain bound to the exact client and resource. Turning
+the mobile flag off prevents mobile authorization, exchange, refresh and bearer
+authentication, even when an unexpired mobile grant remains stored. Disabling
+does not delete or permanently revoke grants: re-enabling can restore unexpired
+access; the browser-owned sessions page can explicitly revoke those grants.
+Native token revocation also requires an enabled client; browser-owned
+revocation remains available independently of the mobile flag.
 
 Mobile callbacks derive from a trusted canonical HTTPS DNS origin, with the
 hostname reversed, and the platform appended. For the synthetic origin
@@ -23,18 +32,20 @@ mobile callback registrations. Existing Windows loopback behavior is unchanged.
 
 ## Remaining integration gates
 
-- Explicit default-off server activation and verified fixed client registrations.
-- Client-bound exact callbacks at authorization and exchange; disabled-client
-  handling for refresh and existing grants; preserve customer/native isolation.
-- Consent page client labels and CSP that correctly handles private-use schemes.
+- Run the new actual PostgreSQL and HTTP tests in CI for opt-in registration,
+  client/callback binding, disabled-client access, refresh, revocation and CSP.
+  Local unit tests do not substitute for those checks.
 - External system browser, PKCE S256, state and issuer checks, active-attempt-only
   callbacks, cancellation, duplicate callbacks and timeout handling in Flutter.
 - Platform-specific secure storage binding, native deep-link configuration and
   synthetic end-to-end Android/iOS tests, including interrupted/repeated flows.
 - Physical-device, domain ownership, final package identity and release review.
 
+Consent names the selected platform; its form-action CSP uses the validated
+private-use scheme rather than the URL parser's null origin. Actual operating-
+system browser handoff and its CSP behavior still need device integration tests.
 No embedded webview, real identity-provider configuration, store account, signing
-identity, DNS change or production access is authorized or performed here.
+identity, DNS change or production access is performed here.
 
 Run `node --test native-client-policy.test.mjs native-auth.test.mjs` from this
 directory. The PostgreSQL native grant test requires the documented disposable
