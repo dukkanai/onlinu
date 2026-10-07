@@ -300,11 +300,13 @@ function Quantity({
 function ItemDialog({
   item,
   currency,
+  acceptingOrders,
   onClose,
   onAdd,
 }: {
   item: MenuItem;
   currency: string;
+  acceptingOrders: boolean;
   onClose: () => void;
   onAdd: (line: OrderLineInput) => void;
 }) {
@@ -353,7 +355,9 @@ function ItemDialog({
         />
         <button
           className="rs-button"
+          disabled={!acceptingOrders || !item.available}
           onClick={() => {
+            if (!acceptingOrders || !item.available) return;
             onAdd({ itemId: item.id, quantity, optionIds: options });
             onClose();
           }}
@@ -667,8 +671,10 @@ function MenuPage({
         <ItemDialog
           item={selected}
           currency={catalog.settings.currency}
+          acceptingOrders={catalog.settings.acceptingOrders}
           onClose={() => setSelected(null)}
           onAdd={(line) => {
+            if (!catalog.settings.acceptingOrders) return;
             setCart((old) => normalizeCart([...old, line], catalog));
             setAdded(true);
           }}

@@ -53,6 +53,10 @@ try{
   await dialog.getByRole('button',{name:'Close',exact:true}).click();
   mode='error';await page.reload();await page.getByText(unknown,{exact:true}).waitFor();
   assert.equal(await page.getByText(closed,{exact:true}).count(),0,'unknown must not be called closed');
+  await page.getByRole('button',{name:'Synthetic rice',exact:true}).click();
+  dialog=page.getByRole('dialog',{name:'Synthetic rice',exact:true});
+  assert.equal(await dialog.getByRole('button',{name:/^Add to order/}).isDisabled(),true,template+' must block adding while acceptance is unknown');
+  await dialog.getByRole('button',{name:'Close',exact:true}).click();
   mode='open';await page.getByRole('button',{name:'Try again',exact:true}).click();await page.getByText(unknown,{exact:true}).waitFor({state:'hidden'});
   await page.getByRole('button',{name:'Synthetic rice',exact:true}).click();dialog=page.getByRole('dialog',{name:'Synthetic rice',exact:true});
   assert.equal(await dialog.getByRole('button',{name:/^Add to order/}).isEnabled(),true);
