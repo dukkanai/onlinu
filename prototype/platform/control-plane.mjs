@@ -1,3 +1,5 @@
+import {staffOpeningPage} from './opening-pages.mjs';
+import {openingForm} from './opening-schedule.mjs';
 import {nativeClientPolicy} from './native-client-policy.mjs';
 import { createProvisioningJournal } from './provisioning-journal.mjs';
 import { provisioningQuery, provisioningQueuePage } from './provisioning-pages.mjs';
@@ -453,6 +455,21 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         if(stage==='review'){const data=await orderClient.tax(tenantId,who.id);if(data.version!==expectedVersion)throw problem(409,'catalog_changed');htmlHeaders(res);res.end(staffTaxPage({tenantId,data,csrf:auth.csrfToken(req),canUpdate:true,review:command}));return;}
         if(input.reviewed!=='yes')throw problem(400,'invalid_request');
         try{await orderClient.patchTax(tenantId,who.id,command);}catch(error){if(error.code==='order_outcome_unknown'||error.status>=500)return redirect(res,path+'?outcome=unknown',303);throw error;}
+        return redirect(res,path,303);
+      }
+      const managementOpening=/^\/manage\/([a-z0-9-]{1,64})\/opening-schedule(?:\/(review|execute))?$/.exec(url.pathname);
+      if(managementOpening&&orderClient){
+        const [,tenantId,stage]=managementOpening,path='/manage/'+tenantId+'/opening-schedule';
+        if(req.headers.authorization||url.search&&!(req.method==='GET'&&!stage&&url.search==='?outcome=unknown'))throw problem(403,'browser_session_required');
+        if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(path));
+        const who=await browser(req),membership=await directory.authorize(who.id,tenantId,'settings:read');
+        if(req.method==='GET'&&!stage){const data=await orderClient.openingSchedule(tenantId,who.id);htmlHeaders(res);res.end(staffOpeningPage({tenantId,data,csrf:auth.csrfToken(req),canUpdate:membership.permissions.includes('settings:update'),outcome:url.searchParams.get('outcome')}));return;}
+        if(req.method!=='POST'||!stage)throw problem(404,'not_found');
+        await directory.authorize(who.id,tenantId,'settings:update');const input=await body(req);auth.verifyCsrf(req,input.csrf);
+        await directory.authorize(who.id,tenantId,'settings:read');await directory.authorize(who.id,tenantId,'settings:update');
+        const command=openingForm(input,{reviewed:stage==='execute'});if(!command)throw problem(400,'invalid_request');
+        if(stage==='review'){const data=await orderClient.openingSchedule(tenantId,who.id);if(data.version!==command.expectedVersion)throw problem(409,'conflict');htmlHeaders(res);res.end(staffOpeningPage({tenantId,data,csrf:auth.csrfToken(req),canUpdate:true,review:command}));return;}
+        try{await orderClient.patchOpeningSchedule(tenantId,who.id,command);}catch(error){if(error.code==='order_outcome_unknown'||error.status>=500)return redirect(res,path+'?outcome=unknown',303);throw error;}
         return redirect(res,path,303);
       }
       const managementService=/^\/manage\/([a-z0-9-]{1,64})\/service$/.exec(url.pathname);

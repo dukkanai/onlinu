@@ -106,6 +106,7 @@ jobs:
       CORE_BROWSER_TEST: "1"
       CORE_DELIVERY_SCREENSHOT: ${{ github.workspace }}/artifacts/delivery-location/browser.png
       CORE_PROVISIONING_SCREENSHOT: ${{ github.workspace }}/artifacts/provisioning/browser.png
+      CORE_OPENING_SCREENSHOT: ${{ github.workspace }}/artifacts/opening-schedule/browser.png
       CORE_PAYMENT_METHODS_SCREENSHOT: ${{ github.workspace }}/artifacts/payment-methods/browser.png
     steps:
       - uses: actions/checkout@v4
@@ -240,6 +241,15 @@ jobs:
         with:
           name: onlinu-payment-methods-${{ github.sha }}
           path: artifacts/payment-methods/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Preserve synthetic opening-schedule rendering
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-opening-schedule-${{ github.sha }}
+          path: artifacts/opening-schedule/*.png
           if-no-files-found: ignore
           retention-days: 7
 

@@ -117,3 +117,14 @@ test('payment-method edits require read and write again after body parsing',asyn
  grants.add('settings:read');grants.add('settings:update');revoke='';
  await api({method:'POST'},{},{id:'staff'},url);assert.equal(writes,1);
 });
+
+test('opening schedule rechecks read/write after body and binds the restaurant',async()=>{
+ const url=new URL('https://platform.example/api/restaurants/a/staff/opening-schedule'),calls=[],grants=new Set(['settings:read']);let revoke=false;
+ const api=createStaffApi({directory:{async authorize(actor,tenant,grant){assert.equal(actor,'staff');assert.equal(tenant,'a');if(!grants.has(grant))throw Object.assign(Error(),{code:'forbidden'});}},body:async()=>{if(revoke)grants.delete('settings:update');return{reviewed:true};},orderClient:{async openingSchedule(...args){calls.push(['read',...args]);return{version:1};},async patchOpeningSchedule(...args){calls.push(['write',...args]);return{version:2};}},json:(_,status,data)=>({status,data})});
+ assert.equal((await api({method:'GET'},{},{id:'staff'},url)).status,200);
+ await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});
+ grants.add('settings:update');revoke=true;await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(calls.length,1);
+ grants.add('settings:update');revoke=false;assert.equal((await api({method:'POST'},{},{id:'staff'},url)).data.version,2);assert.deepEqual(calls.at(-1),['write','a','staff',{reviewed:true}]);
+ await assert.rejects(api({method:'DELETE'},{},{id:'staff'},url),{code:'invalid_request'});
+ await assert.rejects(api({method:'GET'},{},{id:'staff'},new URL(url+'?at=tomorrow')),{code:'invalid_request'});
+});

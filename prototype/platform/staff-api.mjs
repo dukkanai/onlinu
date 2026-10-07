@@ -83,6 +83,15 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
           await directory.authorize(who.id,tenantId,'settings:read');await directory.authorize(who.id,tenantId,'settings:update');
           return json(res,200,await orderClient.patchTax(tenantId,who.id,input));
         }
+        const openingRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/opening-schedule$/.exec(url.pathname);
+        if(openingRoute&&orderClient){
+          if(url.search||!['GET','POST'].includes(req.method))throw problem(400,'invalid_request');
+          const tenantId=openingRoute[1];await directory.authorize(who.id,tenantId,'settings:read');
+          if(req.method==='GET')return json(res,200,await orderClient.openingSchedule(tenantId,who.id));
+          await directory.authorize(who.id,tenantId,'settings:update');const input=await body(req);
+          await directory.authorize(who.id,tenantId,'settings:read');await directory.authorize(who.id,tenantId,'settings:update');
+          return json(res,200,await orderClient.patchOpeningSchedule(tenantId,who.id,input));
+        }
         const serviceRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/service$/.exec(url.pathname);
         if(serviceRoute&&orderClient&&['GET','POST'].includes(req.method)){
           if(url.search)throw problem(400,'invalid_request');const tenantId=serviceRoute[1];await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');

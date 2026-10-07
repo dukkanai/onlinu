@@ -39,3 +39,14 @@ Browser/Flutter editors and directory filter integration remain separate work.
 No production database or restaurant setting is changed by this development.
 Local pure policy tests, formatter, vet and build are recorded separately from
 actual PostgreSQL/HTTP/CAS/audit/stock/idempotency/lock tests in hosted CI.
+
+The next increment adds `/api/restaurants/:id/staff/opening-schedule` shared by
+browser and native staff transports, with both settings read/update rechecked
+following streamed body parsing. Signed core responses must exactly match the
+canonical reviewed replacement and next version; uncertainty is never replayed.
+The browser `/manage/:id/opening-schedule` uses a separate non-mutating review
+page, explicit execution checkbox, current CSRF/permissions and CAS. Cancel
+reloads durable state. Days use bounded HH:MM-HH:MM comma-separated intervals;
+date exceptions are explicit `YYYY-MM-DD = intervals`, including empty closure.
+Actual HTTP/Chromium acceptance and screenshot review are pending CI. There is
+no Flutter schedule editor or public-directory open-now filter in this increment.

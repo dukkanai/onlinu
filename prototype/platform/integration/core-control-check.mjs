@@ -326,6 +326,16 @@ try {
   const locationRestored=await send(locationPath,{method:'POST',token:nativeToken,body:{expectedVersion:locationSet.data.version,origin:deliveryBefore.latitude===null?null:{latitude:deliveryBefore.latitude,longitude:deliveryBefore.longitude},radiusKm:deliveryBefore.radiusKm,requireLocation:deliveryBefore.requireLocation}});
   assert.equal(locationRestored.status,200,JSON.stringify(locationRestored.data));
   assert.deepEqual(locationRestored.data,{...deliveryBefore,version:deliveryBefore.version+2});
+  const openingPath='/native/api/restaurants/restaurant-a/staff/opening-schedule';
+  const openingBefore=await send(openingPath,{token:nativeToken});assert.equal(openingBefore.status,200,JSON.stringify(openingBefore.data));
+  assert.equal((await send('/api/restaurants/restaurant-a/staff/opening-schedule',{cookie:bob.cookie})).status,403);
+  const openingCommand={expectedVersion:openingBefore.data.version,reviewed:true,enabled:false,timeZone:'Asia/Riyadh',weekly:Array.from({length:7},()=>[{startMinute:540,endMinute:1080}]),exceptions:[]};
+  const openingChanged=await send(openingPath,{method:'POST',token:nativeToken,body:openingCommand});assert.equal(openingChanged.status,200,JSON.stringify(openingChanged.data));
+  assert.deepEqual(openingChanged.data.weekly,openingCommand.weekly);
+  assert.equal((await send(openingPath,{method:'POST',token:nativeToken,body:openingCommand})).status,409);
+  assert.equal((await send(openingPath,{method:'POST',token:nativeToken,body:{...openingCommand,expectedVersion:openingChanged.data.version,reviewed:false}})).status,400);
+  const openingRestore={expectedVersion:openingChanged.data.version,reviewed:true,...Object.fromEntries(['enabled','timeZone','weekly','exceptions'].map(key=>[key,openingBefore.data[key]]))};
+  assert.equal((await send(openingPath,{method:'POST',token:nativeToken,body:openingRestore})).status,200);
   const paymentSettingsPath='/native/api/restaurants/restaurant-a/staff/payment-methods';
   const paymentSettingsBefore=await send(paymentSettingsPath,{token:nativeToken});
   assert.equal(paymentSettingsBefore.status,200,JSON.stringify(paymentSettingsBefore.data));
@@ -569,6 +579,28 @@ try {
       const browserCleared=(await send('/api/restaurants/restaurant-a/staff/delivery',{cookie:alice.cookie})).data;
       assert.equal(browserCleared.latitude,null);assert.equal(browserCleared.longitude,null);assert.equal(browserCleared.radiusKm,0);assert.equal(browserCleared.requireLocation,false);
 
+      await page.goto(baseUrl+'/manage/restaurant-a/opening-schedule');
+      const openingBrowserBefore=(await send(openingPath,{token:nativeToken})).data;
+      await page.getByLabel('الأحد',{exact:true}).fill('09:00-14:00, 17:00-24:00');
+      await page.getByRole('button',{name:'مراجعة المواعيد',exact:true}).click();
+      await page.waitForURL(/opening-schedule\/review$/);
+      assert.equal((await send(openingPath,{token:nativeToken})).data.version,openingBrowserBefore.version,'review must not mutate');
+      await page.getByRole('link',{name:'إلغاء والعودة لأحدث نسخة',exact:true}).click();
+      await page.waitForURL(/opening-schedule$/);
+      assert.equal(await page.getByLabel('الأحد',{exact:true}).inputValue(),'','cancel reloads durable state');
+      await page.getByLabel('الأحد',{exact:true}).fill('09:00-14:00, 17:00-24:00');
+      await page.getByRole('button',{name:'مراجعة المواعيد',exact:true}).click();
+      await page.getByLabel('راجعت الأيام والاستثناءات وأثر التغيير',{exact:true}).check();
+      await page.getByRole('button',{name:'تطبيق المواعيد',exact:true}).click();
+      await page.waitForURL(/opening-schedule$/);
+      if(process.env.CORE_OPENING_SCREENSHOT){
+        const fs=await import('node:fs/promises'),path=await import('node:path');await fs.mkdir(path.dirname(process.env.CORE_OPENING_SCREENSHOT),{recursive:true});
+        await page.screenshot({path:process.env.CORE_OPENING_SCREENSHOT,fullPage:true});
+      }
+      const openingBrowserAfter=(await send(openingPath,{token:nativeToken})).data;
+      assert.equal(openingBrowserAfter.version,openingBrowserBefore.version+1);assert.equal(openingBrowserAfter.enabled,false);
+      assert.deepEqual(openingBrowserAfter.weekly[0],[{startMinute:540,endMinute:840},{startMinute:1020,endMinute:1440}]);
+      assert.equal((await send(openingPath,{method:'POST',token:nativeToken,body:{expectedVersion:openingBrowserAfter.version,reviewed:true,...Object.fromEntries(['enabled','timeZone','weekly','exceptions'].map(key=>[key,openingBrowserBefore[key]]))}})).status,200);
       await page.goto(baseUrl+'/manage/restaurant-a/payment-methods');
       assert.match(await page.locator('body').innerText(),/ليست دليلًا على اتصال مزود دفع/);
       const deliveryPayments=page.locator('form').filter({has:page.locator('input[name="mode"][value="delivery"]')});

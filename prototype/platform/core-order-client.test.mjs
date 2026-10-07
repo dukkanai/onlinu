@@ -274,3 +274,17 @@ test('payment-method settings bind signed narrow intent without exposing provide
   response=value;const before=calls;await assert.rejects(client.patchPaymentMethods('restaurant-a',subject,patch),{code:'order_outcome_unknown'});assert.equal(calls,before+1);
  }
 });
+
+test('opening schedule signs validated replacement and never replays uncertainty',async()=>{
+ const subject=randomUUID(),schedule={enabled:true,timeZone:'Asia/Riyadh',weekly:Array.from({length:7},()=>[]),exceptions:[]},input={expectedVersion:1,reviewed:true,...schedule};let calls=0,bad=false;
+ const client=createCoreOrderClient({...config,fetchImpl:async(url,options)=>{
+  calls++;assert.equal(url,'http://127.0.0.1:3001/platform-api/staff/opening-schedule');
+  const claims=JSON.parse(Buffer.from(options.headers.authorization.slice(9).split('.')[0],'base64url'));
+  assert.equal(claims.subject,subject);assert.equal(claims.scope,options.method==='GET'?'staff:settings:read':'staff:settings:update');
+  return json({version:options.method==='GET'?1:2,...schedule,...(bad?{enabled:false}:{})});
+ }});
+ assert.equal((await client.openingSchedule('restaurant-a',subject)).version,1);
+ assert.equal((await client.patchOpeningSchedule('restaurant-a',subject,input)).version,2);
+ assert.throws(()=>client.patchOpeningSchedule('restaurant-a',subject,{...input,reviewed:false}),{code:'invalid_request'});assert.equal(calls,2);
+ bad=true;await assert.rejects(client.patchOpeningSchedule('restaurant-a',subject,input),{code:'order_outcome_unknown'});assert.equal(calls,3);
+});

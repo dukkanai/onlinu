@@ -1,3 +1,4 @@
+import {openingScheduleView,openingSchedulePatch,openingScheduleMatches} from './opening-schedule.mjs';
 import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { z } from 'zod';
 import { coreQuoteInput, coreQuoteSchema, coreCatalogSchema } from './core-adapter.mjs';
@@ -192,6 +193,13 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
       });
     },
     finance(tenantId,subject,number){if(!/^R[0-9]{8,20}$/.test(number??''))throw problem(400,'invalid_request');return request(tenantId,subject,'GET','/platform-api/staff/orders/'+number+'/finance',undefined,'','staff:payments:read',financeView,2_000_000);},
+    openingSchedule(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/opening-schedule',undefined,'','staff:settings:read',openingScheduleView);},
+    patchOpeningSchedule(tenantId,subject,input){
+      const parsed=openingSchedulePatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');
+      return request(tenantId,subject,'POST','/platform-api/staff/opening-schedule',parsed.data,'','staff:settings:update',openingScheduleView).then(result=>{
+        if(!openingScheduleMatches(result,parsed.data))throw problem(503,'order_outcome_unknown');return result;
+      });
+    },
     service(tenantId,subject){return request(tenantId,subject,'GET','/platform-api/staff/service',undefined,'','staff:settings:read',serviceView);},
     patchService(tenantId,subject,input){const parsed=servicePatch.safeParse(input);if(!parsed.success)throw problem(400,'invalid_request');return request(tenantId,subject,'POST','/platform-api/staff/service',parsed.data,'','staff:settings:update',serviceView);},
     principalRef(tenantId,subject){if(!routes.has(tenantId)||!uuid.safeParse(subject).success)throw problem(400,'invalid_request');return 'platform:'+createHash('sha256').update(issuer+'\0'+tenantId+'\0'+subject).digest('hex');},

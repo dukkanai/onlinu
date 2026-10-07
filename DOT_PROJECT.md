@@ -1292,3 +1292,21 @@ Public timestamped status is no-store and distinguishes unconfigured hours.
 Three local policy groups pass; five DB-dependent groups await hosted CI. See
 `prototype/platform/OPENING-SCHEDULE.md`. UI editors/filter integration are not
 included yet; no production state has been changed.
+
+Opening-hours core acceptance: `5d355255914ebfd44c47b1f84ec42651836a0fba`,
+[CI37617238660](https://github.com/dukkanai/onlinu/actions/runs/37617238660),
+all four ordinary jobs passed. The server ran the full uncached race suite with
+its disposable PostgreSQL URL configured; all 383 platform tests passed without
+skips. The five locally skipped opening-hours DB groups are included in that
+server suite. Mobile/full-image jobs were deliberately not requested.
+
+Browser/native staff schedule transport and a two-step Arabic browser editor
+are now implemented locally, with strict complete-document validation, response
+binding, current permission rechecks after body parsing, CSRF, stale-version
+rejection and ambiguous-result reload without automatic retry. Exceptions and
+midnight ranges are explicit. Actual HTTP/Chromium acceptance is pending the
+next CI; Flutter editor and public directory filtering remain incomplete.
+Local browser/API increment checks: 277 platform tests passed, 13 DB-dependent
+cases skipped; all 89 deployment guards passed. The first runtime-packaging
+check caught the new modules missing from the explicit Docker allowlist; that
+was corrected and the complete local suite rerun successfully.
