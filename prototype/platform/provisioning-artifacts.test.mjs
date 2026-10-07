@@ -9,6 +9,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { createProvisioningArtifacts } from './provisioning-artifacts.mjs';
 import { problem } from './auth.mjs';
 import { createProvisioningStage } from './provisioning-stage.mjs';
+import { createProvisioningExecutionManifest } from './provisioning-execution-manifest.mjs';
 
 const compiler = fileURLToPath(new URL('../../deploy/tenant_plan.py', import.meta.url));
 const bootstrap = fileURLToPath(new URL('../../deploy/tenant-bootstrap.sql', import.meta.url));
@@ -272,4 +273,44 @@ test('stage verification rechecks authority and rejects changed attempt before r
   f.job.workerId = randomUUID();
   await assert.rejects(f.stager.verify(f.actor, f.prepared, staged, f.args), { code: 'provisioning_stage_rejected' });
   assert.ok((await stat(staged.manifestPath)).isFile());
+});
+
+test('execution manifest capability uses only original staged bytes and reviewed secret references', async t => {
+  const f=await stageFixture(t),staged=await f.stager.stage(f.actor,f.prepared,f.args);
+  let checked=0;
+  const supplier=createProvisioningExecutionManifest({stage:f.stager,actorId:f.actor,secretPreflight:{async check(input){
+    checked++;assert.equal(input.tenantId,f.job.tenantId);
+    assert.deepEqual(input.refs,Object.fromEntries(Object.entries(f.prepared.compose.secrets).map(([key,value])=>[key,value.file])));
+    return {tenantId:f.job.tenantId,projectName:f.prepared.plan.projectName,checkedReferences:Object.keys(input.refs)};
+  }}});
+  const capability=supplier.bind(f.prepared,staged,{currentFence:()=>f.args});
+  assert.ok(Object.isFrozen(capability));assert.equal(await capability.verifyExecution(),staged.manifestPath);assert.equal(checked,1);
+  assert.throws(()=>supplier.bind(structuredClone(f.prepared),staged,{currentFence:()=>f.args}),{code:'provisioning_execution_manifest_rejected'});
+});
+test('execution manifest capability rejects artifact changes during secret preflight', async t => {
+  const f=await stageFixture(t),staged=await f.stager.stage(f.actor,f.prepared,f.args);
+  const supplier=createProvisioningExecutionManifest({stage:f.stager,actorId:f.actor,secretPreflight:{async check(){
+    await writeFile(staged.manifestPath,'tampered');
+    return {tenantId:f.job.tenantId,projectName:f.prepared.plan.projectName,checkedReferences:Object.keys(f.prepared.compose.secrets)};
+  }}});
+  await assert.rejects(supplier.bind(f.prepared,staged,{currentFence:()=>f.args}).verifyExecution(),{code:'provisioning_execution_manifest_rejected'});
+  assert.equal(await readFile(staged.manifestPath,'utf8'),'tampered','failed evidence is not repaired or deleted');
+});
+test('execution manifest capability honors cancellation and authority before secret inspection', async t => {
+  const f=await stageFixture(t),staged=await f.stager.stage(f.actor,f.prepared,f.args);
+  let inspected=0;
+  const supplier=createProvisioningExecutionManifest({stage:f.stager,actorId:f.actor,secretPreflight:{async check(){inspected++;}}});
+  const abort=new AbortController();abort.abort();
+  await assert.rejects(supplier.bind(f.prepared,staged,{currentFence:()=>f.args,signal:abort.signal}).verifyExecution(),{code:'provisioning_execution_manifest_rejected'});
+  f.job.workerId=randomUUID();
+  await assert.rejects(supplier.bind(f.prepared,staged,{currentFence:()=>f.args}).verifyExecution(),{code:'provisioning_execution_manifest_rejected'});
+  assert.equal(inspected,0);
+});
+
+test('execution manifest capability requires an exact preflight acknowledgement', async t => {
+  const f=await stageFixture(t),staged=await f.stager.stage(f.actor,f.prepared,f.args);
+  for(const response of [undefined,false,{tenantId:f.job.tenantId,projectName:f.prepared.plan.projectName,checkedReferences:[]}]){
+    const supplier=createProvisioningExecutionManifest({stage:f.stager,actorId:f.actor,secretPreflight:{async check(){return response;}}});
+    await assert.rejects(supplier.bind(f.prepared,staged,{currentFence:()=>f.args}).verifyExecution(),{code:'provisioning_execution_manifest_rejected'});
+  }
 });

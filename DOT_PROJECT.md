@@ -969,3 +969,13 @@ queue screenshot was downloaded and inspected: labels, unknown state, references
 and UTC times are legible. Runtime-image was intentionally skipped; the separate
 latest full-image checkpoint remains813e692. The new operator view remains
 explicitly default-off, and no live deployment or execution controls were added.
+
+## Original manifest / existing-secret metadata — 2026-10-07, CI pending
+
+New private components bind exact original staged files to current authority and
+metadata-only checks of the five approved secret references. They reject foreign
+paths, incorrect UID/mode, symlinks/hard links, changed artifacts and ambiguous
+acknowledgements; they create no keys and read no secret bytes. Five filesystem
+and four capability test groups pass locally (27 combined artifact/preflight
+checks). Actual production UID/mount policy, credentials and deployment remain
+external gates. See `prototype/platform/PROVISIONING-EXECUTION-MANIFEST.md`.
