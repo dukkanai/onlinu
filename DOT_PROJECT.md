@@ -1355,3 +1355,10 @@ three-tool discovery expectation omitted the newly added read-only status tool.
 The fixture now expects four tools and additionally calls/validates status for
 each of its two isolated restaurants. No product authorization or validation was
 weakened. Corrected aggregate acceptance is pending the retry.
+
+Public status/MCP acceptance: `a088d3768c0a377b7a450d3eddf471b2f6f09c73`,
+[CI37624775281](https://github.com/dukkanai/onlinu/actions/runs/37624775281),
+all four ordinary jobs passed. Server logs confirm both uncached original-core
+race suites and 392 platform tests with no skips. Updated 15-template/mode
+parity fixtures and published-restaurant MCP status reads passed. This remains
+synthetic protocol/core integration, not real ChatGPT account acceptance.
