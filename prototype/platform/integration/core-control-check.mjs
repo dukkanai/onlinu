@@ -260,6 +260,11 @@ try {
   assert.equal((await imageUpload(alice,beforeImage.version)).status,409,'Stale upload form cannot overwrite a newer image');
   const afterImage=(await send(menuPath+'/items/rice',{cookie:alice.cookie})).data;
   assert.match(afterImage.item.imageUrl,/^\/restaurant-media\/[a-f0-9]{64}\.png$/);assert.deepEqual(afterImage.item.options,beforeImage.item.options);
+  const unconfiguredOpenSearch=await rpc('search_open_restaurants',{limit:1});
+  assert.equal(unconfiguredOpenSearch.isError,undefined,JSON.stringify(unconfiguredOpenSearch));
+  assert.equal(unconfiguredOpenSearch.structuredContent.checked,1);
+  assert.equal(unconfiguredOpenSearch.structuredContent.unconfigured,1);
+  assert.equal(unconfiguredOpenSearch.structuredContent.restaurants.length,0);
   const publicOpening=await rpc('get_restaurant_opening_status',{tenantId:'restaurant-a'});
   assert.equal(publicOpening.isError,undefined,JSON.stringify(publicOpening));
   assert.equal(publicOpening.structuredContent.tenantId,'restaurant-a');
@@ -341,7 +346,12 @@ try {
   assert.deepEqual(openingChanged.data.weekly,openingCommand.weekly);
   assert.equal((await send(openingPath,{method:'POST',token:nativeToken,body:openingCommand})).status,409);
   assert.equal((await send(openingPath,{method:'POST',token:nativeToken,body:{...openingCommand,expectedVersion:openingChanged.data.version,reviewed:false}})).status,400);
-  const openingRestore={expectedVersion:openingChanged.data.version,reviewed:true,...Object.fromEntries(['enabled','timeZone','weekly','exceptions'].map(key=>[key,openingBefore.data[key]]))};
+  const alwaysOpenCommand={...openingCommand,expectedVersion:openingChanged.data.version,enabled:true,weekly:Array.from({length:7},()=>[{startMinute:0,endMinute:1440}])};
+  const alwaysOpen=await send(openingPath,{method:'POST',token:nativeToken,body:alwaysOpenCommand});assert.equal(alwaysOpen.status,200,JSON.stringify(alwaysOpen.data));
+  const configuredOpenSearch=await rpc('search_open_restaurants',{query:'',limit:20});
+  assert.equal(configuredOpenSearch.isError,undefined,JSON.stringify(configuredOpenSearch));
+  assert.ok(configuredOpenSearch.structuredContent.restaurants.some(row=>row.id==='restaurant-a'&&row.opening.scheduleEnabled&&row.opening.acceptingOrders));
+  const openingRestore={expectedVersion:alwaysOpen.data.version,reviewed:true,...Object.fromEntries(['enabled','timeZone','weekly','exceptions'].map(key=>[key,openingBefore.data[key]]))};
   assert.equal((await send(openingPath,{method:'POST',token:nativeToken,body:openingRestore})).status,200);
   const paymentSettingsPath='/native/api/restaurants/restaurant-a/staff/payment-methods';
   const paymentSettingsBefore=await send(paymentSettingsPath,{token:nativeToken});

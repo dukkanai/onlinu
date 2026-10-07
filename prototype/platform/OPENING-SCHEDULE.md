@@ -64,3 +64,16 @@ publication both before and after the bounded read, rejects contradictory or
 stale/future timestamps, and accepts no customer-selected time. This read does
 not mutate any restaurant or payment state. Full-directory open-now filtering
 is not yet implemented; do not claim all restaurants have been checked.
+
+A separate `search_open_restaurants` tool now checks a bounded, identifier-sorted
+page of published candidates. Query/cuisine narrow the source list; `limit` is
+1..20 (default20), and `after` resumes after the returned `nextAfter` with the same
+filters. The response reports checked/closed/unconfigured/unavailable counts and
+hasMore. Only configured schedules within hours AND manual intake acceptance
+qualify. Unknown/unreachable/unconfigured hours are never guessed open. Up to
+five reads per search and two active searches per process bound work; overload
+fails rather than creating a queue. Every core read retains publication and
+freshness checks. Pages are changing snapshots, not a comprehensive atomic view
+or stock/delivery/payment guarantee. There is no automatic polling or full-list
+fan-out. Local cases and actual core search/restore integration are separate;
+hosted aggregate acceptance for the search increment remains pending.

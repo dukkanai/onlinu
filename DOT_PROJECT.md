@@ -1362,3 +1362,10 @@ all four ordinary jobs passed. Server logs confirm both uncached original-core
 race suites and 392 platform tests with no skips. Updated 15-template/mode
 parity fixtures and published-restaurant MCP status reads passed. This remains
 synthetic protocol/core integration, not real ChatGPT account acceptance.
+
+Bounded open-restaurant MCP search is implemented with explicit page/cursor and
+coverage counters. It excludes unconfigured/unknown states and requires both
+scheduled hours and manual intake, limiting per-process concurrent reads. Local
+283 platform tests pass; 13 DB-dependent cases skipped. Actual original-core
+unconfigured/always-open/search/restore flow is added for hosted CI. No external
+ChatGPT account, background polling or production setting changed.

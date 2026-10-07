@@ -1,3 +1,4 @@
+import {openSearchInput,openSearchOutput} from './open-restaurant-search.mjs';
 import { McpServer, ProtocolError, SUPPORTED_PROTOCOL_VERSIONS as SDK_LEGACY_VERSIONS, createMcpHandler as createSdkHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { z } from 'zod';
@@ -176,6 +177,8 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
       register('search_restaurants', 'Find restaurants', 'Search the configured restaurant directory. No personal data or order creation.', searchArgs,
         z.object({ restaurants: z.array(z.object({ id: identifier, name: z.string().max(4096), cuisine: z.string().max(4096) })).max(1000) }),
         async args => ({ restaurants: await coreAdapter.listRestaurants(args) }), { scope: catalogScope });
+      if(typeof coreAdapter.searchOpenRestaurants==='function')register('search_open_restaurants','Search verified open restaurants','Check a bounded page of published restaurants for configured opening hours and manual order acceptance. Unknown, unconfigured and unreachable status is excluded and counted separately. At most 20 candidates are checked per page; follow nextAfter with the same query until hasMore is false. This is a changing snapshot, not a full-directory guarantee or stock/delivery/payment promise.',
+        openSearchInput,openSearchOutput,args=>coreAdapter.searchOpenRestaurants(args),{scope:catalogScope});
       if(typeof coreAdapter.openingStatus==='function')register('get_restaurant_opening_status','Read current restaurant acceptance','Read a fresh server-evaluated Saudi opening-schedule and manual intake snapshot for a published restaurant. Disabled schedule means opening hours are not configured; acceptingOrders is not proof of stock, delivery coverage or payment availability. Checkout remains authoritative.',
         z.object({tenantId:identifier}).strict(),coreOpeningStatusSchema.safeExtend({tenantId:identifier}),args=>coreAdapter.openingStatus(args.tenantId),{scope:catalogScope});
       register('get_restaurant_menu', 'Read the restaurant menu', 'Read original menu categories, available items/options, prices and published appearance. Availability is not a stock reservation.',

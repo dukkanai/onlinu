@@ -359,3 +359,12 @@ test('core opening status is read-only, scoped and rejects caller clocks',async 
  const bad=await fixture.call('get_restaurant_opening_status',{tenantId:'demo-a',at:'yesterday'},{token:'alice'});assert.ok(bad.body.error||bad.body.result.isError);assert.equal(reads,0);
  const response=await fixture.call('get_restaurant_opening_status',{tenantId:'demo-a'},{token:'alice'});assert.deepEqual(response.body.result.structuredContent,value);assert.equal(reads,1);
 });
+
+test('bounded open search is read-only and requires catalog scope',async t=>{
+ let reads=0;
+ const value={restaurants:[],checked:2,closed:1,unconfigured:1,unavailable:0,nextAfter:'demo-b',hasMore:true,evaluatedAt:new Date().toISOString()};
+ const fixture=await setup(t,{requireCatalogAuth:true,coreAdapter:{async listRestaurants(){return[];},async getMenu(){throw Error('unused');},async preview(){throw Error('unused');},async searchOpenRestaurants(args){reads++;assert.deepEqual(args,{limit:2});return value;}}});
+ assert.equal((await fixture.call('search_open_restaurants',{limit:2})).body.result.isError,true);assert.equal(reads,0);
+ const response=await fixture.call('search_open_restaurants',{limit:2},{token:'alice'});assert.deepEqual(response.body.result.structuredContent,value);assert.equal(reads,1);
+ const bad=await fixture.call('search_open_restaurants',{limit:999},{token:'alice'});assert.ok(bad.body.error||bad.body.result.isError);assert.equal(reads,1);
+});

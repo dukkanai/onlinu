@@ -1,3 +1,4 @@
+import {createOpenRestaurantSearch} from './open-restaurant-search.mjs';
 import {staffOpeningPage} from './opening-pages.mjs';
 import {openingForm} from './opening-schedule.mjs';
 import {nativeClientPolicy} from './native-client-policy.mjs';
@@ -98,6 +99,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
       return core.preview(tenantId, input);
     },
   };
+  publicCore.searchOpenRestaurants=createOpenRestaurantSearch({listRestaurants:args=>publicCore.listRestaurants(args),openingStatus:id=>publicCore.openingStatus(id)});
   const orderClient = serviceSigningKey ? createCoreOrderClient({ issuer: base.origin, privateKey: serviceSigningKey,
     restaurants: restaurants.map(({id,baseUrl})=>({id,baseUrl})) }) : null;
   const checkouts = orderClient ? createCoreCheckouts({ pool, baseUrl: base.origin, core, orderClient,
