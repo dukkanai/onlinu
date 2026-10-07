@@ -64,3 +64,12 @@ under `channels:manage`, with explicit confirmation and unsupported-adapter labe
 It does not expose WhatsApp account/device login controls or change existing calls.
 Suspended restaurant permissions continue to allow existing-order settlement,
 matching the authoritative identity directory; channel/inventory edits remain denied.
+
+A private confirmed-review dispatcher now has a narrow internal exception to the
+WhatsApp new-order rejection, with a nil-by-default transaction-scoped authority
+callback and current channel-policy version binding. There is no public permit
+field, route or connected transport; ordinary direct WhatsApp creation remains
+unavailable, and `adapterImplemented` stays false. This preparation does not
+activate account messaging or change existing calls. The original core still
+owns all money, stock and idempotency rules. Hosted dispatch acceptance is pending;
+see `WHATSAPP-CONVERSATION-DESIGN.md`.

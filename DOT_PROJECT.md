@@ -1457,3 +1457,12 @@ identity/price/cart/corruption and cancel-versus-confirm races. Full Go race and
 396platform cases/no skips passed. A confirmed review is customer-intent evidence,
 not an accepted order, successful outgoing message or payment. Final dispatch,
 real account binding and conversation presentation still require implementation.
+
+Private WhatsApp confirmed-review dispatch is implemented but unwired/default-off.
+It claims one durable core submission key, binds actual normalized input/owner,
+and rechecks current authority, review expiry/version and channel-policy version
+inside the original stock/order transaction. Lost committed results can recover;
+unknown unaccepted work cannot create a new order after expiry or a policy cycle.
+No API or provider connection is enabled. Local pure checks/vet/build,84client
+checks/build and89deployment guards passed; hosted PostgreSQL concurrency,
+recovery and final-order acceptance remain pending.

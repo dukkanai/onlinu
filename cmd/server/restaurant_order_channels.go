@@ -50,16 +50,25 @@ func restaurantRequireNewOrderChannel(ctx context.Context, tx *sql.Tx) error {
 	if !restaurantKnownOrderChannel(channel) {
 		return restaurantFail(400, "invalid_order_channel")
 	}
-	// WhatsApp account/call connectivity is not an implemented shopping adapter.
-	if channel == "whatsapp_qr" || channel == "whatsapp_cloud" {
-		return restaurantFail(409, "channel_ordering_unavailable")
+	whatsapp := channel == "whatsapp_qr" || channel == "whatsapp_cloud"
+	if whatsapp {
+		permit, ok := ctx.Value(restaurantWhatsappPermitKey{}).(*restaurantWhatsappPermit)
+		if !ok || permit == nil {
+			return restaurantFail(409, "channel_ordering_unavailable")
+		}
 	}
 	var enabled bool
-	if err := tx.QueryRowContext(ctx, "SELECT new_orders_enabled FROM restaurant_order_channels WHERE channel=$1 FOR SHARE", channel).Scan(&enabled); err != nil {
+	var version int64
+	if err := tx.QueryRowContext(ctx, "SELECT new_orders_enabled,version FROM restaurant_order_channels WHERE channel=$1 FOR SHARE", channel).Scan(&enabled, &version); err != nil {
 		return err
 	}
 	if !enabled {
 		return restaurantFail(409, "channel_ordering_disabled")
+	}
+	if whatsapp {
+		if err := restaurantRequireWhatsappDispatch(ctx, tx, channel, version); err != nil {
+			return err
+		}
 	}
 	return nil
 }

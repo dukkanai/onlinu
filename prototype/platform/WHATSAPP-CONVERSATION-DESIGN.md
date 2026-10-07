@@ -107,3 +107,30 @@ cancel-versus-confirm plus source expiry. Full Go race and396platform cases/no
 skips passed, along with84client/build/browser and Windows checks. This accepts
 the private intent store only. No live review presentation, send, provider account,
 conversation UI or final order dispatch has been accepted.
+
+## Private original-core dispatch increment (acceptance pending)
+
+A confirmed review can now be dispatched internally through `Dispatch`, but its
+transaction-scoped authority callback is nil by default. No startup wiring,
+HTTP route, WhatsApp session hook, outbound message or enabled shopping adapter
+is introduced. Tests provide synthetic authority only; a future transport must
+verify and lock the current restaurant/account/generation/entitlement binding
+using the supplied transaction. An account ID or customer boolean is insufficient.
+
+A durable, immutable UUID submission key and normalized input hash are claimed
+before invoking the original core. The core binds the actual input, owner and
+submission key internally, then checks the reviewed scope, fingerprint, active
+conversation version, confirmation, expiry and channel-policy version inside the
+same transaction that reserves stock and creates the order. Current authority is
+checked again there. Lock order is channel, authority, conversation and review;
+no second pool connection may be opened by the authority callback.
+
+Original money, stock, coverage, opening and quote-binding rules remain in the
+core. A channel disable/re-enable cycle invalidates an unaccepted claim instead
+of reviving its pending work. An existing committed order can still be recovered
+with its unchanged key after review expiry or channel closure; an unseen expired
+submission cannot create a fresh order. Unknown results retain the original key.
+Only the accepted order number is stored in the dispatch journal; the core keeps
+its existing sealed receipt capabilities. No second plaintext receipt copy is
+persisted. Sending a receipt and proving delivery remain separate unimplemented
+transport steps, with current egress authority rechecks required.

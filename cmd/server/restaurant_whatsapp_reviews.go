@@ -11,7 +11,15 @@ import (
 
 // Private preparation only: no startup hook, provider transport or order dispatch.
 // Confirmation records customer intent; it is never an accepted order receipt.
-type restaurantWhatsappReviews struct{ orders *restaurantOrders }
+type restaurantWhatsappReviews struct {
+	orders *restaurantOrders
+	// Unwired by default. A future trusted transport must check and lock its
+	// current binding/entitlement using this same transaction, never a new pool.
+	authorizeDispatch func(context.Context, *sql.Tx, restaurantWhatsappScope) bool
+	dispatchNow       func() time.Time
+	// Private fixture seam for lost-result tests; nil uses the original core.
+	dispatchCreate func(context.Context, restaurantOrderInput, string, string) (restaurantReceipt, error)
+}
 type restaurantWhatsappReview struct {
 	ID                 string
 	Version            int64
@@ -37,6 +45,12 @@ func newRestaurantWhatsappReviews(ctx context.Context, orders *restaurantOrders)
  state TEXT NOT NULL CHECK(state IN ('pending','confirmed','cancelled')),
  presented_message_id TEXT NOT NULL DEFAULT '', decision_event TEXT NOT NULL DEFAULT '', decision_hash TEXT NOT NULL DEFAULT '',
  UNIQUE(scope_hash,version)
+ );
+ CREATE TABLE IF NOT EXISTS restaurant_whatsapp_dispatches (
+ review_id TEXT PRIMARY KEY REFERENCES restaurant_whatsapp_reviews(id),
+ scope_hash TEXT NOT NULL, dispatch_key TEXT NOT NULL UNIQUE,
+ input_hash TEXT NOT NULL, fingerprint TEXT NOT NULL, channel_version BIGINT NOT NULL,
+ order_number TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL
  )`)
 	if err != nil {
 		return nil, err

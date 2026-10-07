@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/base32"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -179,6 +180,7 @@ func (s *restaurantOrders) Create(ctx context.Context, input restaurantOrderInpu
 		return restaurantReceipt{}, restaurantFail(400, "invalid_request")
 	}
 	requestHash := sha256.Sum256(request)
+	ctx = context.WithValue(ctx, restaurantWhatsappSubmissionKey{}, restaurantWhatsappSubmission{Key: parsedKey.String(), Hash: hex.EncodeToString(requestHash[:]), Owner: customerID})
 	// A submission stays unique even when its customer's cookie expires or
 	// another account signs in. Identity mismatches reject rather than creating
 	// a duplicate or returning the original owner's private receipt.
