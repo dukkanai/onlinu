@@ -1,8 +1,9 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { WINDOWS_CLIENT_ID, WINDOWS_REDIRECT_TEMPLATE, windowsRedirectAllowed } from './native-client-policy.mjs';
 
-export const NATIVE_CLIENT_ID='onlinu-native-windows-v1';
+export const NATIVE_CLIENT_ID=WINDOWS_CLIENT_ID;
 export const NATIVE_SCOPE='staff:access';
-const nativeRedirectTemplate='http://127.0.0.1/oauth/callback';
+const nativeRedirectTemplate=WINDOWS_REDIRECT_TEMPLATE;
 export const CUSTOMER_SCOPES = ['orders:read', 'orders:write', 'events:read'];
 export const FIXTURES = Object.freeze({
   'customer-alice': { role: 'customer', tenantIds: [] },
@@ -46,9 +47,7 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
   const allowedRedirects = new Set(native?[nativeRedirectTemplate]:redirectAllowlist);
   function redirectAllowed(value){
     if(!native)return allowedRedirects.has(value);
-    if(typeof value!=='string')return false;
-    const match=/^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/oauth\/callback$/.exec(value);
-    return !!match&&Number(match[1])>=1024&&Number(match[1])<=65535;
+    return windowsRedirectAllowed(value);
   }
   const registeredRedirect=(uris,value)=>redirectAllowed(value)&&uris.includes(native?nativeRedirectTemplate:value);
   const metadata = {

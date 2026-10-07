@@ -1162,3 +1162,14 @@ its source, built plist and preserved licenses were checked. This is synthetic
 Simulator execution, not a physical iPhone, mobile login or store release.
 Android/runtime-image reruns were intentionally skipped; their latest separate
 checkpoints remain44431e9 and dfebcae respectively.
+
+## Mobile authentication policy preparation — 2026-10-07
+
+The strict Windows loopback check now lives in a shared pure policy module.
+Separate Android/iOS client identifiers and exact reverse-domain callbacks are
+covered by opt-in policy tests, but are not enabled in the running broker.
+No registration, real provider access or mobile login is performed. See
+`prototype/platform/NATIVE-MOBILE-AUTH.md` for integration and release gates.
+Local platform tests: 269 passed, 12 database-dependent cases skipped; the
+initial runtime packaging omission was caught and corrected before this result.
+Aggregate CI for this increment is pending.
