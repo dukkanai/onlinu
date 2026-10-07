@@ -1348,3 +1348,10 @@ schedules remain explicitly unknown hours, and intake is not a promise of stock,
 coverage or payment availability. Locally 279 platform tests passed, 13 DB cases
 skipped. Actual published-core/MCP integration awaits CI; no bulk open-now search
 filter or broad fan-out was added.
+
+First public-status CI37623670037 passed the new actual published-core MCP flow
+but failed the older 15-template/mode adapter parity cases because their exact
+three-tool discovery expectation omitted the newly added read-only status tool.
+The fixture now expects four tools and additionally calls/validates status for
+each of its two isolated restaurants. No product authorization or validation was
+weakened. Corrected aggregate acceptance is pending the retry.

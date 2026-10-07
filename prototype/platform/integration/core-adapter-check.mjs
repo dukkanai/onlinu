@@ -30,10 +30,14 @@ async function rpc(method, params = {}) {
 }
 try {
 const discovery = await rpc('tools/list');
-assert.deepEqual(discovery.tools.map(tool => tool.name), ['search_restaurants', 'get_restaurant_menu', 'quote_cart']);
+assert.deepEqual(discovery.tools.map(tool => tool.name), ['search_restaurants', 'get_restaurant_opening_status', 'get_restaurant_menu', 'quote_cart']);
 assert.ok(discovery.tools.every(tool => tool.annotations.readOnlyHint));
 for (const [index] of urls.entries()) {
   const tenantId = `restaurant-${index}`;
+  const status=await adapter.openingStatus(tenantId);
+  assert.equal(status.tenantId,tenantId);assert.equal(status.scheduleEnabled,false);assert.equal(status.withinHours,null);
+  const statusTool=await rpc('tools/call',{name:'get_restaurant_opening_status',arguments:{tenantId}});
+  assert.equal(statusTool.structuredContent.tenantId,tenantId);assert.equal(statusTool.structuredContent.acceptingOrders,status.acceptingOrders);
   const menu = await adapter.getMenu(tenantId);
   assert.equal(menu.tenantId, tenantId);
   assert.equal(menu.settings.brand.storefrontTemplate, template);
