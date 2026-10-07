@@ -49,3 +49,12 @@ conflicting replays, copies and expiration. The original-core PostgreSQL test
 checks pricing, unchanged stock/order count and unchanged disabled WhatsApp
 policies. It requires the existing disposable `TEST_RESTAURANT_PG_URL`; local
 absence is reported as a skip. Hosted aggregate acceptance is pending.
+
+Acceptance: code `7226bb64b65fbf12a927d976495329bb0c30166d` passed all four
+ordinary jobs in [CI37661591551](https://github.com/dukkanai/onlinu/actions/runs/37661591551).
+Server logs confirm uncached original Go race suites with disposable PostgreSQL
+configured and 396 platform tests/no skips. Client84 tests, build and compiled
+storefront browser checks passed, together with Windows and control-image gates.
+The earlier run failed the existing translation-coverage guard; all five new
+validation messages now have Arabic/English entries. No provider extraction,
+durable inbox, final order creation or live-account acceptance is claimed.

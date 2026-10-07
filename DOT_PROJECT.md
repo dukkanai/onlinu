@@ -1408,3 +1408,10 @@ stock. There are no new public routes, transport hooks or enabled adapters.
 Provider mapping, durable inbox, explicit customer confirmation, send/recovery
 and live-account acceptance remain open. See
 `prototype/platform/WHATSAPP-ORDER-INTAKE.md`; hosted DB acceptance is pending.
+
+Private WhatsApp proposal acceptance: code7226bb64b65fbf12a927d976495329bb0c30166d,
+CI37661591551, all four ordinary jobs passed. Original uncached Go race suites
+ran with disposable PostgreSQL configured; 396 platform cases/no skips,84client
+cases/build/browser and Windows gates passed. Arabic/English error translations
+fixed the first aggregate run's coverage failure. This accepts the private
+read-only proposal boundary only, not a live WhatsApp shopping adapter.
