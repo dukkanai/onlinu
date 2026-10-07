@@ -2475,7 +2475,7 @@ export function Storefront() {
             <>
               {openingStatus === null ? (
                 <Notice>
-                  {t("store.availabilityUnknown")}
+                  <span>{t("store.availabilityUnknown")}</span>
                   <button type="button" className="rs-link-button" onClick={refreshOpening}>{t("common.retry")}</button>
                 </Notice>
               ) : !catalog.settings.acceptingOrders ? (
