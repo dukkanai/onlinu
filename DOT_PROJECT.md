@@ -1255,3 +1255,10 @@ false-by-default android_accelerated input. Only the test user's KVM ACL may be
 added, with a strict original-basic-ACL guard, private backup, always-run restore
 and exact readback comparison. No chmod666, group change or production setting.
 Local 89 guards and shell syntax checks pass; execution/restoration are pending.
+
+The first accelerated dispatch CI37609530296 stopped in its synthetic guard
+suite before the KVM grant step: test fixtures inherited the real job's KVM
+mode. No KVM permission was changed in that attempt. The fixtures now explicitly
+isolate software mode while separately testing KVM access validation. All 89
+local guards pass with the outer environment set to KVM; the actual accelerated
+trial and screenshot transfer remain pending.

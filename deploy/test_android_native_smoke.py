@@ -14,6 +14,12 @@ spec.loader.exec_module(smoke)
 
 
 class AndroidSmokeTests(unittest.TestCase):
+    def setUp(self):
+        # Synthetic process fixtures must not inherit the real job's KVM mode.
+        environment = patch.dict(smoke.os.environ, {'ONLINU_ANDROID_ACCELERATION': 'software'})
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_kvm_mode_needs_current_effective_access_and_never_changes_it(self):
         self.assertEqual(smoke.emulator_acceleration('software'), 'off')
         with patch.object(smoke.os, 'access', return_value=False):
