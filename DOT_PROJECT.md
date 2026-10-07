@@ -1242,3 +1242,10 @@ change uses bounded, strictly decoded base64 for the single owned PNG and adds
 safe length/header diagnostics; it does not weaken PNG checks or cleanup. Local
 87 deployment guards and Flutter analyzer pass; the corrected aggregate remains
 pending. No KVM permission or license-acceptance change occurred.
+
+Android retry CI37606273840 (`0c1e8e6`) passed the four ordinary jobs but timed
+out before software-emulator boot completed. No native tests or corrected PNG
+transfer ran in that retry. The earlier three Android tests passed only in
+CI37603475763, whose artifact stage failed. Full Android execution acceptance
+therefore remains open. Hardware-acceleration access has not been changed;
+a specific temporary hosted-runner KVM permission request is pending approval.
