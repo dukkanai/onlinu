@@ -1421,3 +1421,10 @@ concurrent duplicate receipts, conflicting-payload rejection and unchanged expir
 across restarts. It is not initialized at startup or connected to a transport.
 Local pure tests/vet and client checks are separate from its pending hosted
 PostgreSQL concurrency/restart acceptance; no live message or order is created.
+
+Private inbox acceptance:6034574e86bc4f9ce1853a53e6277e9921032b70,
+CI37663927719 all four ordinary jobs passed. Dedicated verbose Go race logs
+confirm actual PostgreSQL concurrent/restart/expiry/conflict/isolation tests
+and original-core read-only pricing, without skipped WhatsApp cases. Full Go
+race and396platform cases/no skips passed. Transport wiring and final ordering
+remain unavailable; this is not a live WhatsApp test.

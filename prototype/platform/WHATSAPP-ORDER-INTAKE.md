@@ -79,3 +79,10 @@ Hashing is not anonymization or an authorization mechanism. Original restaurant
 DB isolation and a verified current transport binding are still required.
 No automatic deletion/retention or outgoing replay is introduced. Durable intake
 is not durable customer confirmation, order creation or message delivery.
+
+Inbox acceptance: code `6034574e86bc4f9ce1853a53e6277e9921032b70` passed all four
+ordinary jobs in [CI37663927719](https://github.com/dukkanai/onlinu/actions/runs/37663927719).
+The dedicated verbose Go race step confirms every WhatsApp test passed, including
+actual PostgreSQL concurrent receipts, restart/expiry/conflict/isolation checks
+and original-core read-only pricing. Full uncached Go race regression and
+396 platform tests/no skips also passed. No live transport or order creation.
