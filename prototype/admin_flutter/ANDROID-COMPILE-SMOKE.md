@@ -50,3 +50,10 @@ validated the built manifest. The reserved control.invalid origin, debug status,
 synthetic package identity and all device/login/distribution limitations above
 remain. This is the first Android compilation checkpoint, not mobile release
 or actual-device acceptance. Latest full Docker-image checkpoint remains dfebcae.
+
+Follow-on mobile-auth preparation (2026-10-07, CI pending): local dependency
+resolution now succeeds with the pinned SDK. Android chooses its own public
+client and exact reverse-domain callback; its generated smoke manifest disables
+Flutter's competing deep-link handler and registers only
+`invalid.control.onlinu.android`. Decoded-manifest guards verify that exact
+scheme/filter. No Android device execution or production login is claimed.

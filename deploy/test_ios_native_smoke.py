@@ -37,11 +37,12 @@ class IosSmokeTests(unittest.TestCase):
     def test_built_bundle_must_be_expected_simulator_only_identity(self):
         info = {'CFBundleIdentifier': smoke.PACKAGE, 'CFBundleSupportedPlatforms': ['iPhoneSimulator'],
                 'DTPlatformName': 'iphonesimulator', 'CFBundleExecutable': 'Runner', 'UIFileSharingEnabled': False,
-                'NSAppTransportSecurity': {'NSAllowsArbitraryLoads': False}}
+                'NSAppTransportSecurity': {'NSAllowsArbitraryLoads': False}, 'FlutterDeepLinkingEnabled': False,
+                'CFBundleURLTypes': [{'CFBundleURLName': smoke.PACKAGE + '.oauth', 'CFBundleURLSchemes': [smoke.CALLBACK_SCHEME]}]}
         smoke.verify_built_plist(info)
         for key, value in [('CFBundleIdentifier', 'other'), ('CFBundleSupportedPlatforms', ['iPhoneOS']),
                            ('DTPlatformName', 'iphoneos'), ('CFBundleExecutable', '../other'), ('UIFileSharingEnabled', True),
-                           ('NSAppTransportSecurity', {'NSAllowsArbitraryLoads': True})]:
+                           ('NSAppTransportSecurity', {'NSAllowsArbitraryLoads': True}), ('FlutterDeepLinkingEnabled', True), ('CFBundleURLTypes', [])]:
             with self.assertRaises(ValueError):
                 smoke.verify_built_plist(dict(info, **{key: value}))
 

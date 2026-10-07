@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:app_links/app_links.dart';
 import 'package:crypto/crypto.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'native_client.dart';
 import 'session_store.dart';
 import 'transport.dart';
 
@@ -45,18 +47,33 @@ class CoreAuth implements CoreSession {
       {required this.store,
       CoreTransport? transport,
       BrowserLauncher? launch,
+      NativeClientPlatform? platform,
+      Stream<String>? links,
       DateTime Function()? now,
       this.loginTimeout = const Duration(minutes: 5)})
       : origin = trustedOrigin(baseUrl),
+        clientPlatform = platform ?? currentNativePlatform(),
         transport = transport ?? BoundedCoreTransport(baseUrl),
         _launch = launch ??
             ((uri) => launchUrl(uri, mode: LaunchMode.externalApplication)),
         _now = now ?? DateTime.now {
     if (this.transport.origin != origin)
       throw const CoreException('invalid_configuration');
+    if (clientPlatform != NativeClientPlatform.windows) {
+      if (baseUrl != origin.origin) {
+        throw const CoreException('invalid_configuration');
+      }
+      mobileCallback(origin, clientPlatform);
+      _linkSubscription = (links ?? AppLinks().stringLinkStream).listen(
+        (value) => _receiveMobile?.call(value),
+        onError: (Object _) => _linksUnavailable(),
+        onDone: _linksUnavailable,
+      );
+    }
   }
 
   final Uri origin;
+  final NativeClientPlatform clientPlatform;
   final CoreSessionStore store;
   final CoreTransport transport;
   final BrowserLauncher _launch;
@@ -68,6 +85,9 @@ class CoreAuth implements CoreSession {
   _Tokens? _tokens;
   String? _candidate;
   HttpServer? _listener;
+  StreamSubscription<String>? _linkSubscription;
+  void Function(String)? _receiveMobile;
+  bool _linksAvailable = true;
   Completer<Map<String, String>>? _pending;
   Future<void> _storageTail = Future<void>.value();
   Future<String>? _refreshing;
@@ -75,6 +95,7 @@ class CoreAuth implements CoreSession {
   Future<bool>? _restoring;
   int? _restoreGeneration;
 
+  String get clientId => nativeClientIdentifier(clientPlatform);
   String get issuer => '${origin.origin}/native';
   String get resource => '$issuer/api';
   bool get hasSession => !_closed && _tokens != null;
@@ -95,6 +116,7 @@ class CoreAuth implements CoreSession {
 
   void _invalidate() {
     _generation++;
+    _receiveMobile = null;
     _tokens = null;
     _candidate = null;
     final pending = _pending;
@@ -113,6 +135,37 @@ class CoreAuth implements CoreSession {
       difference |= actual.codeUnitAt(i) ^ expected.codeUnitAt(i);
     }
     return difference == 0;
+  }
+
+  void _linksUnavailable() {
+    _linksAvailable = false;
+    final pending = _pending;
+    if (pending != null && !pending.isCompleted) {
+      pending.complete({'error': 'callback_unavailable'});
+    }
+  }
+
+  Map<String, String>? _mobileOutcome(
+      String raw, String redirect, String state) {
+    if (raw.length > 4096 || !raw.startsWith('$redirect?')) return null;
+    try {
+      final uri = Uri.parse(raw);
+      if (uri.hasFragment || raw.substring(0, raw.indexOf('?')) != redirect) {
+        return null;
+      }
+      final values = uri.queryParametersAll;
+      if (!values.keys.every(
+              (key) => {'code', 'state', 'iss', 'error'}.contains(key)) ||
+          !values.values.every((value) => value.length == 1) ||
+          !_same(values['state']?.single ?? '', state) ||
+          values['iss']?.single != issuer) return null;
+      final code = values['code']?.single, error = values['error']?.single;
+      if (error == 'access_denied' && code == null)
+        return {'error': 'access_denied'};
+      if (error == null && code != null && _opaque.hasMatch(code))
+        return {'code': code};
+    } on FormatException {/* Untrusted callback: ignore without diagnostics. */}
+    return null;
   }
 
   Future<void> _callback(
@@ -175,30 +228,41 @@ class CoreAuth implements CoreSession {
         .encode(sha256.convert(ascii.encode(verifier)).bytes)
         .replaceAll('=', '');
     HttpServer? listener;
+    final pending = Completer<Map<String, String>>();
     try {
-      listener =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0, backlog: 4);
-      if (!_current(generation)) throw const CoreException('cancelled');
-      if (listener.port < 1024)
-        throw const CoreException('callback_unavailable');
-      listener.idleTimeout = const Duration(seconds: 10);
-      _listener = listener;
-      final activeListener = listener;
-      final pending = Completer<Map<String, String>>();
       _pending = pending;
       final callback = pending.future
           .timeout(loginTimeout, onTimeout: () => {'error': 'login_timeout'});
-      listener.listen(
-          (request) => unawaited(
-              _callback(request, activeListener, pending, state, generation)),
-          onError: (Object _) {
-        if (!pending.isCompleted)
-          pending.complete({'error': 'callback_unavailable'});
-      });
-      final redirect = 'http://127.0.0.1:${listener.port}/oauth/callback';
+      final String redirect;
+      if (clientPlatform == NativeClientPlatform.windows) {
+        listener =
+            await HttpServer.bind(InternetAddress.loopbackIPv4, 0, backlog: 4);
+        if (!_current(generation)) throw const CoreException('cancelled');
+        if (listener.port < 1024)
+          throw const CoreException('callback_unavailable');
+        listener.idleTimeout = const Duration(seconds: 10);
+        _listener = listener;
+        final activeListener = listener;
+        listener.listen(
+            (request) => unawaited(
+                _callback(request, activeListener, pending, state, generation)),
+            onError: (Object _) {
+          if (!pending.isCompleted)
+            pending.complete({'error': 'callback_unavailable'});
+        });
+        redirect = 'http://127.0.0.1:${listener.port}/oauth/callback';
+      } else {
+        if (!_linksAvailable) throw const CoreException('callback_unavailable');
+        redirect = mobileCallback(origin, clientPlatform);
+        _receiveMobile = (raw) {
+          if (!_current(generation) || pending.isCompleted) return;
+          final outcome = _mobileOutcome(raw, redirect, state);
+          if (outcome != null) pending.complete(outcome);
+        };
+      }
       final authorize =
           origin.replace(path: '/native/oauth/authorize', queryParameters: {
-        'client_id': nativeClientId,
+        'client_id': clientId,
         'redirect_uri': redirect,
         'response_type': 'code',
         'resource': resource,
@@ -207,7 +271,8 @@ class CoreAuth implements CoreSession {
         'code_challenge_method': 'S256',
         'code_challenge': challenge,
       });
-      if (!await _launch(authorize))
+      if (!await _launch(authorize).timeout(loginTimeout,
+          onTimeout: () => throw const CoreException('login_timeout')))
         throw const CoreException('browser_unavailable');
       final result = await callback;
       if (!_current(generation)) throw const CoreException('cancelled');
@@ -215,7 +280,7 @@ class CoreAuth implements CoreSession {
       final reply =
           await transport.request('POST', '/native/oauth/token', body: {
         'grant_type': 'authorization_code',
-        'client_id': nativeClientId,
+        'client_id': clientId,
         'redirect_uri': redirect,
         'resource': resource,
         'code': result['code'],
@@ -229,10 +294,12 @@ class CoreAuth implements CoreSession {
     } catch (_) {
       throw const CoreException('login_failed');
     } finally {
-      if (identical(_listener, listener)) {
+      if (identical(_pending, pending)) {
         _listener = null;
         _pending = null;
+        _receiveMobile = null;
       }
+      if (!pending.isCompleted) pending.complete({'error': 'cancelled'});
       await listener?.close(force: true);
     }
   }
@@ -271,7 +338,7 @@ class CoreAuth implements CoreSession {
         await store.write(jsonEncode({
           'version': 1,
           'origin': origin.origin,
-          'clientId': nativeClientId,
+          'clientId': clientId,
           'resource': resource,
           'refreshToken': tokens.refresh
         }));
@@ -311,7 +378,7 @@ class CoreAuth implements CoreSession {
     if (decoded is! Map<String, dynamic> ||
         decoded['version'] != 1 ||
         decoded['origin'] != origin.origin ||
-        decoded['clientId'] != nativeClientId ||
+        decoded['clientId'] != clientId ||
         decoded['resource'] != resource ||
         decoded['refreshToken'] is! String ||
         !_opaque.hasMatch(decoded['refreshToken'] as String)) {
@@ -383,7 +450,7 @@ class CoreAuth implements CoreSession {
       final reply =
           await transport.request('POST', '/native/oauth/token', body: {
         'grant_type': 'refresh_token',
-        'client_id': nativeClientId,
+        'client_id': clientId,
         'resource': resource,
         'refresh_token': refresh,
       });
@@ -407,7 +474,7 @@ class CoreAuth implements CoreSession {
     if (refresh == null) return true;
     try {
       final reply = await transport.request('POST', '/native/oauth/revoke',
-          body: {'client_id': nativeClientId, 'token': refresh});
+          body: {'client_id': clientId, 'token': refresh});
       return reply.status == 200;
     } catch (_) {
       return false;
@@ -437,6 +504,8 @@ class CoreAuth implements CoreSession {
     if (_closed) return;
     _invalidate();
     _closed = true;
+    unawaited(_linkSubscription?.cancel());
+    _linkSubscription = null;
     transport.close();
   }
 }

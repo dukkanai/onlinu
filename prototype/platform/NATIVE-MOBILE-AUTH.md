@@ -56,3 +56,16 @@ jobs in [CI37596296616](https://github.com/dukkanai/onlinu/actions/runs/37596296
 verified 2026-10-07 08:59 UTC. Its server log confirms 383 platform tests passed
 without skips, including actual PostgreSQL grant checks and HTTP opt-in false/true
 suites. This does not establish OS browser handoff or Flutter mobile login.
+
+## Flutter callback integration (CI pending)
+
+The client now selects platform-specific IDs and consumes raw app-link strings
+only during a live PKCE attempt. It rejects callback/path/platform substitutions,
+unknown or repeated fields, wrong state/issuer, stale and duplicate results.
+Cancellation, errors and timeout retain no new token; stored refresh data must
+match the selected platform client. Windows keeps its loopback transport.
+The generated debug mobile runners register only the scheme for control.invalid;
+real release manifests must bind the approved production domain separately.
+Local formatter/analyzer and 151 Flutter tests pass. A new iOS Simulator test
+will exercise the real URL handler and secure storage with synthetic replies;
+that does not substitute for an external-browser identity-provider login.

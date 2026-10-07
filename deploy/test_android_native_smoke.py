@@ -25,7 +25,7 @@ class AndroidSmokeTests(unittest.TestCase):
     def test_generated_manifest_disables_backup_cleartext_and_has_one_internet_permission(self):
         with tempfile.TemporaryDirectory(prefix='onlinu-android-test-') as directory:
             path = Path(directory) / 'AndroidManifest.xml'
-            path.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:name="${applicationName}"/></manifest>')
+            path.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:name="${applicationName}"><activity android:name=".MainActivity"/></application></manifest>')
             smoke.secure_manifest(path)
             smoke.secure_manifest(path)
             root = ET.parse(path).getroot()
@@ -34,13 +34,15 @@ class AndroidSmokeTests(unittest.TestCase):
             self.assertEqual(app.get(smoke.ANDROID + 'allowBackup'), 'false')
             self.assertEqual(app.get(smoke.ANDROID + 'usesCleartextTraffic'), 'false')
             self.assertEqual(len(root.findall('uses-permission')), 1)
+            self.assertEqual(len(app.find('activity').findall('intent-filter')), 1)
+            self.assertEqual(app.find('activity/meta-data').get(smoke.ANDROID + 'value'), 'false')
 
     def test_built_apk_must_be_expected_debug_package_with_restrictions(self):
-        xml = '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.synthetic.restaurant_admin_prototype"><application android:allowBackup="false" android:usesCleartextTraffic="false" android:debuggable="true"/><uses-permission android:name="android.permission.INTERNET"/></manifest>'
+        xml = '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.synthetic.restaurant_admin_prototype"><application android:allowBackup="false" android:usesCleartextTraffic="false" android:debuggable="true"><activity android:name=".MainActivity"><meta-data android:name="flutter_deeplinking_enabled" android:value="false"/><intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="invalid.control.onlinu.android"/></intent-filter></activity></application><uses-permission android:name="android.permission.INTERNET"/></manifest>'
         smoke.verify_built_manifest(xml)
         for altered in [xml.replace('restaurant_admin_prototype', 'other_app'), xml.replace('allowBackup="false"', 'allowBackup="true"'),
                         xml.replace('usesCleartextTraffic="false"', 'usesCleartextTraffic="true"'), xml.replace('debuggable="true"', 'debuggable="false"'),
-                        xml.replace('android.permission.INTERNET', 'other.permission')]:
+                        xml.replace('android.permission.INTERNET', 'other.permission'), xml.replace('invalid.control.onlinu.android', 'other.scheme'), xml.replace('flutter_deeplinking_enabled', 'other_flag')]:
             with self.assertRaises(ValueError):
                 smoke.verify_built_manifest(altered)
 

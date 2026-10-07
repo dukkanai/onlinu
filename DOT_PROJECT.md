@@ -1192,3 +1192,20 @@ CI37596296616 all four ordinary jobs passed, verified 2026-10-07 08:59 UTC.
 Server log confirms 383 platform tests passed, zero skipped, including actual
 PostgreSQL mobile grants and both HTTP opt-in states. Flutter/OS handoff remains
 incomplete; no mobile device or external-account acceptance is implied.
+
+## Flutter mobile callback integration — 2026-10-07, aggregate CI pending
+
+The native client now chooses separate Android/iOS client IDs, listens to raw
+app-link strings, and validates active-attempt state, issuer, exact callback,
+code shape and duplicate parameters before exchange. Mobile storage and refresh
+requests bind the selected client; Windows keeps its existing loopback listener.
+Cancellation and completed/old callbacks cannot establish a new session.
+`app_links` 7.2.2 and its three dependencies were resolved by the actual pinned
+Flutter SDK, with registry hashes and generated Windows registration reviewed.
+Local SDK bootstrap is now working: formatter and analyzer pass; all 151 Flutter
+unit/widget tests and all 80 deployment guards pass. No lock hash was invented.
+Generated mobile smoke apps register only their control.invalid callback scheme.
+A new iOS native-plugin self-callback test uses synthetic transport and OS secure
+storage, not a real provider login. Compilation and actual Simulator execution
+of this increment are pending CI; production identity, signing and login remain
+separate acceptance gates.

@@ -10,6 +10,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:restaurant_admin_prototype/core/app.dart';
 import 'package:restaurant_admin_prototype/core/controller.dart';
 import 'package:restaurant_admin_prototype/core/session_store.dart';
+import 'package:restaurant_admin_prototype/core/auth.dart';
+import 'package:restaurant_admin_prototype/core/transport.dart';
+import '../test/core_auth_test.dart' show FakeTransport, token;
 import '../test/core_fakes.dart';
 
 void main() {
@@ -38,6 +41,56 @@ void main() {
     }
     // Capability observation only: no browser or external account is opened.
     expect(await supportsLaunchMode(LaunchMode.externalApplication), true);
+  });
+  testWidgets(
+      'iOS owned URL scheme reaches active PKCE login through the native plugin',
+      (tester) async {
+    expect(Platform.isIOS, true);
+    const origin = 'https://control.invalid';
+    final store = OsCoreSessionStore(origin);
+    final transport = FakeTransport(base: origin);
+    transport.handler = (_, body) async {
+      expect(body!['client_id'], 'onlinu-native-ios-v1');
+      expect(
+          body['redirect_uri'], 'invalid.control.onlinu.ios:/oauth/callback');
+      return CoreReply(200, {
+        'access_token': token('a'),
+        'refresh_token': token('A'),
+        'expires_in': 900,
+        'token_type': 'Bearer',
+        'scope': nativeScope,
+        'resource': '$origin/native/api',
+      });
+    };
+    final auth = CoreAuth(origin,
+        store: store,
+        transport: transport,
+        loginTimeout: const Duration(seconds: 30), launch: (authorize) async {
+      // Route only to this disposable test app. No real identity provider,
+      // browser account, external HTTPS page or credential is contacted.
+      final values = authorize.queryParameters;
+      expect(values['client_id'], 'onlinu-native-ios-v1');
+      final callback =
+          Uri.parse(values['redirect_uri']!).replace(queryParameters: {
+        'code': token('c'),
+        'state': values['state']!,
+        'iss': '$origin/native',
+      });
+      return launchUrl(callback, mode: LaunchMode.externalApplication);
+    });
+    try {
+      await auth.login();
+      expect(auth.hasSession, true);
+      expect(transport.calls.length, 1);
+      expect(await store.read(), isNotNull);
+      final result = await auth.signOut();
+      expect(result.localCleared, true);
+      expect(result.remoteRevoked, true);
+      expect(await store.read(), isNull);
+    } finally {
+      auth.close();
+      await store.delete();
+    }
   });
   testWidgets(
       'iOS renderer shows Arabic orders and clears details after logout',

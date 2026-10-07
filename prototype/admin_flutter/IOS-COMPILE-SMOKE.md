@@ -102,3 +102,11 @@ its source, built plist and preserved licenses were checked. This is synthetic
 Simulator execution, not a physical iPhone, mobile login or store release.
 Android/runtime-image reruns were intentionally skipped; their latest separate
 checkpoints remain44431e9 and dfebcae respectively.
+
+Follow-on mobile-auth preparation (2026-10-07, CI pending): the generated plist
+registers only `invalid.control.onlinu.ios` and disables Flutter's competing
+deep-link handler. The reviewed app_links plugin supplies native link events.
+An additional test opens only this disposable app's own URL scheme and checks
+active PKCE state/issuer handling, synthetic token exchange and real secured
+storage/logout. It does not open a real provider or browser account. Full CI
+and actual Simulator results for this increment remain pending.

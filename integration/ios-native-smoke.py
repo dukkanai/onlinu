@@ -13,6 +13,7 @@ import uuid
 
 SOURCE = Path(__file__).resolve().parents[1]
 PACKAGE = 'dev.synthetic.restaurantAdminPrototype'
+CALLBACK_SCHEME = 'invalid.control.onlinu.ios'
 
 
 def validate_context(env):
@@ -32,6 +33,9 @@ def secure_plist(path):
         raise ValueError('Unexpected generated iOS application identity.')
     info['CFBundleDisplayName'] = 'Onlinu iOS Smoke'
     info['UIFileSharingEnabled'] = False
+    info['FlutterDeepLinkingEnabled'] = False
+    info['CFBundleURLTypes'] = [{'CFBundleURLName': PACKAGE + '.oauth',
+                               'CFBundleURLSchemes': [CALLBACK_SCHEME]}]
     info.setdefault('NSAppTransportSecurity', {})['NSAllowsArbitraryLoads'] = False
     with path.open('wb') as stream:
         plistlib.dump(info, stream)
@@ -41,6 +45,8 @@ def verify_built_plist(info):
     if (info.get('CFBundleIdentifier') != PACKAGE or info.get('CFBundleSupportedPlatforms') != ['iPhoneSimulator']
             or info.get('DTPlatformName') != 'iphonesimulator' or info.get('CFBundleExecutable') != 'Runner'
             or info.get('UIFileSharingEnabled') is not False
+            or info.get('FlutterDeepLinkingEnabled') is not False
+            or info.get('CFBundleURLTypes') != [{'CFBundleURLName': PACKAGE + '.oauth', 'CFBundleURLSchemes': [CALLBACK_SCHEME]}]
             or info.get('NSAppTransportSecurity', {}).get('NSAllowsArbitraryLoads') is not False):
         raise ValueError('Built iOS bundle failed its Simulator-only smoke contract.')
 
@@ -99,6 +105,7 @@ def simulator_checks(flutter, project, output):
         (output / 'ios-orders.png').write_bytes(picture)
         result = {'runtime': runtime, 'deviceType': device_type, 'screenshotSha256': hashlib.sha256(picture).hexdigest(),
                   'checks': ['real-ios-keychain-isolation', 'owned-test-key-removal', 'external-browser-capability-only',
+                             'owned-ios-url-scheme-roundtrip', 'mobile-auth-synthetic-transport',
                              'arabic-rtl-order-detail-rendering', 'logout-clears-detail', 'owned-simulator-cleanup']}
     finally:
         current = owned_simulator(inventory(devices_only=True), runtime, identifier, name)

@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:restaurant_admin_prototype/core/auth.dart';
+import 'package:restaurant_admin_prototype/core/native_client.dart';
 import 'package:restaurant_admin_prototype/core/session_store.dart';
 import 'package:restaurant_admin_prototype/core/transport.dart';
 
@@ -319,6 +320,181 @@ void main() {
         throwsA(isA<CoreException>()
             .having((e) => e.code, 'code', 'invalid_saved_session')));
     expect(foreignTransport.calls.length, before);
+    expect(store.value, isNull);
+  });
+
+  for (final platform in [
+    NativeClientPlatform.android,
+    NativeClientPlatform.ios
+  ]) {
+    test(
+        'mobile $platform binds PKCE, callback and secure storage to its client',
+        () async {
+      final links = StreamController<String>.broadcast(sync: true);
+      final store = MemoryStore(), transport = FakeTransport();
+      late Uri authorization;
+      final auth = CoreAuth(origin,
+          store: store,
+          transport: transport,
+          platform: platform,
+          links: links.stream, launch: (uri) async {
+        authorization = uri;
+        final q = uri.queryParameters;
+        final redirect = mobileCallback(Uri.parse(origin), platform);
+        expect(q['redirect_uri'], redirect);
+        expect(q['client_id'], nativeClientIdentifier(platform));
+        final good = Uri.parse(redirect).replace(queryParameters: {
+          'code': token('c'),
+          'state': q['state']!,
+          'iss': '$origin/native'
+        }).toString();
+        for (final bad in [
+          good.replaceFirst(':/', '://'),
+          '$good#fragment',
+          good.replaceFirst('/callback?', '/%63allback?'),
+          '$good&code=${token('d')}',
+          good.replaceFirst(q['state']!, token('z')),
+          good.replaceFirst('iss=', 'unknown='),
+          '$good&extra=1',
+          good.replaceFirst('.${platform.name}:', '.other:')
+        ]) {
+          links.add(bad);
+        }
+        expect(transport.calls, isEmpty);
+        links.add(good);
+        links.add(good); // Duplicate callbacks cannot exchange another code.
+        return true;
+      });
+      addTearDown(auth.close);
+      addTearDown(links.close);
+      links.add('example.platform.onlinu.ios:/oauth/callback?code=stale');
+      await auth.login();
+      final exchange = transport.calls.single['body'] as Map;
+      expect(exchange['client_id'], nativeClientIdentifier(platform));
+      expect(exchange['redirect_uri'],
+          authorization.queryParameters['redirect_uri']);
+      expect(
+          base64Url
+              .encode(sha256
+                  .convert(ascii.encode(exchange['code_verifier'] as String))
+                  .bytes)
+              .replaceAll('=', ''),
+          authorization.queryParameters['code_challenge']);
+      expect((jsonDecode(store.value!) as Map)['clientId'],
+          nativeClientIdentifier(platform));
+      expect(auth.hasSession, true);
+      await auth.signOut();
+      expect(store.value, isNull);
+      expect(transport.calls.last['body']['client_id'],
+          nativeClientIdentifier(platform));
+    });
+  }
+
+  test(
+      'mobile cancellation fences stale callbacks across repeated login attempts',
+      () async {
+    final links = StreamController<String>.broadcast(sync: true);
+    final launches = [Completer<Uri>(), Completer<Uri>()];
+    var count = 0;
+    final transport = FakeTransport();
+    final auth = CoreAuth(origin,
+        store: MemoryStore(),
+        transport: transport,
+        platform: NativeClientPlatform.ios,
+        links: links.stream, launch: (uri) async {
+      launches[count++].complete(uri);
+      return true;
+    });
+    addTearDown(auth.close);
+    addTearDown(links.close);
+    String callback(Uri uri) => Uri.parse(uri.queryParameters['redirect_uri']!)
+            .replace(queryParameters: {
+          'code': token('c'),
+          'state': uri.queryParameters['state']!,
+          'iss': '$origin/native'
+        }).toString();
+    final first = auth.login();
+    final rejected = expectLater(
+        first,
+        throwsA(
+            isA<CoreException>().having((e) => e.code, 'code', 'cancelled')));
+    final stale = callback(await launches[0].future);
+    await auth.cancelLogin();
+    await rejected;
+    final second = auth.login();
+    final current = callback(await launches[1].future);
+    links.add(stale);
+    expect(transport.calls, isEmpty);
+    links.add(current);
+    await second;
+    expect(transport.calls.length, 1);
+    expect(auth.hasSession, true);
+  });
+
+  test('mobile denial, callback failure and timeout never mint tokens',
+      () async {
+    for (final outcome in ['denial', 'error', 'timeout']) {
+      final links = StreamController<String>.broadcast(sync: true);
+      final transport = FakeTransport();
+      final auth = CoreAuth(origin,
+          store: MemoryStore(),
+          transport: transport,
+          platform: NativeClientPlatform.android,
+          links: links.stream,
+          loginTimeout: const Duration(milliseconds: 30), launch: (uri) async {
+        if (outcome == 'denial')
+          links.add(Uri.parse(uri.queryParameters['redirect_uri']!)
+              .replace(queryParameters: {
+            'error': 'access_denied',
+            'state': uri.queryParameters['state']!,
+            'iss': '$origin/native'
+          }).toString());
+        if (outcome == 'error')
+          links.addError(StateError('synthetic stream failure'));
+        return true;
+      });
+      await expectLater(
+          auth.login(),
+          throwsA(isA<CoreException>().having(
+              (e) => e.code,
+              'code',
+              outcome == 'denial'
+                  ? 'access_denied'
+                  : outcome == 'error'
+                      ? 'callback_unavailable'
+                      : 'login_timeout')));
+      expect(auth.hasSession, false);
+      expect(transport.calls, isEmpty);
+      auth.close();
+      await links.close();
+    }
+  });
+
+  test(
+      'mobile restore rejects a different platform client before a network request',
+      () async {
+    final store = MemoryStore()
+      ..value = jsonEncode({
+        'version': 1,
+        'origin': origin,
+        'clientId': nativeClientId,
+        'resource': '$origin/native/api',
+        'refreshToken': token('A')
+      });
+    final links = StreamController<String>.broadcast();
+    final transport = FakeTransport();
+    final auth = CoreAuth(origin,
+        store: store,
+        transport: transport,
+        platform: NativeClientPlatform.ios,
+        links: links.stream);
+    addTearDown(auth.close);
+    addTearDown(links.close);
+    await expectLater(
+        auth.restore(),
+        throwsA(isA<CoreException>()
+            .having((e) => e.code, 'code', 'invalid_saved_session')));
+    expect(transport.calls, isEmpty);
     expect(store.value, isNull);
   });
 }

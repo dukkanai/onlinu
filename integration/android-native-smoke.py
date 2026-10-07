@@ -13,6 +13,7 @@ import zipfile
 
 ANDROID = '{http://schemas.android.com/apk/res/android}'
 PACKAGE = 'dev.synthetic.restaurant_admin_prototype'
+CALLBACK_SCHEME = 'invalid.control.onlinu.android'
 SOURCE = Path(__file__).resolve().parents[1]
 
 
@@ -36,6 +37,20 @@ def secure_manifest(path):
     app.set(ANDROID + 'label', 'Onlinu Android Smoke')
     app.set(ANDROID + 'allowBackup', 'false')
     app.set(ANDROID + 'usesCleartextTraffic', 'false')
+    activities = [x for x in app.findall('activity') if x.get(ANDROID + 'name') == '.MainActivity']
+    if len(activities) != 1:
+        raise ValueError('Expected one generated Flutter activity.')
+    activity = activities[0]
+    for node in list(activity):
+        if (node.tag == 'meta-data' and node.get(ANDROID + 'name') == 'flutter_deeplinking_enabled'
+                or node.tag == 'intent-filter' and any(x.get(ANDROID + 'scheme') == CALLBACK_SCHEME for x in node.findall('data'))):
+            activity.remove(node)
+    ET.SubElement(activity, 'meta-data', {ANDROID + 'name': 'flutter_deeplinking_enabled', ANDROID + 'value': 'false'})
+    callback = ET.SubElement(activity, 'intent-filter')
+    ET.SubElement(callback, 'action', {ANDROID + 'name': 'android.intent.action.VIEW'})
+    for category in ['android.intent.category.DEFAULT', 'android.intent.category.BROWSABLE']:
+        ET.SubElement(callback, 'category', {ANDROID + 'name': category})
+    ET.SubElement(callback, 'data', {ANDROID + 'scheme': CALLBACK_SCHEME})
     if not any(node.get(ANDROID + 'name') == 'android.permission.INTERNET' for node in root.findall('uses-permission')):
         ET.SubElement(root, 'uses-permission', {ANDROID + 'name': 'android.permission.INTERNET'})
     tree.write(path, encoding='utf-8', xml_declaration=True)
@@ -48,6 +63,18 @@ def verify_built_manifest(xml):
             or app.get(ANDROID + 'usesCleartextTraffic') != 'false' or app.get(ANDROID + 'debuggable') != 'true'
             or not any(x.get(ANDROID + 'name') == 'android.permission.INTERNET' for x in root.findall('uses-permission'))):
         raise ValueError('Built Android smoke manifest failed its isolation contract.')
+    activities = [x for x in app.findall('activity') if x.get(ANDROID + 'name') in ['.MainActivity', PACKAGE + '.MainActivity']]
+    if len(activities) != 1:
+        raise ValueError('Built Flutter activity is not unique.')
+    activity = activities[0]
+    metadata = [x for x in activity.findall('meta-data') if x.get(ANDROID + 'name') == 'flutter_deeplinking_enabled']
+    callbacks = [x for x in activity.findall('intent-filter') if any(d.get(ANDROID + 'scheme') == CALLBACK_SCHEME for d in x.findall('data'))]
+    if (len(metadata) != 1 or metadata[0].get(ANDROID + 'value') != 'false' or len(callbacks) != 1
+            or len(callbacks[0].findall('data')) != 1
+            or callbacks[0].find('data').attrib != {ANDROID + 'scheme': CALLBACK_SCHEME}
+            or [x.get(ANDROID + 'name') for x in callbacks[0].findall('action')] != ['android.intent.action.VIEW']
+            or {x.get(ANDROID + 'name') for x in callbacks[0].findall('category')} != {'android.intent.category.DEFAULT', 'android.intent.category.BROWSABLE'}):
+        raise ValueError('Built mobile callback contract is missing or broadened.')
 
 
 def verify_apk_abi(path):
