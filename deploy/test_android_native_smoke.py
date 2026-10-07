@@ -2,6 +2,9 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+import subprocess
+from types import SimpleNamespace
 import zipfile
 import xml.etree.ElementTree as ET
 
@@ -11,6 +14,82 @@ spec.loader.exec_module(smoke)
 
 
 class AndroidSmokeTests(unittest.TestCase):
+    def test_owned_avd_name_must_match_exact_new_nonce(self):
+        smoke.verify_avd_name('onlinu-ci-12-aaaaaaaaaaaa\n', 'onlinu-ci-12-aaaaaaaaaaaa')
+        for actual, expected in [('other', 'onlinu-ci-12-aaaaaaaaaaaa'), ('existing', 'existing')]:
+            with self.assertRaises(ValueError):
+                smoke.verify_avd_name(actual, expected)
+
+    def emulator_fixture(self, root):
+        sdk = root / 'sdk'
+        for relative in ['cmdline-tools/latest/bin/sdkmanager', 'cmdline-tools/latest/bin/avdmanager',
+                         'emulator/emulator', 'platform-tools/adb',
+                         'system-images/android-35/google_apis/x86_64/system.img']:
+            path = sdk / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'owned synthetic fixture')
+        output = root / 'output'
+        output.mkdir()
+        return sdk, output
+
+    def test_software_execution_uses_only_new_device_and_cleans_exact_process(self):
+        class Process:
+            pid = 12345
+            returncode = None
+            def poll(self): return self.returncode
+            def wait(self, timeout): self.returncode = 0; return 0
+        for wrong_name, failed_test in [(False, False), (True, False), (False, True)]:
+            with self.subTest(wrong_name=wrong_name, failed_test=failed_test), tempfile.TemporaryDirectory(prefix='onlinu-emulator-guard-') as directory:
+                root = Path(directory)
+                sdk, output = self.emulator_fixture(root)
+                process = Process()
+                def query(args, **kwargs):
+                    if process.returncode is not None:
+                        raise subprocess.CalledProcessError(1, args)
+                    if args[-1] == 'sys.boot_completed': return '1\n'
+                    if args[-1] == 'ro.boot.qemu.avd_name': return 'other' if wrong_name else 'onlinu-ci-1-aaaaaaaaaaaa'
+                    if args[-1] == 'cache/onlinu-android-orders.png': return b'\x89PNG\r\n\x1a\nfixture'
+                    self.fail('Unexpected external read')
+                def command(args, **kwargs):
+                    if failed_test and 'test' in args:
+                        raise subprocess.CalledProcessError(1, args)
+                    return subprocess.CompletedProcess(args, 0)
+                with patch.dict(smoke.os.environ, {'RUNNER_TEMP': str(root), 'GITHUB_RUN_ID': '1'}), \
+                     patch.object(smoke.uuid, 'uuid4', return_value=SimpleNamespace(hex='a'*32)), \
+                     patch.object(smoke, 'unused_emulator_port', return_value=5554), \
+                     patch.object(smoke.shutil, 'disk_usage', return_value=SimpleNamespace(free=16*1024**3)), \
+                     patch.object(smoke.subprocess, 'Popen', return_value=process) as launch, \
+                     patch.object(smoke.subprocess, 'run', side_effect=command) as commands, \
+                     patch.object(smoke.subprocess, 'check_output', side_effect=query), \
+                     patch.object(smoke.os, 'killpg') as kill:
+                    if wrong_name or failed_test:
+                        with self.assertRaises((ValueError, subprocess.CalledProcessError)):
+                            smoke.emulator_checks(['flutter'], root, output, sdk)
+                    else:
+                        result = smoke.emulator_checks(['flutter'], root, output, sdk)
+                        self.assertTrue(result['ownedProcessStopped'])
+                        self.assertTrue(result['ownedFilesRemoved'])
+                    args = launch.call_args.args[0]
+                    self.assertEqual(args[args.index('-accel')+1], 'off')
+                    self.assertTrue(launch.call_args.kwargs['start_new_session'])
+                    kill.assert_called_once_with(12345, smoke.signal.SIGTERM)
+                    self.assertEqual(len(list(root.glob('onlinu-android-emulator-*'))), 0)
+                    if wrong_name:
+                        self.assertFalse(any('test' in call.args[0] for call in commands.call_args_list))
+
+    def test_missing_packages_never_auto_accept_license_or_launch_device(self):
+        with tempfile.TemporaryDirectory(prefix='onlinu-emulator-license-') as directory:
+            root = Path(directory)
+            manager = root / 'cmdline-tools/latest/bin/sdkmanager'
+            manager.parent.mkdir(parents=True)
+            manager.write_text('synthetic fixture')
+            with patch.object(smoke.shutil, 'disk_usage', return_value=SimpleNamespace(free=16*1024**3)), \
+                 patch.object(smoke.subprocess, 'run') as install, patch.object(smoke.subprocess, 'Popen') as launch:
+                with self.assertRaisesRegex(ValueError, 'no new SDK agreement'):
+                    smoke.emulator_checks(['flutter'], root, root, root)
+                self.assertEqual(install.call_args.kwargs['input'], 'n\n')
+                launch.assert_not_called()
+
     def test_only_explicit_ephemeral_owner_workflow_is_allowed(self):
         env = {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_REPOSITORY': 'dukkanai/onlinu',
                'RUNNER_OS': 'Linux', 'GITHUB_RUN_ID': '1', 'GITHUB_SHA': 'a' * 40,

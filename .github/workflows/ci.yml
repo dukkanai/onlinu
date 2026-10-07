@@ -18,6 +18,11 @@ on:
         type: boolean
         required: false
         default: false
+      android_execute:
+        description: Exercise synthetic Android storage and app links in a new software-only emulator
+        type: boolean
+        required: false
+        default: false
       ios_smoke:
         description: Compile isolated non-production iOS Simulator debug application
         type: boolean
@@ -384,13 +389,14 @@ jobs:
           retention-days: 7
 
   android-compile:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.android_smoke }}
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.android_smoke || inputs.android_execute) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
       CI: 'true'
       BOT: 'true'
       FLUTTER_SUPPRESS_ANALYTICS: 'true'
+      ONLINU_ANDROID_EXECUTE: ${{ inputs.android_execute && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
       - name: Verify isolated smoke guards

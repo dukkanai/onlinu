@@ -65,3 +65,27 @@ compilation and actual iOS own-scheme callback/Keychain/Arabic rendering tests
 passed; downloaded artifacts and owned Simulator cleanup were checked. This
 is synthetic callback acceptance, not a real provider login or Android device
 execution. No production or release-signing configuration changed.
+
+## Software-emulator execution (pending acceptance)
+
+The read-only hosted probe CI37602010239 established that its runner had no
+emulator/system image and no KVM access. The new explicit `android_execute`
+input therefore attempts bounded software emulation without sudo, ACL changes,
+KVM permissions or other host security changes. Android documents this mode as
+unsupported and slow; successful startup and tests are not assumed.
+
+Only Google's installed SDK manager may fetch the fixed API35 Google APIs
+x86_64 image and emulator. Existing runner license acceptance may be used; any
+new license prompt is declined. A unique AVD uses exclusively owned temporary
+paths and a free port pair. Its actual guest name must match the created nonce
+before tests. No existing AVD, physical phone or shared ADB daemon is stopped.
+Ten-minute boot and fifteen-minute test bounds apply. Cleanup stops only the
+created process group, checks that the owned guest no longer responds, and
+removes only its own temporary files; uncertain cleanup prevents acceptance.
+
+The three new integration tests cover Android secure-storage isolation,
+owned-app URL-scheme callback with synthetic transport, and Arabic order detail
+rendering/logout. The archived arm64 debug app and x86_64 integration target
+are distinct builds from the same reviewed source. Neither is store-signed or
+configured for a real provider. Local 86 Python guards and Flutter analysis
+pass; actual emulator startup, rendering and storage checks await CI.

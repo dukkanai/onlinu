@@ -1226,3 +1226,10 @@ starts no device, accepts no new agreement and changes no security permissions.
 Its report is diagnostic evidence only, never Android execution acceptance.
 The default ordinary CI gates remain unchanged. Local deployment tests: 83 pass;
 hosted prerequisite facts are pending the probe run.
+
+Android preflight CI37602010239 passed and its report was downloaded: no emulator
+or image installed, KVM exists but is not readable/writable by the runner. The
+next explicit android_execute trial uses software emulation with no permission
+changes, only official packages under already-accepted licenses, owned AVD
+identity checks and bounded cleanup. Local 86 deployment guards/analyzer pass;
+actual execution is pending. No new agreement or host security change is made.

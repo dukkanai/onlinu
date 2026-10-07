@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Opt-in ephemeral Android compilation. No device, store, signing account or live API."""
+"""Opt-in Android compile/software-emulator checks. No physical device, store or live API."""
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import signal
+import socket
 import subprocess
 import tempfile
+import time
+import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -88,8 +92,134 @@ def run(args, cwd, timeout=900):
     subprocess.run([str(x) for x in args], cwd=cwd, check=True, timeout=timeout)
 
 
+def unused_emulator_port():
+    for port in range(5554, 5682, 2):
+        sockets = []
+        try:
+            for candidate in [port, port + 1]:
+                connection = socket.socket()
+                sockets.append(connection)
+                connection.bind(('127.0.0.1', candidate))
+            return port
+        except OSError:
+            pass
+        finally:
+            for connection in sockets:
+                connection.close()
+    raise ValueError('No unoccupied emulator console/ADB port pair.')
+
+
+def verify_avd_name(actual, expected):
+    if actual.strip() != expected or not re.fullmatch(r'onlinu-ci-[0-9]+-[a-f0-9]{12}', expected):
+        raise ValueError('Emulator identity differs from the newly created owned AVD.')
+
+
+def emulator_checks(flutter, project, output, sdk):
+    image = 'system-images;android-35;google_apis;x86_64'
+    tools = sorted(sdk.glob('cmdline-tools/*/bin/sdkmanager'))
+    if not tools or shutil.disk_usage(sdk).free < 8 * 1024**3:
+        raise ValueError('Official SDK manager and 8 GiB free space are required.')
+    manager = tools[-1]
+    emulator = sdk / 'emulator/emulator'
+    system_image = sdk / 'system-images/android-35/google_apis/x86_64/system.img'
+    if not emulator.is_file() or not system_image.is_file():
+        # Use only the official SDK manager and already-accepted runner licenses.
+        # A new license prompt is declined, never automatically accepted.
+        subprocess.run([str(manager), '--install', 'emulator', image], input='n\n', text=True,
+                       check=True, timeout=600)
+    if not emulator.is_file() or not system_image.is_file():
+        raise ValueError('Emulator packages unavailable; no new SDK agreement was accepted.')
+    root = Path(tempfile.mkdtemp(prefix='onlinu-android-emulator-', dir=os.environ['RUNNER_TEMP']))
+    name = 'onlinu-ci-' + os.environ['GITHUB_RUN_ID'] + '-' + uuid.uuid4().hex[:12]
+    port = unused_emulator_port()
+    serial = 'emulator-' + str(port)
+    env = dict(os.environ, ANDROID_AVD_HOME=str(root / 'avd'),
+               ANDROID_USER_HOME=str(root / 'user'), ANDROID_EMULATOR_HOME=str(root / 'emulator'),
+               ANDROID_I_WANT_MY_TCG='yes')
+    for field in ['ANDROID_AVD_HOME', 'ANDROID_USER_HOME', 'ANDROID_EMULATOR_HOME']:
+        Path(env[field]).mkdir()
+    adb = sdk / 'platform-tools/adb'
+    process = None
+    try:
+        subprocess.run([str(manager.parent / 'avdmanager'), 'create', 'avd', '--name', name,
+                        '--package', image, '--path', str(root / 'device.avd')],
+                       input='no\n', text=True, env=env, check=True, timeout=120)
+        with (root / 'emulator.log').open('wb') as log:
+            process = subprocess.Popen([str(emulator), '-avd', name, '-port', str(port),
+                                        '-no-window', '-no-audio', '-no-boot-anim', '-no-snapshot',
+                                        '-camera-back', 'none', '-camera-front', 'none',
+                                        '-gpu', 'swiftshader_indirect', '-accel', 'off', '-memory', '2048',
+                                        '-cores', '2'], env=env, stdout=log, stderr=subprocess.STDOUT,
+                                       start_new_session=True)
+            deadline = time.monotonic() + 600
+            while True:
+                if process.poll() is not None:
+                    raise ValueError('Owned software emulator exited before boot: ' + (root / 'emulator.log').read_text(errors='replace')[-2000:])
+                try:
+                    completed = subprocess.check_output([str(adb), '-s', serial, 'shell', 'getprop', 'sys.boot_completed'],
+                                                        text=True, stderr=subprocess.DEVNULL, timeout=10).strip()
+                    if completed == '1':
+                        actual = subprocess.check_output([str(adb), '-s', serial, 'shell', 'getprop', 'ro.boot.qemu.avd_name'],
+                                                         text=True, timeout=10)
+                        verify_avd_name(actual, name)
+                        break
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    pass
+                if time.monotonic() >= deadline:
+                    raise ValueError('Owned software emulator boot exceeded its ten-minute bound.')
+                time.sleep(5)
+            print('Owned Android emulator boot and identity verified; no KVM permission change.', flush=True)
+            subprocess.run([*map(str, flutter), 'test', 'integration_test/android_smoke_test.dart',
+                            '--no-pub', '--no-uninstall', '-d', serial, '--reporter=expanded'],
+                           cwd=project, env=env, check=True, timeout=900)
+            verify_avd_name(subprocess.check_output([str(adb), '-s', serial, 'shell', 'getprop', 'ro.boot.qemu.avd_name'],
+                                                   text=True, timeout=10), name)
+            picture = subprocess.check_output([str(adb), '-s', serial, 'exec-out', 'run-as', PACKAGE,
+                                               'cat', 'cache/onlinu-android-orders.png'], timeout=30)
+            if not 8 < len(picture) <= 16 * 1024**2 or not picture.startswith(b'\x89PNG\r\n\x1a\n'):
+                raise ValueError('Expected bounded Android rendering evidence is missing.')
+            (output / 'android-orders.png').write_bytes(picture)
+            result = {'systemImage': image, 'acceleration': 'software-only',
+                      'screenshotSha256': hashlib.sha256(picture).hexdigest(),
+                      'checks': ['owned-avd-identity', 'real-android-keystore-isolation', 'owned-url-scheme-roundtrip',
+                                 'synthetic-token-transport', 'arabic-rendering', 'logout-clears-detail']}
+    finally:
+        if process is not None and process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=10)
+        # Never kill the shared ADB daemon or another device. Only the owned
+        # process group and this exclusively created temporary directory belong here.
+        if process is not None:
+            deadline = time.monotonic() + 30
+            while True:
+                try:
+                    remaining = subprocess.check_output([str(adb), '-s', serial, 'shell', 'getprop', 'ro.boot.qemu.avd_name'],
+                                                        text=True, stderr=subprocess.DEVNULL, timeout=5).strip()
+                except subprocess.CalledProcessError:
+                    remaining = ''
+                if remaining != name:
+                    break
+                if time.monotonic() >= deadline:
+                    raise ValueError('Owned AVD still responds after process shutdown; files retained.')
+                time.sleep(1)
+        if process is None or process.poll() is not None:
+            shutil.rmtree(root)
+        else:
+            raise ValueError('Owned emulator shutdown could not be confirmed.')
+    result['ownedProcessStopped'] = True
+    result['ownedFilesRemoved'] = not root.exists()
+    return result
+
+
 def main():
     validate_context(os.environ)
+    execute = os.environ.get('ONLINU_ANDROID_EXECUTE', '0')
+    if execute not in ['0', '1']:
+        raise ValueError('Invalid Android execution flag.')
     current = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=SOURCE, text=True).strip()
     if current != os.environ['GITHUB_SHA']:
         raise ValueError('Source commit does not match this CI run.')
@@ -143,13 +273,15 @@ def main():
     for name in ['LICENSE', 'LICENSE.WaCalls']:
         shutil.copy2(SOURCE / name, output / name)
     (output / 'SOURCE.txt').write_text('Source: https://github.com/dukkanai/onlinu/tree/' + current + '\nCompile-only debug artifact; no production endpoint or release signing.\n')
+    execution = emulator_checks(flutter, project, output, android_sdk) if execute == '1' else None
     report = {'sourceCommit': current, 'flutterVersion': version['frameworkVersion'], 'package': PACKAGE,
               'apkSha256': digest, 'apkBytes': target.stat().st_size, 'targetABI': 'arm64-v8a',
               'debugBuild': True, 'productionConfigured': False, 'storePublished': False,
               'actualDeviceTested': False, 'realCredentialsUsed': False,
+              'emulatorExecutionTested': execution is not None, 'emulatorExecution': execution,
               'checks': ['reviewed-lockfile-unchanged', 'flutter-analysis', 'flutter-unit-widget-tests',
                          'android-debug-compilation', 'arm64-only-flutter-engine', 'built-manifest-network-backup-debug-contract'],
-              'notVerified': ['android-device-rendering', 'android-secure-storage', 'mobile-login',
+              'notVerified': ([] if execution else ['android-device-rendering', 'android-secure-storage']) + ['mobile-login',
                               'background-resume', 'notifications', 'release-signing', 'store-distribution', 'ios']}
     (output / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
 
