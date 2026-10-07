@@ -97,3 +97,13 @@ recheck prices/stock/policy again. No order dispatch exists in this increment.
 An idempotent historical confirmation receipt is never permission for a new order
 or charge after expiry. Presentation/decision adapters and final dispatch remain
 unimplemented; no natural-language yes parser is introduced.
+
+Review-store acceptance: code `e5d805ded23e4e327b869e031ea2ecfa87be6720` passed
+all four ordinary jobs in [CI37694002174](https://github.com/dukkanai/onlinu/actions/runs/37694002174).
+Dedicated verbose Go race logs verify four actual PostgreSQL tests:12 concurrent
+confirmations with a two-connection pool and restart; supersession/cancel/expiry
+and identity isolation; changed price/cart/stored-input rejection; and concurrent
+cancel-versus-confirm plus source expiry. Full Go race and396platform cases/no
+skips passed, along with84client/build/browser and Windows checks. This accepts
+the private intent store only. No live review presentation, send, provider account,
+conversation UI or final order dispatch has been accepted.

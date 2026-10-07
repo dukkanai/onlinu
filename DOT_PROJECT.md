@@ -1449,3 +1449,11 @@ replay protection. It has no startup/HTTP/provider hook or final-order dispatch.
 Local compile/vet/pure/client checks are separate from pending hosted PostgreSQL
 concurrency/restart/price-change acceptance. Details and limitations are in
 `prototype/platform/WHATSAPP-CONVERSATION-DESIGN.md`.
+
+Private WhatsApp review-store acceptance:e5d805ded23e4e327b869e031ea2ecfa87be6720,
+CI37694002174 all four ordinary jobs passed. Four focused actual PostgreSQL/race
+cases cover concurrent confirmation/restart, supersession/cancellation/expiry,
+identity/price/cart/corruption and cancel-versus-confirm races. Full Go race and
+396platform cases/no skips passed. A confirmed review is customer-intent evidence,
+not an accepted order, successful outgoing message or payment. Final dispatch,
+real account binding and conversation presentation still require implementation.
