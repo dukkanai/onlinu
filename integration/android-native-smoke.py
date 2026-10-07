@@ -128,7 +128,17 @@ def decode_rendering_png(encoded):
     return picture
 
 
+def emulator_acceleration(mode):
+    if mode == 'software':
+        return 'off'
+    if mode == 'kvm' and os.access('/dev/kvm', os.R_OK | os.W_OK):
+        return 'on'
+    raise ValueError('Explicit acceleration mode and effective KVM access are required; no permissions are changed here.')
+
+
 def emulator_checks(flutter, project, output, sdk):
+    mode = os.environ.get('ONLINU_ANDROID_ACCELERATION', 'software')
+    acceleration = emulator_acceleration(mode)
     image = 'system-images;android-35;google_apis;x86_64'
     tools = sorted(sdk.glob('cmdline-tools/*/bin/sdkmanager'))
     if not tools or shutil.disk_usage(sdk).free < 8 * 1024**3:
@@ -148,8 +158,11 @@ def emulator_checks(flutter, project, output, sdk):
     port = unused_emulator_port()
     serial = 'emulator-' + str(port)
     env = dict(os.environ, ANDROID_AVD_HOME=str(root / 'avd'),
-               ANDROID_USER_HOME=str(root / 'user'), ANDROID_EMULATOR_HOME=str(root / 'emulator'),
-               ANDROID_I_WANT_MY_TCG='yes')
+               ANDROID_USER_HOME=str(root / 'user'), ANDROID_EMULATOR_HOME=str(root / 'emulator'))
+    if mode == 'software':
+        env['ANDROID_I_WANT_MY_TCG'] = 'yes'
+    else:
+        env.pop('ANDROID_I_WANT_MY_TCG', None)
     for field in ['ANDROID_AVD_HOME', 'ANDROID_USER_HOME', 'ANDROID_EMULATOR_HOME']:
         Path(env[field]).mkdir()
     adb = sdk / 'platform-tools/adb'
@@ -162,13 +175,13 @@ def emulator_checks(flutter, project, output, sdk):
             process = subprocess.Popen([str(emulator), '-avd', name, '-port', str(port),
                                         '-no-window', '-no-audio', '-no-boot-anim', '-no-snapshot',
                                         '-camera-back', 'none', '-camera-front', 'none',
-                                        '-gpu', 'swiftshader_indirect', '-accel', 'off', '-memory', '2048',
+                                        '-gpu', 'swiftshader_indirect', '-accel', acceleration, '-memory', '2048',
                                         '-cores', '2'], env=env, stdout=log, stderr=subprocess.STDOUT,
                                        start_new_session=True)
             deadline = time.monotonic() + 600
             while True:
                 if process.poll() is not None:
-                    raise ValueError('Owned software emulator exited before boot: ' + (root / 'emulator.log').read_text(errors='replace')[-2000:])
+                    raise ValueError('Owned emulator exited before boot: ' + (root / 'emulator.log').read_text(errors='replace')[-2000:])
                 try:
                     completed = subprocess.check_output([str(adb), '-s', serial, 'shell', 'getprop', 'sys.boot_completed'],
                                                         text=True, stderr=subprocess.DEVNULL, timeout=10).strip()
@@ -180,9 +193,9 @@ def emulator_checks(flutter, project, output, sdk):
                 except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                     pass
                 if time.monotonic() >= deadline:
-                    raise ValueError('Owned software emulator boot exceeded its ten-minute bound.')
+                    raise ValueError('Owned emulator boot exceeded its ten-minute bound.')
                 time.sleep(5)
-            print('Owned Android emulator boot and identity verified; no KVM permission change.', flush=True)
+            print('Owned Android emulator boot and identity verified; acceleration mode: ' + mode, flush=True)
             subprocess.run([*map(str, flutter), 'test', 'integration_test/android_smoke_test.dart',
                             '--no-pub', '--no-uninstall', '-d', serial, '--reporter=expanded'],
                            cwd=project, env=env, check=True, timeout=900)
@@ -192,7 +205,7 @@ def emulator_checks(flutter, project, output, sdk):
                                                'base64', 'cache/onlinu-android-orders.png'], timeout=30)
             picture = decode_rendering_png(encoded)
             (output / 'android-orders.png').write_bytes(picture)
-            result = {'systemImage': image, 'acceleration': 'software-only',
+            result = {'systemImage': image, 'acceleration': mode,
                       'screenshotSha256': hashlib.sha256(picture).hexdigest(),
                       'checks': ['owned-avd-identity', 'real-android-keystore-isolation', 'owned-url-scheme-roundtrip',
                                  'synthetic-token-transport', 'arabic-rendering', 'logout-clears-detail']}

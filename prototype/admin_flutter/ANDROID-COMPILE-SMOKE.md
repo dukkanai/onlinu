@@ -89,3 +89,20 @@ rendering/logout. The archived arm64 debug app and x86_64 integration target
 are distinct builds from the same reviewed source. Neither is store-signed or
 configured for a real provider. Local 86 Python guards and Flutter analysis
 pass; actual emulator startup, rendering and storage checks await CI.
+
+## Specifically approved accelerated trial (pending acceptance)
+
+`android_accelerated` remains false by default. Its explicit hosted test enables
+only the current runner user's read/write ACL on `/dev/kvm`, after saving and
+validating the original basic ACL. It does not use world-writable permissions,
+change group membership, change networking, or touch production. An always-run
+step restores the saved ACL to that exact device and compares readback before
+artifact publication. The emulator driver itself changes no permissions and
+requires effective access before selecting `-accel on`.
+
+This option requires applicable action-time authorization for the security
+change; its presence is not standing approval for future invocations. The
+current approved trial addresses the software-boot timeout and rechecks the
+still-unverified base64 screenshot transfer. Local 89 guard tests and both
+permission-step shell syntax checks pass. Actual accelerated execution and ACL
+restoration remain to be verified in CI.

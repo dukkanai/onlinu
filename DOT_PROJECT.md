@@ -1249,3 +1249,9 @@ transfer ran in that retry. The earlier three Android tests passed only in
 CI37603475763, whose artifact stage failed. Full Android execution acceptance
 therefore remains open. Hardware-acceleration access has not been changed;
 a specific temporary hosted-runner KVM permission request is pending approval.
+
+A specifically approved accelerated Android trial is now prepared behind the
+false-by-default android_accelerated input. Only the test user's KVM ACL may be
+added, with a strict original-basic-ACL guard, private backup, always-run restore
+and exact readback comparison. No chmod666, group change or production setting.
+Local 89 guards and shell syntax checks pass; execution/restoration are pending.

@@ -23,6 +23,11 @@ on:
         type: boolean
         required: false
         default: false
+      android_accelerated:
+        description: Run Android execution with specifically approved temporary KVM user access and restore it afterward
+        type: boolean
+        required: false
+        default: false
       ios_smoke:
         description: Compile isolated non-production iOS Simulator debug application
         type: boolean
@@ -389,14 +394,15 @@ jobs:
           retention-days: 7
 
   android-compile:
-    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.android_smoke || inputs.android_execute) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.android_smoke || inputs.android_execute || inputs.android_accelerated) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
       CI: 'true'
       BOT: 'true'
       FLUTTER_SUPPRESS_ANALYTICS: 'true'
-      ONLINU_ANDROID_EXECUTE: ${{ inputs.android_execute && '1' || '0' }}
+      ONLINU_ANDROID_EXECUTE: ${{ (inputs.android_execute || inputs.android_accelerated) && '1' || '0' }}
+      ONLINU_ANDROID_ACCELERATION: ${{ inputs.android_accelerated && 'kvm' || 'software' }}
     steps:
       - uses: actions/checkout@v4
       - name: Verify isolated smoke guards
@@ -409,8 +415,37 @@ jobs:
           mkdir "$RUNNER_TEMP/onlinu-android-sdk"
           tar -xJf "$archive" -C "$RUNNER_TEMP/onlinu-android-sdk"
           echo "ONLINU_FLUTTER_SDK=$RUNNER_TEMP/onlinu-android-sdk/flutter" >> "$GITHUB_ENV"
+      - name: Grant specifically approved temporary KVM access
+        if: ${{ inputs.android_accelerated }}
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          test "$(id -u)" -ne 0
+          backup="$RUNNER_TEMP/onlinu-kvm-original.acl"
+          test ! -e "$backup"
+          umask 077
+          getfacl -cn /dev/kvm > "$backup"
+          python3 - "$backup" <<'PY'
+          import pathlib, sys
+          entries = [line.strip() for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.strip()]
+          if sorted(entries) != ['group::rw-', 'other::---', 'user::rw-']:
+              raise SystemExit('Unexpected KVM ACL; no permission change attempted.')
+          PY
+          touch "$RUNNER_TEMP/onlinu-kvm-grant-attempted"
+          sudo -n setfacl -m "u:$(id -u):rw" /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
       - name: Build isolated debug Android application
         run: python3 integration/android-native-smoke.py
+      - name: Restore and verify original KVM permissions
+        if: ${{ always() && inputs.android_accelerated }}
+        run: |
+          set -euo pipefail
+          if test -f "$RUNNER_TEMP/onlinu-kvm-grant-attempted"; then
+            sudo -n setfacl --set-file="$RUNNER_TEMP/onlinu-kvm-original.acl" /dev/kvm
+            getfacl -cn /dev/kvm > "$RUNNER_TEMP/onlinu-kvm-restored.acl"
+            cmp "$RUNNER_TEMP/onlinu-kvm-original.acl" "$RUNNER_TEMP/onlinu-kvm-restored.acl"
+            echo 'Original KVM permissions restored and verified.'
+          fi
       - name: Retain non-production debug build and report
         uses: actions/upload-artifact@v4
         with:

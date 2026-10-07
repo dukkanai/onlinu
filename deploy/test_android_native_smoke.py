@@ -14,6 +14,29 @@ spec.loader.exec_module(smoke)
 
 
 class AndroidSmokeTests(unittest.TestCase):
+    def test_kvm_mode_needs_current_effective_access_and_never_changes_it(self):
+        self.assertEqual(smoke.emulator_acceleration('software'), 'off')
+        with patch.object(smoke.os, 'access', return_value=False):
+            with self.assertRaises(ValueError):
+                smoke.emulator_acceleration('kvm')
+        with patch.object(smoke.os, 'access', return_value=True) as access:
+            self.assertEqual(smoke.emulator_acceleration('kvm'), 'on')
+            access.assert_called_once_with('/dev/kvm', smoke.os.R_OK | smoke.os.W_OK)
+        for mode in ['auto', '', 'true']:
+            with self.assertRaises(ValueError):
+                smoke.emulator_acceleration(mode)
+
+    def test_accelerated_workflow_is_opt_in_user_only_and_restores_original_acl(self):
+        workflow = (smoke.SOURCE / '.github/workflows/ci.yml').read_text()
+        section = workflow.split('  android-compile:', 1)[1].split('  ios-compile:', 1)[0]
+        self.assertIn('if: ${{ inputs.android_accelerated }}', section)
+        self.assertIn('if: ${{ always() && inputs.android_accelerated }}', section)
+        self.assertIn('sudo -n setfacl -m "u:$(id -u):rw" /dev/kvm', section)
+        self.assertIn('sudo -n setfacl --set-file="$RUNNER_TEMP/onlinu-kvm-original.acl" /dev/kvm', section)
+        self.assertIn('Original KVM permissions restored and verified.', section)
+        self.assertNotIn('chmod 666', section)
+        self.assertNotIn('usermod', section)
+
     def test_owned_avd_name_must_match_exact_new_nonce(self):
         smoke.verify_avd_name('onlinu-ci-12-aaaaaaaaaaaa\n', 'onlinu-ci-12-aaaaaaaaaaaa')
         for actual, expected in [('other', 'onlinu-ci-12-aaaaaaaaaaaa'), ('existing', 'existing')]:
