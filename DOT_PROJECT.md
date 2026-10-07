@@ -1027,3 +1027,12 @@ Synthetic local image ID:
 `sha256:4e7e053fb159789289d686b9720b0f3027102e7c022f3241db6ff8741af5e35b`.
 Production key loading, registry publication, activation and deployment remain
 separate; no real credential or provider account was used.
+
+## Existing pinned-image preflight — 2026-10-07, CI pending
+
+A private read-only gate resolves only the original preparation's two exact
+repository digests already present on the local daemon. Linux/amd64, canonical
+configuration IDs, different service images and original runtime UID are checked;
+missing images fail without login, pull, build or retry. Four compiler/transport
+test groups pass locally. Real reviewed release digests and registry provenance
+remain external gates; see `prototype/platform/PROVISIONING-IMAGE-PREFLIGHT.md`.

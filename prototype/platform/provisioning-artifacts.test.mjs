@@ -9,6 +9,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { createProvisioningArtifacts } from './provisioning-artifacts.mjs';
 import { problem } from './auth.mjs';
 import { createProvisioningStage } from './provisioning-stage.mjs';
+import { createProvisioningImagePreflight } from './provisioning-image-preflight.mjs';
 import { createProvisioningExecutionManifest } from './provisioning-execution-manifest.mjs';
 
 const compiler = fileURLToPath(new URL('../../deploy/tenant_plan.py', import.meta.url));
@@ -313,4 +314,55 @@ test('execution manifest capability requires an exact preflight acknowledgement'
     const supplier=createProvisioningExecutionManifest({stage:f.stager,actorId:f.actor,secretPreflight:{async check(){return response;}}});
     await assert.rejects(supplier.bind(f.prepared,staged,{currentFence:()=>f.args}).verifyExecution(),{code:'provisioning_execution_manifest_rejected'});
   }
+});
+
+
+function imageProcess(prepared, change = () => {}) {
+  const calls = [];
+  return { calls, async run(args) {
+    calls.push(args);
+    assert.deepEqual(args.slice(0, 2), ['--context', 'default']);
+    if (args[2] === 'context') return JSON.stringify([{ Name: 'default', Endpoints: { docker: { Host: 'unix:///var/run/docker.sock' } } }]);
+    assert.deepEqual([args[2], args[3], ...args.slice(5)], ['image', 'inspect', '--format', '{{json .}}']);
+    const service = args[4] === prepared.compose.services.restaurant.image ? 'restaurant' : 'postgres';
+    assert.equal(args[4], prepared.compose.services[service].image);
+    const info = { Id: 'sha256:' + (service === 'restaurant' ? 'c' : 'd').repeat(64), Os: 'linux', Architecture: 'amd64',
+      RepoDigests: [args[4]], Config: { User: service === 'restaurant' ? '10001:10001' : '' } };
+    change(info, service); return JSON.stringify(info);
+  } };
+}
+test('image preflight resolves only original pinned references through read-only local inspection', async t => {
+  const f = await stageFixture(t), processRunner = imageProcess(f.prepared);
+  const result = await createProvisioningImagePreflight({ processRunner }).inspect(f.prepared);
+  assert.deepEqual(result, { restaurant: 'sha256:' + 'c'.repeat(64), postgres: 'sha256:' + 'd'.repeat(64) });
+  assert.ok(Object.isFrozen(result)); assert.equal(processRunner.calls.length, 3);
+});
+test('image preflight rejects absent digest provenance, wrong platform, identity and runtime user', async t => {
+  const f = await stageFixture(t);
+  for (const change of [x => { x.RepoDigests = []; }, x => { x.RepoDigests = ['other@sha256:' + 'a'.repeat(64)]; },
+    x => { x.Os = 'windows'; }, x => { x.Architecture = 'arm64'; }, x => { x.Id = 'tag-not-id'; },
+    x => { x.Config.User = '0'; }, x => { x.Id = 'sha256:' + 'c'.repeat(64); }]) {
+    await assert.rejects(createProvisioningImagePreflight({ processRunner: imageProcess(f.prepared, change) }).inspect(f.prepared),
+      { code: 'provisioning_image_preflight_rejected' });
+  }
+});
+test('image preflight rejects copies, cancellation and foreign contexts before image observation', async t => {
+  const f = await stageFixture(t), processRunner = imageProcess(f.prepared), checker = createProvisioningImagePreflight({ processRunner });
+  await assert.rejects(checker.inspect(structuredClone(f.prepared)), { code: 'provisioning_image_preflight_rejected' });
+  const abort = new AbortController(); abort.abort();
+  await assert.rejects(checker.inspect(f.prepared, { signal: abort.signal }), { code: 'provisioning_image_preflight_rejected' });
+  assert.equal(processRunner.calls.length, 0);
+  let calls = 0;
+  await assert.rejects(createProvisioningImagePreflight({ processRunner: { async run() { calls++; return JSON.stringify([{ Name: 'default', Endpoints: { docker: { Host: 'tcp://remote:2375' } } }]); } } }).inspect(f.prepared), { code: 'provisioning_image_preflight_rejected' });
+  assert.equal(calls, 1);
+});
+test('image preflight sanitizes missing-image, malformed and oversized responses without retry', async t => {
+  const f = await stageFixture(t);
+  for (const output of ['not-json', 'x'.repeat(1048577)]) {
+    let calls = 0;
+    await assert.rejects(createProvisioningImagePreflight({ processRunner: { async run() { calls++; return output; } } }).inspect(f.prepared), { code: 'provisioning_image_preflight_rejected' });
+    assert.equal(calls, 1);
+  }
+  await assert.rejects(createProvisioningImagePreflight({ processRunner: { async run() { throw new Error('private daemon diagnostics'); } } }).inspect(f.prepared),
+    error => error.code === 'provisioning_image_preflight_rejected' && !JSON.stringify(error).includes('private daemon diagnostics'));
 });
