@@ -29,3 +29,12 @@ bounded Docker transport: exact commands and output binding, identity/platform/
 digest/user rejection, copied preparations, cancellation/foreign context, malformed
 or oversized responses and sanitized missing-image failures. This does not claim
 actual registry publication or daemon acceptance of production-pinned releases.
+
+
+Pinned-image preflight regression: `76e3419e6d38871bee407da71f54d638dbc1b3b9`
+passed all four ordinary jobs in [CI37555755861](https://github.com/dukkanai/onlinu/actions/runs/37555755861),
+verified 2026-10-07 01:19 UTC. Actual database, browser, native TLS, Windows tests
+and builds passed. The new image-inspection tests still use a simulated Docker
+transport with real compiler-branded preparations; no production registry image
+was published or inspected. The optional runtime-image job was intentionally
+skipped, so the latest full-image checkpoint remains `dfebcae`/CI37554750785.

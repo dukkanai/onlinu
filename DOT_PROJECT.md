@@ -1036,3 +1036,12 @@ configuration IDs, different service images and original runtime UID are checked
 missing images fail without login, pull, build or retry. Four compiler/transport
 test groups pass locally. Real reviewed release digests and registry provenance
 remain external gates; see `prototype/platform/PROVISIONING-IMAGE-PREFLIGHT.md`.
+
+
+Pinned-image preflight regression: `76e3419e6d38871bee407da71f54d638dbc1b3b9`
+passed all four ordinary jobs in [CI37555755861](https://github.com/dukkanai/onlinu/actions/runs/37555755861),
+verified 2026-10-07 01:19 UTC. Actual database, browser, native TLS, Windows tests
+and builds passed. The new image-inspection tests still use a simulated Docker
+transport with real compiler-branded preparations; no production registry image
+was published or inspected. The optional runtime-image job was intentionally
+skipped, so the latest full-image checkpoint remains `dfebcae`/CI37554750785.
