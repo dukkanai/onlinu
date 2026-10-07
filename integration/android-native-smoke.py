@@ -113,6 +113,9 @@ def main():
     shutil.copy2(apk, target)
     with target.open('rb') as stream:
         digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+    for name in ['LICENSE', 'LICENSE.WaCalls']:
+        shutil.copy2(SOURCE / name, output / name)
+    (output / 'SOURCE.txt').write_text('Source: https://github.com/dukkanai/onlinu/tree/' + current + '\nCompile-only debug artifact; no production endpoint or release signing.\n')
     report = {'sourceCommit': current, 'flutterVersion': version['frameworkVersion'], 'package': PACKAGE,
               'apkSha256': digest, 'apkBytes': target.stat().st_size, 'targetABI': 'arm64-v8a',
               'debugBuild': True, 'productionConfigured': False, 'storePublished': False,

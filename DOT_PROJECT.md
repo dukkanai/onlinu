@@ -1091,3 +1091,14 @@ validated the built manifest. The reserved control.invalid origin, debug status,
 synthetic package identity and all device/login/distribution limitations above
 remain. This is the first Android compilation checkpoint, not mobile release
 or actual-device acceptance. Latest full Docker-image checkpoint remains dfebcae.
+
+## Opt-in iOS Simulator compile smoke — 2026-10-07, CI pending
+
+A manual standard-macOS gate generates an isolated official Flutter iOS scaffold,
+copies reviewed Dart/locked dependencies, and builds only a control.invalid debug
+Simulator bundle with code signing disabled. Built identity/platform/transport,
+no device profile, architectures and archive hash are checked. No Apple account,
+new agreement, real credentials or phone installation is involved. Three local
+iOS guard groups pass; actual macOS compilation is pending. Android and iOS
+artifacts include preserved project licenses plus corresponding source links.
+See `prototype/admin_flutter/IOS-COMPILE-SMOKE.md`.

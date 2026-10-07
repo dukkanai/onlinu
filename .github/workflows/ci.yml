@@ -13,6 +13,11 @@ on:
         type: boolean
         required: false
         default: false
+      ios_smoke:
+        description: Compile isolated non-production iOS Simulator debug application
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -381,5 +386,46 @@ jobs:
         with:
           name: onlinu-android-smoke-${{ github.sha }}
           path: artifacts/android-native/
+          if-no-files-found: error
+          retention-days: 3
+
+  ios-compile:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.ios_smoke }}
+    runs-on: macos-latest
+    timeout-minutes: 40
+    env:
+      CI: 'true'
+      BOT: 'true'
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify isolated iOS smoke guards
+        run: python3 -m unittest discover -s deploy -p 'test_ios_native_smoke.py' -v
+      - name: Install reviewed official Flutter SDK
+        run: |
+          case "$(uname -m)" in
+            arm64)
+              file=flutter_macos_arm64_3.47.5-stable.zip
+              expected=d4dd908b5f8f65515831b6d68ae33307a813f2b68947dded7a1994ee5ea7cead
+              ;;
+            x86_64)
+              file=flutter_macos_3.47.5-stable.zip
+              expected=a7893bb0feecd8bd066f4f7e850356f896a6fc3b862e6c506d21c76691a66b72
+              ;;
+            *) echo 'Unsupported standard macOS runner architecture'; exit 1 ;;
+          esac
+          archive="$RUNNER_TEMP/$file"
+          curl -fsSL --retry 2 --max-time 600 "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/$file" -o "$archive"
+          echo "$expected  $archive" | shasum -a 256 --check -
+          mkdir "$RUNNER_TEMP/onlinu-ios-sdk"
+          ditto -x -k "$archive" "$RUNNER_TEMP/onlinu-ios-sdk"
+          echo "ONLINU_FLUTTER_SDK=$RUNNER_TEMP/onlinu-ios-sdk/flutter" >> "$GITHUB_ENV"
+      - name: Build isolated iOS Simulator application
+        run: python3 integration/ios-native-smoke.py
+      - name: Retain non-production Simulator build and report
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-ios-smoke-${{ github.sha }}
+          path: artifacts/ios-native/
           if-no-files-found: error
           retention-days: 3
