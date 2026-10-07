@@ -49,3 +49,28 @@ transport/file-sharing flags and absence of a device profile verified. Android's
 arm64 Flutter engine was independently checked. Neither mobile application was
 run on a device or Simulator; login, platform storage, rendering and release
 acceptance remain separate. Latest full Docker-image checkpoint remains dfebcae.
+
+## Optional owned Simulator execution — pending
+
+The separate `ios_execute` input also selects the iOS job and asks it to create
+one new, uniquely named Simulator using an already available observed iPhone
+runtime/type. It never boots an existing device, selects a physical phone,
+downloads a runtime, changes a global setting or uses `shutdown all`/`erase all`.
+The returned UUID and unique name are checked against the runtime inventory
+before use and before cleanup. An uncertain creation reply is not guessed.
+Only that exact owned device is shut down/deleted, and its removal is checked.
+
+Two actual iOS integration tests are added: isolated random synthetic Keychain
+values with fresh-reader readback and key-specific removal; and Arabic RTL order
+detail rendering, close and logout using the existing fake gateway. Browser
+capability is queried, but no browser/login/account is opened. The screenshot is
+written only in the new app's own temporary directory and retrieved from its
+verified Simulator container. No other device/app storage is inspected.
+
+The retained compile-only app archive and the integration-test executable are
+distinct targets built from the same reviewed source. A successful rendering
+fixture is not proof that the live account flow or every mobile screen works.
+Physical-device behavior, mobile authentication, lifecycle/notifications and
+release signing/distribution remain outside this check. New local guard tests
+cover observed-runtime selection, exact device ownership and uncertain-create
+refusal. Actual Keychain/rendering and screenshot acceptance are pending CI.

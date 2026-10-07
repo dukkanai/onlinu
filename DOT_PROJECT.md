@@ -1118,3 +1118,13 @@ transport/file-sharing flags and absence of a device profile verified. Android's
 arm64 Flutter engine was independently checked. Neither mobile application was
 run on a device or Simulator; login, platform storage, rendering and release
 acceptance remain separate. Latest full Docker-image checkpoint remains dfebcae.
+
+## Owned iOS Simulator execution — 2026-10-07, CI pending
+
+An additional explicit iOS input creates only a fresh, uniquely identified
+Simulator from an available observed runtime, tests synthetic Keychain isolation
+and Arabic order-detail/logout rendering, then verifies cleanup of that device.
+No existing simulator, physical phone, login account or broad cleanup is used.
+Three added local ownership/selection/uncertain-create guards and Dart formatting
+pass. Actual device-plugin/rendering checks are pending; the retained compile
+archive remains distinct from the integration-test target. See the iOS smoke doc.

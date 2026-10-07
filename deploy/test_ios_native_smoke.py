@@ -44,3 +44,45 @@ class IosSmokeTests(unittest.TestCase):
                            ('NSAppTransportSecurity', {'NSAllowsArbitraryLoads': True})]:
             with self.assertRaises(ValueError):
                 smoke.verify_built_plist(dict(info, **{key: value}))
+
+    def simulator_inventory(self):
+        runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-26-6'
+        kind = 'com.apple.CoreSimulator.SimDeviceType.iPhone-16'
+        identifier = '12345678-1234-4234-8234-123456789ABC'
+        return {'runtimes': [{'identifier': runtime, 'version': '26.6', 'isAvailable': True}],
+                'devicetypes': [{'identifier': kind, 'productFamily': 'iPhone'}],
+                'devices': {runtime: [{'udid': identifier, 'name': 'owned-fixture', 'isAvailable': True,
+                                      'deviceTypeIdentifier': kind, 'state': 'Shutdown'}]}}, runtime, kind, identifier
+
+    def test_simulator_selection_uses_available_observed_iphone_type_not_existing_device(self):
+        inventory, runtime, kind, identifier = self.simulator_inventory()
+        self.assertEqual(smoke.simulator_template(inventory), (runtime, kind))
+        inventory['runtimes'][0]['isAvailable'] = False
+        with self.assertRaises(ValueError):
+            smoke.simulator_template(inventory)
+        inventory['runtimes'][0]['isAvailable'] = True
+        inventory['devicetypes'][0]['productFamily'] = 'iPad'
+        with self.assertRaises(ValueError):
+            smoke.simulator_template(inventory)
+
+    def test_simulator_cleanup_requires_exact_created_name_uuid_and_runtime(self):
+        inventory, runtime, kind, identifier = self.simulator_inventory()
+        self.assertEqual(smoke.owned_simulator(inventory, runtime, identifier, 'owned-fixture')['state'], 'Shutdown')
+        for values in [(runtime, identifier, 'someone-else'), ('other-runtime', identifier, 'owned-fixture'),
+                       (runtime, '87654321-1234-4234-8234-123456789ABC', 'owned-fixture')]:
+            with self.assertRaises(ValueError):
+                smoke.owned_simulator(inventory, *values)
+        inventory['devices'][runtime].append(dict(inventory['devices'][runtime][0]))
+        with self.assertRaises(ValueError):
+            smoke.owned_simulator(inventory, runtime, identifier, 'owned-fixture')
+
+    def test_unknown_creation_reply_never_boots_or_cleans_arbitrary_device(self):
+        import json
+        from unittest.mock import patch
+        inventory, _, _, _ = self.simulator_inventory()
+        with patch.dict(smoke.os.environ, {'GITHUB_RUN_ID': '123'}), \
+             patch.object(smoke.subprocess, 'check_output', side_effect=[json.dumps(inventory), 'unknown-result']), \
+             patch.object(smoke, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'uncertain'):
+                smoke.simulator_checks(['flutter'], Path('/unused-fixture'), Path('/unused-output'))
+            run.assert_not_called()

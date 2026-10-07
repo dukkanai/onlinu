@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import uuid
 
 SOURCE = Path(__file__).resolve().parents[1]
 PACKAGE = 'dev.synthetic.restaurantAdminPrototype'
@@ -44,12 +45,75 @@ def verify_built_plist(info):
         raise ValueError('Built iOS bundle failed its Simulator-only smoke contract.')
 
 
+
+def simulator_template(inventory):
+    runtimes = [item for item in inventory.get('runtimes', []) if item.get('isAvailable') is True
+                and str(item.get('identifier', '')).startswith('com.apple.CoreSimulator.SimRuntime.iOS-')]
+    runtimes.sort(key=lambda item: tuple(int(part) for part in str(item.get('version', '0')).split('.')), reverse=True)
+    types = {item.get('identifier') for item in inventory.get('devicetypes', []) if item.get('productFamily') == 'iPhone'}
+    for runtime in runtimes:
+        for device in inventory.get('devices', {}).get(runtime['identifier'], []):
+            if device.get('isAvailable') is True and device.get('deviceTypeIdentifier') in types:
+                return runtime['identifier'], device['deviceTypeIdentifier']
+    raise ValueError('An existing available iPhone Simulator runtime is required; nothing is downloaded.')
+
+
+def owned_simulator(inventory, runtime, identifier, name):
+    matches = [item for item in inventory.get('devices', {}).get(runtime, []) if item.get('udid', '').upper() == identifier]
+    if len(matches) != 1 or matches[0].get('name') != name or matches[0].get('isAvailable') is not True:
+        raise ValueError('Created Simulator ownership could not be verified.')
+    return matches[0]
+
+
+def simulator_checks(flutter, project, output):
+    def inventory():
+        return json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', '--json'], text=True, timeout=60))
+    runtime, device_type = simulator_template(inventory())
+    name = 'onlinu-ci-' + os.environ['GITHUB_RUN_ID'] + '-' + uuid.uuid4().hex[:12]
+    identifier = subprocess.check_output(['xcrun', 'simctl', 'create', name, device_type, runtime], text=True, timeout=60).strip().upper()
+    if not re.fullmatch(r'[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}', identifier):
+        raise ValueError('Simulator creation result is uncertain; no arbitrary cleanup is attempted.')
+    try:
+        owned_simulator(inventory(), runtime, identifier, name)
+        run(['xcrun', 'simctl', 'boot', identifier], project, timeout=90)
+        run(['xcrun', 'simctl', 'bootstatus', identifier, '-b'], project, timeout=300)
+        owned_simulator(inventory(), runtime, identifier, name)
+        run([*flutter, 'test', 'integration_test/ios_smoke_test.dart', '--no-pub', '-d', identifier,
+             '--reporter=expanded'], project, timeout=900)
+        container = Path(subprocess.check_output(['xcrun', 'simctl', 'get_app_container', identifier, PACKAGE, 'data'], text=True, timeout=60).strip()).resolve(strict=True)
+        if not container.is_absolute() or '/' + identifier + '/' not in str(container).upper():
+            raise ValueError('Unexpected owned Simulator application container.')
+        screenshot = container / 'tmp/onlinu-ios-orders.png'
+        if not screenshot.is_file() or not 8 < screenshot.stat().st_size <= 16 * 1024 * 1024:
+            raise ValueError('Expected bounded iOS rendering evidence is missing.')
+        picture = screenshot.read_bytes()
+        if not picture.startswith(b'\x89PNG\r\n\x1a\n'):
+            raise ValueError('Unexpected iOS rendering format.')
+        (output / 'ios-orders.png').write_bytes(picture)
+        result = {'runtime': runtime, 'deviceType': device_type, 'screenshotSha256': hashlib.sha256(picture).hexdigest(),
+                  'checks': ['real-ios-keychain-isolation', 'owned-test-key-removal', 'external-browser-capability-only',
+                             'arabic-rtl-order-detail-rendering', 'logout-clears-detail', 'owned-simulator-cleanup']}
+    finally:
+        current = owned_simulator(inventory(), runtime, identifier, name)
+        if current.get('state') != 'Shutdown':
+            run(['xcrun', 'simctl', 'shutdown', identifier], project, timeout=90)
+        owned_simulator(inventory(), runtime, identifier, name)
+        run(['xcrun', 'simctl', 'delete', identifier], project, timeout=90)
+        remaining = inventory()
+        if any(item.get('udid', '').upper() == identifier for devices in remaining.get('devices', {}).values() for item in devices):
+            raise ValueError('Owned Simulator cleanup was not confirmed.')
+    return result
+
+
 def run(args, cwd, timeout=900):
     subprocess.run([str(x) for x in args], cwd=cwd, check=True, timeout=timeout)
 
 
 def main():
     validate_context(os.environ)
+    execute = os.environ.get('ONLINU_IOS_EXECUTE', '0')
+    if execute not in {'0', '1'}:
+        raise ValueError('Unexpected Simulator execution selection.')
     current = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=SOURCE, text=True).strip()
     if current != os.environ['GITHUB_SHA']:
         raise ValueError('Source commit does not match this CI run.')
@@ -103,15 +167,17 @@ def main():
     for name in ['LICENSE', 'LICENSE.WaCalls']:
         shutil.copy2(SOURCE / name, output / name)
     (output / 'SOURCE.txt').write_text('Source: https://github.com/dukkanai/onlinu/tree/' + current + '\nCompile-only Simulator debug artifact; no production endpoint or release signing.\n')
+    execution = simulator_checks(flutter, project, output) if execute == '1' else None
     report = {'sourceCommit': current, 'flutterVersion': version['frameworkVersion'], 'xcodeVersion': xcode,
               'package': PACKAGE, 'archiveSha256': digest, 'archiveBytes': archive.stat().st_size,
               'architectures': architectures, 'simulatorOnly': True, 'codeSigningDisabledArgument': True,
               'productionConfigured': False, 'storePublished': False, 'actualDeviceTested': False,
-              'simulatorExecutionTested': False, 'realCredentialsUsed': False,
+              'simulatorExecutionTested': execution is not None, 'realCredentialsUsed': False,
+              'simulatorExecution': execution,
               'checks': ['reviewed-lockfile-unchanged', 'flutter-analysis', 'flutter-unit-widget-tests',
                          'ios-simulator-debug-compilation', 'built-plist-simulator-identity-transport-contract',
                          'no-device-provisioning-profile', 'simulator-executable-architecture'],
-              'notVerified': ['ios-rendering', 'ios-keychain', 'mobile-login', 'background-resume',
+              'notVerified': ([] if execution else ['ios-rendering', 'ios-keychain']) + ['mobile-login', 'background-resume',
                               'notifications', 'device-signing', 'store-distribution']}
     (output / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
 
