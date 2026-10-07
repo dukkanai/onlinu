@@ -73,18 +73,26 @@ func restaurantWhatsappDigest(value any) string {
 	return hex.EncodeToString(digest[:])
 }
 
+func restaurantWhatsappValidateSource(scope restaurantWhatsappScope, source restaurantWhatsappSource, now time.Time) error {
+	if !restaurantWhatsappValidScope(scope) || !restaurantWhatsappOpaque(source.MessageID) || now.IsZero() || source.SentAt.IsZero() ||
+		source.FromMe || source.Group || source.History || source.Forwarded || source.Edited {
+		return restaurantFail(400, "invalid_whatsapp_proposal")
+	}
+	sent := source.SentAt.UTC()
+	if sent.After(now.Add(30*time.Second)) || !now.Before(sent.Add(15*time.Minute)) {
+		return restaurantFail(409, "whatsapp_message_expired")
+	}
+	return nil
+}
+
 // Receives already resolved internal item/option IDs, never provider prices,
 // natural-language instructions or blindly copied external product IDs.
 // now is a trusted server clock, not a message/browser field.
 func newRestaurantWhatsappProposal(scope restaurantWhatsappScope, source restaurantWhatsappSource, items []restaurantOrderLineInput, now time.Time) (*restaurantWhatsappProposal, error) {
-	if !restaurantWhatsappValidScope(scope) || !restaurantWhatsappOpaque(source.MessageID) || now.IsZero() || source.SentAt.IsZero() ||
-		source.FromMe || source.Group || source.History || source.Forwarded || source.Edited {
-		return nil, restaurantFail(400, "invalid_whatsapp_proposal")
+	if err := restaurantWhatsappValidateSource(scope, source, now); err != nil {
+		return nil, err
 	}
 	sent := source.SentAt.UTC()
-	if sent.After(now.Add(30*time.Second)) || !now.Before(sent.Add(15*time.Minute)) {
-		return nil, restaurantFail(409, "whatsapp_message_expired")
-	}
 	if len(items) < 1 || len(items) > 50 {
 		return nil, restaurantFail(400, "invalid_whatsapp_cart")
 	}

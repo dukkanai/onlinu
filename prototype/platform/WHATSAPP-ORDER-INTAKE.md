@@ -86,3 +86,20 @@ The dedicated verbose Go race step confirms every WhatsApp test passed, includin
 actual PostgreSQL concurrent receipts, restart/expiry/conflict/isolation checks
 and original-core read-only pricing. Full uncached Go race regression and
 396 platform tests/no skips also passed. No live transport or order creation.
+
+## QR text extraction preparation (acceptance pending)
+
+The private `restaurantWhatsappQRText` helper consumes the repository's pinned
+whatsmeow `events.Message` model. It is not registered in the live session event
+handler. Tests construct only synthetic in-memory events, with no QR login or
+WhatsApp connection.
+
+It derives the opaque peer from a direct chat and requires the sender to agree;
+phone-number and LID namespaces stay distinct. Alternate IDs are not guessed or
+silently merged. Own-device echoes, groups/broadcasts, history/unavailable replay,
+edits, newsletters, view-once content and forwarded text are rejected. Only
+bounded plain/extended text is extracted; mixed/unknown content and native order
+cards are unsupported, not guessed from a count/total/token. Text remains
+untrusted data and cannot authorize a confirmed order or execute instructions.
+The existing proposal freshness/scope validator is reused. Actual session binding,
+permissions, conversational parsing and review/confirmation are still required.

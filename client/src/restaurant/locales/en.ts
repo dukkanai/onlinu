@@ -22,6 +22,7 @@ export const english = {
   "errors.invalid_order_channel": "This ordering channel is invalid.",
   "errors.channel_ordering_disabled": "New orders through this channel are currently disabled. Existing orders can still be tracked.",
   "errors.channel_ordering_unavailable": "Ordering through this channel is not available yet.",
+  "errors.unsupported_whatsapp_message": "This message type is not supported for restaurant ordering.",
   "errors.invalid_whatsapp_proposal": "This message cannot be used as a new cart proposal.",
   "errors.whatsapp_message_expired": "This cart proposal has expired. Please start a new one.",
   "errors.invalid_whatsapp_cart": "The proposed cart contains invalid items or quantities.",

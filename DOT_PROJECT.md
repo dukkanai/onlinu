@@ -1428,3 +1428,10 @@ confirm actual PostgreSQL concurrent/restart/expiry/conflict/isolation tests
 and original-core read-only pricing, without skipped WhatsApp cases. Full Go
 race and396platform cases/no skips passed. Transport wiring and final ordering
 remain unavailable; this is not a live WhatsApp test.
+
+Private QR text extraction now uses the pinned whatsmeow event model in synthetic
+tests: verified direct-chat sender consistency, opaque PN/LID separation,
+history/echo/forward/edit/group rejection, bounded untrusted text and unsupported
+native-order-card rejection. It is not attached to Session.onEvent and makes no
+connection, sends or order. Local tests/build/translation checks precede hosted
+acceptance; source binding and conversation confirmation remain separate gates.

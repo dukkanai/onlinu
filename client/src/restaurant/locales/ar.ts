@@ -101,6 +101,7 @@ export const ar = {
   "errors.invalid_order_channel": "قناة استقبال الطلب هذه غير صالحة.",
   "errors.channel_ordering_disabled": "استقبال الطلبات الجديدة عبر هذه القناة متوقف حاليًا. يمكنك متابعة الطلبات السابقة.",
   "errors.channel_ordering_unavailable": "استقبال الطلبات عبر هذه القناة غير متاح بعد.",
+  "errors.unsupported_whatsapp_message": "نوع هذه الرسالة غير مدعوم لطلبات المطعم.",
   "errors.invalid_whatsapp_proposal": "لا يمكن استخدام هذه الرسالة لاقتراح سلة جديدة.",
   "errors.whatsapp_message_expired": "انتهت صلاحية السلة المقترحة. يرجى بدء سلة جديدة.",
   "errors.invalid_whatsapp_cart": "تحتوي السلة المقترحة على أصناف أو كميات غير صالحة.",
