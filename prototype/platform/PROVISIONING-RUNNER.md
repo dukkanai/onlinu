@@ -86,3 +86,9 @@ a trusted driver's observations. It does not replace that driver's observation
 or authorization obligations. See `PROVISIONING-EVIDENCE.md`. The isolated
 journal/Docker fixture exercises write/read-back before finishing or explicitly
 reconciling an attempt; production apply/verification gates remain unchanged.
+
+The private composed `provisioning-host-driver.mjs` now implements the driver
+shape from existing capabilities, without server wiring or production defaults.
+See `PROVISIONING-HOST-DRIVER.md` for phase/fence guards, component-assembly tests
+and remaining real-host/credential/release acceptance. Its presence does not
+close the production requirements above.

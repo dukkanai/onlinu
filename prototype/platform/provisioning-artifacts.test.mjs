@@ -9,6 +9,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import { createProvisioningArtifacts } from './provisioning-artifacts.mjs';
 import { problem } from './auth.mjs';
 import { createProvisioningStage } from './provisioning-stage.mjs';
+import { createProvisioningRunner } from './provisioning-runner.mjs';
+import { createProvisioningHostDriver } from './provisioning-host-driver.mjs';
 import { createProvisioningImagePreflight } from './provisioning-image-preflight.mjs';
 import { createProvisioningExecutionManifest } from './provisioning-execution-manifest.mjs';
 
@@ -365,4 +367,120 @@ test('image preflight sanitizes missing-image, malformed and oversized responses
   }
   await assert.rejects(createProvisioningImagePreflight({ processRunner: { async run() { throw new Error('private daemon diagnostics'); } } }).inspect(f.prepared),
     error => error.code === 'provisioning_image_preflight_rejected' && !JSON.stringify(error).includes('private daemon diagnostics'));
+});
+
+
+async function composedDriver(t, change = {}) {
+  const f = await stageFixture(t), calls = [];
+  const manifest = createProvisioningExecutionManifest({ stage: f.stager, actorId: f.actor,
+    secretPreflight: { async check(input) { return { tenantId: input.tenantId, projectName: f.prepared.plan.projectName, checkedReferences: Object.keys(input.refs) }; } } });
+  const options = { actorId: f.actor, stage: f.stager, manifest,
+    hostLock: { async withLock(project, operation) { calls.push('lock'); try { return await operation(); } finally { calls.push('unlock'); } } },
+    images: { async inspect() { calls.push('images'); return { restaurant: 'sha256:' + 'c'.repeat(64), postgres: 'sha256:' + 'd'.repeat(64) }; } },
+    probe: { async assertEmpty() { calls.push('empty'); } },
+    processRunner: { async run(args) { calls.push(args); return args[2] === 'context' ? JSON.stringify([{ Name: 'default', Endpoints: { docker: { Host: 'unix:///var/run/docker.sock' } } }]) : ''; } },
+    verification: { async verify({ job, expected }) { calls.push('verify'); assert.equal(expected.compose.configs.runtime_bootstrap.file, join(f.directory, f.prepared.plan.projectName, job.id + '-' + job.workerId, 'tenant-bootstrap.sql')); assert.equal(f.prepared.compose.configs.runtime_bootstrap.file, './tenant-bootstrap.sql'); return { jobId: job.id, tenantId: job.tenantId, planDigest: job.planDigest, verificationSha256: 'e'.repeat(64) }; } },
+  };
+  const driver = createProvisioningHostDriver({ ...options, ...change });
+  const checkpoint = async () => { calls.push('checkpoint'); f.job.version++; return { jobId: f.job.id, workerId: f.job.workerId, version: f.job.version }; };
+  return { ...f, driver, checkpoint, calls, options };
+}
+test('composed driver keeps exact stage and fenced single apply inside host exclusion', async t => {
+  const f = await composedDriver(t);
+  const result = await f.driver.withLock(f.prepared.plan.projectName, async () => {
+    await f.driver.inspect(f.prepared);
+    await f.driver.apply(f.prepared, { checkpoint: f.checkpoint });
+    return f.driver.verify(f.prepared);
+  });
+  assert.equal(result.verificationSha256, 'e'.repeat(64)); assert.ok(Object.isFrozen(result));
+  assert.equal(f.calls[0], 'lock'); assert.equal(f.calls.at(-1), 'unlock');
+  assert.equal(f.calls.filter(x => Array.isArray(x) && x.includes('up')).length, 1);
+  assert.equal(f.calls.filter(x => x === 'empty').length, 2);
+  assert.ok(f.calls.indexOf('verify') < f.calls.indexOf('unlock'));
+  await assert.rejects(f.driver.verify(f.prepared), { code: 'provisioning_host_driver_rejected' });
+});
+test('composed driver forbids calls outside lock, repeated phases and copied preparation', async t => {
+  const f = await composedDriver(t);
+  await assert.rejects(f.driver.inspect(f.prepared), { code: 'provisioning_host_driver_rejected' });
+  await f.driver.withLock(f.prepared.plan.projectName, async () => {
+    await assert.rejects(f.driver.verify(f.prepared), { code: 'provisioning_host_driver_rejected' });
+    await f.driver.inspect(f.prepared);
+    await assert.rejects(f.driver.inspect(f.prepared), { code: 'provisioning_host_driver_rejected' });
+    await assert.rejects(f.driver.apply(structuredClone(f.prepared), { checkpoint: f.checkpoint }), { code: 'provisioning_host_driver_rejected' });
+    await f.driver.apply(f.prepared, { checkpoint: f.checkpoint });
+    await assert.rejects(f.driver.apply(f.prepared, { checkpoint: f.checkpoint }), { code: 'provisioning_host_driver_rejected' });
+    await f.driver.verify(f.prepared);
+    await assert.rejects(f.driver.verify(f.prepared), { code: 'provisioning_host_driver_rejected' });
+  });
+});
+test('composed driver loses no lock on uncertain apply and cannot retry it', async t => {
+  const f = await composedDriver(t);
+  const driver = createProvisioningHostDriver({ ...f.options, processRunner: { async run(args) {
+    if (args.includes('up')) { f.calls.push('uncertain-up'); throw new Error('private daemon failure'); }
+    return f.options.processRunner.run(args);
+  } } });
+  await driver.withLock(f.prepared.plan.projectName, async () => {
+    await driver.inspect(f.prepared);
+    await assert.rejects(driver.apply(f.prepared, { checkpoint: f.checkpoint }), error => error.code === 'provisioning_host_driver_rejected' && !JSON.stringify(error).includes('private daemon failure'));
+    assert.ok(!f.calls.includes('unlock'));
+    await assert.rejects(driver.apply(f.prepared, { checkpoint: f.checkpoint }), { code: 'provisioning_host_driver_rejected' });
+    await assert.rejects(driver.verify(f.prepared), { code: 'provisioning_host_driver_rejected' });
+  });
+  assert.equal(f.calls.filter(x => x === 'uncertain-up').length, 1); assert.equal(f.calls.at(-1), 'unlock');
+});
+test('composed driver checks live fence binding before staging or Docker effects', async t => {
+  for (const invalid of ['worker', 'version', 'job']) {
+    const f = await composedDriver(t);
+    await f.driver.withLock(f.prepared.plan.projectName, async () => {
+      await f.driver.inspect(f.prepared);
+      await assert.rejects(f.driver.apply(f.prepared, { checkpoint: async () => ({ jobId: invalid === 'job' ? randomUUID() : f.job.id,
+        workerId: invalid === 'worker' ? randomUUID() : f.job.workerId, version: invalid === 'version' ? f.job.version : f.job.version + 1 }) }),
+      { code: 'provisioning_host_driver_rejected' });
+      assert.deepEqual(await readdir(f.directory), []);
+      assert.ok(!f.calls.some(Array.isArray));
+    });
+  }
+});
+
+
+test('composed driver rejects overlapping locks and cancellation before staging', async t => {
+  const f = await composedDriver(t), abort = new AbortController();
+  const driver = createProvisioningHostDriver({ ...f.options, signal: abort.signal, images: { async inspect() {
+    abort.abort(); return { restaurant: 'sha256:' + 'c'.repeat(64), postgres: 'sha256:' + 'd'.repeat(64) };
+  } } });
+  await driver.withLock(f.prepared.plan.projectName, async () => {
+    await assert.rejects(driver.withLock(f.prepared.plan.projectName, async () => assert.fail('overlapping lock callback')), { code: 'provisioning_host_driver_rejected' });
+    await assert.rejects(driver.inspect(f.prepared), { code: 'provisioning_host_driver_rejected' });
+    await assert.rejects(driver.apply(f.prepared, { checkpoint: f.checkpoint }), { code: 'provisioning_host_driver_rejected' });
+  });
+  assert.deepEqual(await readdir(f.directory), []); assert.ok(!f.calls.some(Array.isArray)); assert.equal(f.calls.at(-1), 'unlock');
+});
+test('real coordinator composes host driver and records success or uncertainty without replay', async t => {
+  for (const uncertain of [false, true]) {
+    const f = await composedDriver(t);
+    Object.assign(f.job, { state: 'queued', version: 1, workerId: null, claimedBy: null });
+    Object.assign(f.journal, {
+      async claim(actor, id, input) {
+        await f.journal.review(actor, id, input);
+        Object.assign(f.job, { state: 'claimed', version: f.job.version + 1, workerId: input.workerId, claimedBy: actor }); return { ...f.job };
+      },
+      async heartbeat(actor, id, input) { await f.journal.review(actor, id, input); f.job.version++; return { ...f.job }; },
+      async finish(actor, id, input) { await f.journal.review(actor, id, input); f.job.state = 'succeeded'; f.job.version++; return { ...f.job }; },
+      async uncertain(actor, id, input) { await f.journal.review(actor, id, input); f.job.state = 'unknown'; f.job.version++; return { ...f.job }; },
+    });
+    const driver = createProvisioningHostDriver({ ...f.options, processRunner: { async run(args) {
+      const result = await f.options.processRunner.run(args);
+      if (uncertain && args.includes('up')) throw new Error('synthetic lost reply');
+      return result;
+    } } });
+    const runner = createProvisioningRunner({ journal: f.journal, artifacts: { async prepare(actor, id, input) {
+      assert.equal(input.expectedVersion, f.job.version); return f.prepare();
+    } }, driver });
+    const run = runner.run(f.actor, f.job.id, { expectedVersion: 1, workerId: randomUUID() });
+    if (uncertain) await assert.rejects(run, { code: 'provisioning_outcome_unknown' });
+    else assert.equal((await run).state, 'succeeded');
+    assert.equal(f.job.state, uncertain ? 'unknown' : 'succeeded');
+    assert.equal(f.calls.filter(x => Array.isArray(x) && x.includes('up')).length, 1);
+    assert.equal(f.calls.at(-1), 'unlock');
+  }
 });

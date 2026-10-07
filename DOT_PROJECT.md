@@ -1045,3 +1045,15 @@ and builds passed. The new image-inspection tests still use a simulated Docker
 transport with real compiler-branded preparations; no production registry image
 was published or inspected. The optional runtime-image job was intentionally
 skipped, so the latest full-image checkpoint remains `dfebcae`/CI37554750785.
+
+## Private host-driver composition — 2026-10-07, CI pending
+
+The existing private coordinator now has a composed driver implementation using
+reviewed image inspection, original staged manifests, current heartbeat fences,
+empty-resource checks, one Compose attempt and immutable verification. It has no
+server route or startup wiring. Six local groups include the actual coordinator,
+compiler, stager and transport with synthetic external capabilities and mock
+journal, covering success/uncertainty and no replay. Original relative bootstrap
+mount resolution is mirrored without changing the staged manifest. Production
+host/credential/release acceptance remains open; see
+`prototype/platform/PROVISIONING-HOST-DRIVER.md`.
