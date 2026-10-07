@@ -86,3 +86,51 @@ class IosSmokeTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'uncertain'):
                 smoke.simulator_checks(['flutter'], Path('/unused-fixture'), Path('/unused-output'))
             run.assert_not_called()
+
+    def test_post_boot_read_timeout_stops_tests_and_cleans_only_verified_owned_device(self):
+        import copy
+        import json
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        inventory, runtime, _, identifier = self.simulator_inventory()
+        expected_name = 'onlinu-ci-123-abcdef012345'
+        state = {'created': False, 'deleted': False, 'reads': 0, 'boot': 'Shutdown'}
+        commands = []
+
+        def output(args, **kwargs):
+            if args[:3] == ['xcrun', 'simctl', 'create']:
+                self.assertEqual(args[3], expected_name)
+                state['created'] = True
+                return identifier
+            self.assertEqual(args[:3], ['xcrun', 'simctl', 'list'])
+            self.assertEqual(kwargs['timeout'], 180)
+            observed = copy.deepcopy(inventory)
+            if state['created']:
+                self.assertEqual(args, ['xcrun', 'simctl', 'list', 'devices', '--json'])
+                state['reads'] += 1
+                if state['reads'] == 2:
+                    raise smoke.subprocess.TimeoutExpired(args, 180)
+                if state['deleted']:
+                    observed['devices'][runtime] = []
+                else:
+                    observed['devices'][runtime][0].update(name=expected_name, state=state['boot'])
+            return json.dumps(observed)
+
+        def run(args, *unused, **kwargs):
+            commands.append(args)
+            self.assertEqual(args[:2], ['xcrun', 'simctl'])
+            self.assertEqual(args[3], identifier)
+            if args[2] == 'boot':
+                state['boot'] = 'Booted'
+            elif args[2] == 'shutdown':
+                state['boot'] = 'Shutdown'
+            elif args[2] == 'delete':
+                state['deleted'] = True
+
+        with patch.dict(smoke.os.environ, {'GITHUB_RUN_ID': '123'}), \
+             patch.object(smoke.uuid, 'uuid4', return_value=SimpleNamespace(hex='abcdef0123456789')), \
+             patch.object(smoke.subprocess, 'check_output', side_effect=output), patch.object(smoke, 'run', side_effect=run):
+            with self.assertRaises(smoke.subprocess.TimeoutExpired):
+                smoke.simulator_checks(['flutter'], Path('/unused-project'), Path('/unused-output'))
+        self.assertTrue(state['deleted'])
+        self.assertEqual([args[2] for args in commands], ['boot', 'bootstatus', 'shutdown', 'delete'])

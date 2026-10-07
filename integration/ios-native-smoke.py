@@ -66,18 +66,23 @@ def owned_simulator(inventory, runtime, identifier, name):
 
 
 def simulator_checks(flutter, project, output):
-    def inventory():
-        return json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', '--json'], text=True, timeout=60))
+    def inventory(devices_only=False):
+        args = ['xcrun', 'simctl', 'list', *(['devices'] if devices_only else []), '--json']
+        # A freshly booted hosted Simulator can still be settling its service.
+        # Bound the read, but do not weaken identity checks or restart the daemon.
+        return json.loads(subprocess.check_output(args, text=True, timeout=180))
     runtime, device_type = simulator_template(inventory())
     name = 'onlinu-ci-' + os.environ['GITHUB_RUN_ID'] + '-' + uuid.uuid4().hex[:12]
     identifier = subprocess.check_output(['xcrun', 'simctl', 'create', name, device_type, runtime], text=True, timeout=60).strip().upper()
     if not re.fullmatch(r'[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}', identifier):
         raise ValueError('Simulator creation result is uncertain; no arbitrary cleanup is attempted.')
     try:
-        owned_simulator(inventory(), runtime, identifier, name)
+        owned_simulator(inventory(devices_only=True), runtime, identifier, name)
         run(['xcrun', 'simctl', 'boot', identifier], project, timeout=90)
         run(['xcrun', 'simctl', 'bootstatus', identifier, '-b'], project, timeout=300)
-        owned_simulator(inventory(), runtime, identifier, name)
+        print('Checking owned Simulator after initial boot.', flush=True)
+        owned_simulator(inventory(devices_only=True), runtime, identifier, name)
+        print('Running actual iOS Keychain and rendering tests.', flush=True)
         run([*flutter, 'test', 'integration_test/ios_smoke_test.dart', '--no-pub', '-d', identifier,
              '--reporter=expanded'], project, timeout=900)
         container = Path(subprocess.check_output(['xcrun', 'simctl', 'get_app_container', identifier, PACKAGE, 'data'], text=True, timeout=60).strip()).resolve(strict=True)
@@ -94,14 +99,15 @@ def simulator_checks(flutter, project, output):
                   'checks': ['real-ios-keychain-isolation', 'owned-test-key-removal', 'external-browser-capability-only',
                              'arabic-rtl-order-detail-rendering', 'logout-clears-detail', 'owned-simulator-cleanup']}
     finally:
-        current = owned_simulator(inventory(), runtime, identifier, name)
+        current = owned_simulator(inventory(devices_only=True), runtime, identifier, name)
         if current.get('state') != 'Shutdown':
             run(['xcrun', 'simctl', 'shutdown', identifier], project, timeout=90)
-        owned_simulator(inventory(), runtime, identifier, name)
+        owned_simulator(inventory(devices_only=True), runtime, identifier, name)
         run(['xcrun', 'simctl', 'delete', identifier], project, timeout=90)
-        remaining = inventory()
+        remaining = inventory(devices_only=True)
         if any(item.get('udid', '').upper() == identifier for devices in remaining.get('devices', {}).values() for item in devices):
             raise ValueError('Owned Simulator cleanup was not confirmed.')
+        print('Owned Simulator cleanup confirmed.', flush=True)
     return result
 
 

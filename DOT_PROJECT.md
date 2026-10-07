@@ -1128,3 +1128,12 @@ No existing simulator, physical phone, login account or broad cleanup is used.
 Three added local ownership/selection/uncertain-create guards and Dart formatting
 pass. Actual device-plugin/rendering checks are pending; the retained compile
 archive remains distinct from the integration-test target. See the iOS smoke doc.
+
+First iOS execution run CI37563287798 passed all four ordinary jobs and rebuilt
+the Simulator application, but the post-boot `simctl list --json` ownership read
+exceeded60 seconds before either native test began. It is not a Keychain/UI test
+failure or acceptance. The owned device's verified cleanup path completed.
+Subsequent ownership checks now request only device inventory with a bounded
+180-second deadline; no identity check, test or cleanup guard was removed. A new
+fault-injection test proves a post-boot read timeout stops test execution and
+cleans only the exact reverified created device. Actual execution remains pending.
