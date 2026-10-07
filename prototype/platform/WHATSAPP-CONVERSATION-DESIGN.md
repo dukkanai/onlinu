@@ -134,3 +134,14 @@ Only the accepted order number is stored in the dispatch journal; the core keeps
 its existing sealed receipt capabilities. No second plaintext receipt copy is
 persisted. Sending a receipt and proving delivery remain separate unimplemented
 transport steps, with current egress authority rechecks required.
+
+Private dispatch acceptance: code `0d218ad8105c723b9fa06378407bfd150e4c9afc` passed
+all four ordinary jobs in [CI37701906784](https://github.com/dukkanai/onlinu/actions/runs/37701906784).
+The focused verbose Go race log verifies both channel identities,12 concurrent
+dispatches with a two-connection pool creating one actual core order/reservation,
+lost committed result recovery, expired unseen rejection, policy-cycle rejection,
+altered input/owner/key, revoked binding, changed price/stock and supersession.
+Full uncached Go race and396platform tests/no skips passed; client84/build/browser,
+Windows and control-image checks passed. Transport authority was synthetic and no
+provider was contacted. Live account binding, conversation/rendered review delivery
+and outgoing receipt reconciliation remain unimplemented acceptance gates.

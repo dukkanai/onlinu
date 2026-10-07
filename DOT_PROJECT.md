@@ -1466,3 +1466,10 @@ unknown unaccepted work cannot create a new order after expiry or a policy cycle
 No API or provider connection is enabled. Local pure checks/vet/build,84client
 checks/build and89deployment guards passed; hosted PostgreSQL concurrency,
 recovery and final-order acceptance remain pending.
+
+Private final-dispatch acceptance:0d218ad8105c723b9fa06378407bfd150e4c9afc,
+CI37701906784 all four ordinary jobs passed. Actual PostgreSQL/race tests create
+one original-core order/reservation from12 concurrent attempts for each WhatsApp
+channel identity, with stable-key lost-result recovery and stale/changed/revoked
+rejection. Full Go race and396platform cases/no skips passed. Authority is synthetic
+in these fixtures; live transport remains unwired/default-off with no messages.

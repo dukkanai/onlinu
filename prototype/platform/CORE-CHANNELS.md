@@ -73,3 +73,8 @@ unavailable, and `adapterImplemented` stays false. This preparation does not
 activate account messaging or change existing calls. The original core still
 owns all money, stock and idempotency rules. Hosted dispatch acceptance is pending;
 see `WHATSAPP-CONVERSATION-DESIGN.md`.
+
+Private dispatch is accepted at0d218ad/CI37701906784 with actual original-core
+PostgreSQL orders and stock, using only synthetic authority and no provider
+connection. Both WhatsApp channel identities retain their default-disabled live
+adapter status. Recovery of committed receipts is distinct from new ordering.
