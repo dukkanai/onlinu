@@ -3,6 +3,7 @@ import copy
 import importlib.util
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -100,6 +101,54 @@ class TenantComposeSmokeTests(unittest.TestCase):
         self.assertNotIn('fixture-password', result)
         self.assertNotIn('unexpected:secret', result)
         self.assertIn('[database-url-redacted]', result)
+
+    def test_restore_target_requires_owned_disposable_identity(self):
+        fixture = {'owned': True, 'config': {'tenantId': 'ci-123-' + 'a' * 10 + '-0'},
+                   'ids': {'postgres': 'b' * 64}}
+        self.assertRegex(smoke.restore_database_name(fixture), r'^onlinu_restore_[a-f0-9]{16}$')
+        for change in ({'owned': False}, {'config': {'tenantId': 'production'}}, {'ids': {'postgres': 'short'}}):
+            with self.subTest(change=change), self.assertRaises(smoke.SmokeError):
+                smoke.restore_database_name(dict(fixture, **change))
+        docker = mock.Mock()
+        with self.assertRaises(smoke.SmokeError):
+            smoke.database_sql(docker, fixture, 'postgres', 'SELECT 1')
+        docker.text.assert_not_called()
+
+    def test_binary_archive_transport_does_not_decode_or_print_archive(self):
+        result = SimpleNamespace(returncode=0, stdout=b'PGDMPbinary', stderr=b'')
+        with mock.patch.object(smoke.subprocess, 'run', return_value=result) as run:
+            returned = smoke.Docker().call(['exec', 'owned', 'pg_dump'], binary=True)
+            self.assertEqual(returned.stdout, b'PGDMPbinary')
+            self.assertFalse(run.call_args.kwargs['text'])
+            self.assertTrue(run.call_args.kwargs['capture_output'])
+
+    def test_restore_name_collision_never_overwrites_or_drops_database(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = {'owned': True, 'root': Path(temporary),
+                       'config': {'tenantId': 'ci-123-' + 'a' * 10 + '-0'},
+                       'plan': {'planDigest': 'c' * 64, 'projectName': 'owned'},
+                       'ids': {'postgres': 'b' * 64}, 'expectedImages': {'postgres': 'image'}}
+            labels = {'org.onlinu.tenant': fixture['config']['tenantId'],
+                      'org.onlinu.plan-digest': 'c' * 64, 'com.docker.compose.project': 'owned'}
+            docker = mock.Mock()
+            docker.inspect.return_value = {'Config': {'Labels': labels}, 'Image': 'image', 'State': {'Running': True}}
+            docker.call.return_value = SimpleNamespace(stdout=b'PGDMPsynthetic-payload')
+            docker.text.return_value = '1'
+            with mock.patch.object(smoke, 'verify_owned_resources'), mock.patch.object(smoke, 'database_fingerprint', return_value={'tables': {'marker': 'hash'}, 'sequences': {}}):
+                with self.assertRaisesRegex(smoke.SmokeError, 'already exists'):
+                    smoke.check_database_backup_restore(docker, fixture)
+            calls = [call.args[0] for call in docker.call.call_args_list]
+            self.assertEqual(len(calls), 1)
+            self.assertIn('pg_dump', calls[0])
+            self.assertFalse(any('createdb' in args or 'pg_restore' in args or 'dropdb' in args for args in calls))
+            self.assertEqual((Path(temporary) / 'private-backup/main.dump').stat().st_mode & 0o777, 0o600)
+
+    def test_fingerprint_refuses_unexpected_relation_identifiers(self):
+        docker = mock.Mock()
+        docker.text.side_effect = ['bad; DROP TABLE target', '']
+        with self.assertRaises(smoke.SmokeError):
+            smoke.database_fingerprint(docker, {'ids': {'postgres': 'b' * 64}}, 'wacalls_main')
+        self.assertEqual(docker.text.call_count, 2)
 
 
 if __name__ == '__main__':

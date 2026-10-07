@@ -90,9 +90,9 @@ class Docker:
         self.env.pop('DOCKER_HOST', None)
         self.env.pop('DOCKER_CONTEXT', None)
 
-    def call(self, args, *, check=True, input=None, timeout=240):
+    def call(self, args, *, check=True, input=None, timeout=240, binary=False):
         result = subprocess.run(['docker', '--context', 'default', *args], env=self.env,
-                                input=input, capture_output=True, text=True, timeout=timeout)
+                                input=input, capture_output=True, text=not binary, timeout=timeout)
         if check and result.returncode:
             raise SmokeError('Fixture Docker operation failed: ' + args[0])
         return result
@@ -222,9 +222,94 @@ def check_cross_network(docker, source, target):
     load_containers(docker, target)
 
 
+def restore_database_name(fixture):
+    tenant = fixture.get('config', {}).get('tenantId', '')
+    if (not fixture.get('owned') or not re.fullmatch(r'ci-[0-9]+-[a-f0-9]{10}-[01]', tenant)
+            or not re.fullmatch(r'[a-f0-9]{64}', fixture.get('ids', {}).get('postgres', ''))):
+        raise SmokeError('Backup requires an exact owned disposable fixture.')
+    return 'onlinu_restore_' + hashlib.sha256(tenant.encode()).hexdigest()[:16]
+
+
+def database_sql(docker, fixture, database, statement):
+    if database != 'wacalls_main' and not re.fullmatch(r'onlinu_restore_[a-f0-9]{16}', database):
+        raise SmokeError('Unexpected fixture database target.')
+    return docker.text(['exec', '-i', '-e', 'PGOPTIONS=-c timezone=UTC', fixture['ids']['postgres'], 'psql', '-U', 'onlinu_runtime',
+                        '-d', database, '-At', '-v', 'ON_ERROR_STOP=1'], input=statement)
+
+
 def sql(docker, fixture, statement):
-    return docker.text(['exec', '-i', fixture['ids']['postgres'], 'psql', '-U', 'onlinu_runtime',
-                        '-d', 'wacalls_main', '-At', '-v', 'ON_ERROR_STOP=1'], input=statement)
+    return database_sql(docker, fixture, 'wacalls_main', statement)
+
+
+def database_fingerprint(docker, fixture, database):
+    tables = database_sql(docker, fixture, database,
+                          "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename;").splitlines()
+    sequences = database_sql(docker, fixture, database,
+                             "SELECT sequencename FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename;").splitlines()
+    if (not tables or len(tables) > 300 or len(sequences) > 300
+            or any(not re.fullmatch(r'[a-z][a-z0-9_]{0,62}', name) for name in tables + sequences)):
+        raise SmokeError('Unexpected fixture relation inventory.')
+    result = {'tables': {}, 'sequences': {}}
+    for name in tables:
+        query = ("SELECT md5(COALESCE(jsonb_agg(row_data ORDER BY row_data::text)::text,'[]')),count(*) "
+                 'FROM (SELECT to_jsonb(row_value) AS row_data FROM public."' + name + '" row_value) snapshot_rows;')
+        value = database_sql(docker, fixture, database, query)
+        if not re.fullmatch(r'[a-f0-9]{32}\|[0-9]+', value):
+            raise SmokeError('Unexpected fixture table fingerprint.')
+        result['tables'][name] = value
+    for name in sequences:
+        value = database_sql(docker, fixture, database, 'SELECT last_value,is_called FROM public."' + name + '";')
+        if not re.fullmatch(r'-?[0-9]+\|[tf]', value):
+            raise SmokeError('Unexpected fixture sequence fingerprint.')
+        result['sequences'][name] = value
+    return result
+
+
+def check_database_backup_restore(docker, fixture):
+    restored = restore_database_name(fixture)
+    verify_owned_resources(docker, fixture)
+    database_info = docker.inspect(fixture['ids']['postgres'])
+    assert_owned(database_info['Config'].get('Labels') or {}, fixture)
+    if database_info['Image'] != fixture['expectedImages']['postgres'] or not database_info['State']['Running']:
+        raise SmokeError('Fixture database identity changed before backup.')
+    # Stop only this fixture's application while keeping its database and the
+    # neighbor running. The ordinary recreation step below restarts it afterward.
+    docker.compose(fixture, ['stop', '--timeout', '15', 'restaurant'])
+    before = database_fingerprint(docker, fixture, 'wacalls_main')
+    archive = docker.call(['exec', fixture['ids']['postgres'], 'pg_dump', '-U', 'onlinu_runtime',
+                           '-d', 'wacalls_main', '--format=custom', '--no-owner', '--no-acl'], binary=True).stdout
+    if not isinstance(archive, bytes) or not archive.startswith(b'PGDMP') or not 5 < len(archive) <= 32 * 1024 * 1024:
+        raise SmokeError('Unexpected fixture backup archive.')
+    backup_root = fixture['root'] / 'private-backup'
+    backup_root.mkdir(mode=0o700)
+    path = backup_root / 'main.dump'
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, 'wb') as stream:
+        stream.write(archive)
+        stream.flush()
+        os.fsync(stream.fileno())
+    restored_bytes = path.read_bytes()
+    archive_hash = hashlib.sha256(archive).hexdigest()
+    if hashlib.sha256(restored_bytes).hexdigest() != archive_hash:
+        raise SmokeError('Fixture backup read-back differs.')
+    # A name collision fails closed. Never drop, overwrite or restore onto an
+    # existing database. This copy lives only inside the owned disposable volume.
+    exists = docker.text(['exec', '-i', fixture['ids']['postgres'], 'psql', '-U', 'onlinu_runtime',
+                          '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'],
+                         input="SELECT count(*) FROM pg_database WHERE datname='" + restored + "';")
+    if exists != '0':
+        raise SmokeError('Fixture restore target already exists.')
+    docker.call(['exec', fixture['ids']['postgres'], 'createdb', '-U', 'onlinu_runtime', restored])
+    docker.call(['exec', '-i', fixture['ids']['postgres'], 'pg_restore', '-U', 'onlinu_runtime',
+                 '-d', restored, '--exit-on-error', '--no-owner', '--no-acl'], input=restored_bytes, binary=True)
+    after = database_fingerprint(docker, fixture, restored)
+    if before != after or before != database_fingerprint(docker, fixture, 'wacalls_main'):
+        raise SmokeError('Fixture restore or original database fingerprint differs.')
+    # Report hashes/counts only. Archive bytes are never uploaded as an artifact.
+    return {'sourceDatabase': 'wacalls_main', 'freshRestoreDatabase': restored,
+            'archiveBytes': len(archive), 'archiveSha256': archive_hash,
+            'tableCount': len(before['tables']), 'sequenceCount': len(before['sequences']),
+            'logicalFingerprint': hashlib.sha256(json.dumps(before, sort_keys=True).encode()).hexdigest()}
 
 
 def redact(value, fixtures):
@@ -279,6 +364,7 @@ def run_smoke(image):
                 check_cross_network(docker, fixture, other)
             neighbor_start = {service: docker.inspect(identifier)['State']['StartedAt']
                               for service, identifier in fixtures[1]['ids'].items()}
+            backup_restore = check_database_backup_restore(docker, fixtures[0])
             verify_owned_resources(docker, fixtures[0])
             docker.compose(fixtures[0], ['stop', '--timeout', '15'])
             docker.compose(fixtures[0], ['up', '--force-recreate', '--wait', '--wait-timeout', '180', '--pull', 'never', '--no-build'])
@@ -296,14 +382,18 @@ def run_smoke(image):
             report = {'sourceCommit': os.environ['GITHUB_SHA'], 'productionDeployed': False,
                       'registryPublished': False, 'fixtureCount': 2, 'localImageIds': image_ids,
                       'planDigests': [f['plan']['planDigest'] for f in fixtures],
+                      'databaseBackupRestore': backup_restore,
                       'testOnlyOverrides': ['image references', 'host secret/config file paths'],
                       'checks': ['two-rendered-fixtures-started', 'actual-container-hardening', 'loopback-only-runtime-ingress',
                                  'cross-administrator-key-rejected',
                                  'bootstrap-secrets-absent-from-runtime', 'cross-network-tcp-blocked',
                                  'separate-database-and-media-markers', 'database-and-media-survive-recreation',
-                                 'neighbor-uptime-preserved'],
+                                 'neighbor-uptime-preserved', 'private-main-database-dump-readback',
+                                 'fresh-database-restore-without-overwrite', 'restored-table-and-sequence-fingerprints',
+                                 'original-database-unchanged-after-restore'],
                       'notVerified': ['production-registry-digests', 'production-secret-provisioning',
-                                      'public-https-routing', 'real-calls', 'capacity', 'backup-restore', 'host-compromise-isolation']}
+                                      'public-https-routing', 'real-calls', 'capacity', 'production-backup-restore',
+                                      'media-backup-restore', 'cross-resource-snapshot-consistency', 'host-compromise-isolation']}
         except Exception:
             for fixture in fixtures:
                 if fixture['owned']:

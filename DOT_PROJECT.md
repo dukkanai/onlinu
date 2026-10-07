@@ -979,3 +979,14 @@ acknowledgements; they create no keys and read no secret bytes. Five filesystem
 and four capability test groups pass locally (27 combined artifact/preflight
 checks). Actual production UID/mount policy, credentials and deployment remain
 external gates. See `prototype/platform/PROVISIONING-EXECUTION-MANIFEST.md`.
+
+## Disposable main-database restore — 2026-10-07, CI pending
+
+The owned two-tenant runtime fixture now prepares a private PostgreSQL archive,
+reads it back and restores only into a new collision-checked fixture database.
+All public-table and sequence fingerprints must match, the source must remain
+unchanged, and existing neighbor-uptime/isolation checks remain. Archive bytes
+are not uploaded. Four new guards pass; all68 deployment/packaging checks pass.
+Actual database restoration is pending full-image CI. Production/session/media
+backup, off-host retention, recovery objectives and rollback remain separate.
+See `deploy/FIXTURE-DATABASE-RESTORE.md`.
