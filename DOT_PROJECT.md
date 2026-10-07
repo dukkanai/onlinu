@@ -1369,3 +1369,11 @@ scheduled hours and manual intake, limiting per-process concurrent reads. Local
 283 platform tests pass; 13 DB-dependent cases skipped. Actual original-core
 unconfigured/always-open/search/restore flow is added for hosted CI. No external
 ChatGPT account, background polling or production setting changed.
+
+Bounded open-search acceptance: `cdd9f28c1293a046022fa62b4c8a2a3680ad0748`,
+[CI37626795229](https://github.com/dukkanai/onlinu/actions/runs/37626795229),
+all four ordinary jobs passed. Server logs verify original uncached Go race
+suites and 396 platform tests without skips. Actual published-core MCP fixtures
+prove unconfigured exclusion, reviewed always-open policy, matching search and
+restoration. Pagination/concurrency/uncertainty checks also pass. This is not
+external-account acceptance or evidence of a complete live restaurant directory.
