@@ -1435,3 +1435,9 @@ history/echo/forward/edit/group rejection, bounded untrusted text and unsupporte
 native-order-card rejection. It is not attached to Session.onEvent and makes no
 connection, sends or order. Local tests/build/translation checks precede hosted
 acceptance; source binding and conversation confirmation remain separate gates.
+
+QR extraction acceptance:cccb463831dd493a9b73ab3577903d5d7570753c,
+CI37666341094 all four ordinary jobs passed. Focused Go race logs verify typed
+synthetic direct-message extraction and rejection cases together with durable
+inbox/core-price tests. Full Go race and396platform cases/no skips passed.
+No live session event hook, QR login, incoming/outgoing message or final order.

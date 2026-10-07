@@ -103,3 +103,11 @@ cards are unsupported, not guessed from a count/total/token. Text remains
 untrusted data and cannot authorize a confirmed order or execute instructions.
 The existing proposal freshness/scope validator is reused. Actual session binding,
 permissions, conversational parsing and review/confirmation are still required.
+
+QR extraction acceptance: code `cccb463831dd493a9b73ab3577903d5d7570753c` passed
+all four ordinary jobs in [CI37666341094](https://github.com/dukkanai/onlinu/actions/runs/37666341094).
+The focused verbose Go race log verifies direct PN/LID extraction, all rejected
+origin classes and refusal to guess native order cards; original proposal and
+PostgreSQL inbox tests also passed. Full Go race,396platform cases/no skips,
+client84/build/browser and Windows checks passed. All events remain synthetic;
+this is not a connected QR account or a functioning conversational order flow.
