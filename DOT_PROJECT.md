@@ -1186,3 +1186,9 @@ the platform and CSP handles private-use schemes without a null-origin source.
 Local platform tests: 270 passed, 13 PostgreSQL-dependent cases skipped. New
 actual database and HTTP coverage awaits hosted CI. Flutter/OS handoff and real
 mobile-login acceptance are still incomplete. No deployed configuration changed.
+
+Broker integration acceptance: `5fc868bbf936a29309a877c9ce7298d418726aa0`,
+CI37596296616 all four ordinary jobs passed, verified 2026-10-07 08:59 UTC.
+Server log confirms 383 platform tests passed, zero skipped, including actual
+PostgreSQL mobile grants and both HTTP opt-in states. Flutter/OS handoff remains
+incomplete; no mobile device or external-account acceptance is implied.

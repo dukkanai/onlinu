@@ -32,9 +32,6 @@ mobile callback registrations. Existing Windows loopback behavior is unchanged.
 
 ## Remaining integration gates
 
-- Run the new actual PostgreSQL and HTTP tests in CI for opt-in registration,
-  client/callback binding, disabled-client access, refresh, revocation and CSP.
-  Local unit tests do not substitute for those checks.
 - External system browser, PKCE S256, state and issuer checks, active-attempt-only
   callbacks, cancellation, duplicate callbacks and timeout handling in Flutter.
 - Platform-specific secure storage binding, native deep-link configuration and
@@ -51,3 +48,11 @@ Run `node --test native-client-policy.test.mjs native-auth.test.mjs` from this
 directory. The PostgreSQL native grant test requires the documented disposable
 `IDENTITY_TEST_DATABASE_URL`; a local skip is not database acceptance. Full CI
 results are recorded by exact commit in `plans/IMPLEMENTATION-STATUS.md`.
+
+## Broker acceptance
+
+Commit `5fc868bbf936a29309a877c9ce7298d418726aa0` passed all four ordinary
+jobs in [CI37596296616](https://github.com/dukkanai/onlinu/actions/runs/37596296616),
+verified 2026-10-07 08:59 UTC. Its server log confirms 383 platform tests passed
+without skips, including actual PostgreSQL grant checks and HTTP opt-in false/true
+suites. This does not establish OS browser handoff or Flutter mobile login.
