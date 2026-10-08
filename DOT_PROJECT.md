@@ -1576,8 +1576,15 @@ upload; browser multipart handling rechecks after body parsing, before upload
 and before image assignment. Browser option updates recheck after catalogue read.
 No automatic retry or cleanup of an already accepted upload was introduced.
 
-New tests use actual loopback browser-form HTTP and isolated PostgreSQL roles,
+New tests use actual loopback browser-form HTTP and isolated PostgreSQL-backed memberships,
 with a synthetic core, to revoke permission during multipart body, catalogue
 read and upload response. They verify no subsequent forbidden upload/assignment,
 plus successful allowed image and option writes. These are authorization tests,
 not new codec/image-normalization or actual browser visual acceptance.
+
+Menu read/upload authority acceptance: code
+27ddf885f4c4da4d11e1cf92351ef4fad6b59f80 passed all four ordinary jobs in
+[CI37733362029](https://github.com/dukkanai/onlinu/actions/runs/37733362029).
+Final local47 focused cases and428 platform tests passed without skips. The
+three owned fixture databases had no remaining test schemas and PostgreSQL
+stopped cleanly. No live provider, staff membership or production setting changed.

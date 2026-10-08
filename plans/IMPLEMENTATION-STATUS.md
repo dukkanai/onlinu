@@ -5,7 +5,10 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-08 05:32 UTC
+## Latest verified position — 2026-10-08 05:48 UTC
+
+- Adjacent menu authorization windows corrected in `27ddf885f4c4da4d11e1cf92351ef4fad6b59f80`, accepted by all four ordinary jobs in [CI37733362029](https://github.com/dukkanai/onlinu/actions/runs/37733362029). Native image upload rechecks after catalogue read; browser multipart processing rechecks after body, before upload and before assignment; option edits recheck after metadata reads. A pre-fix regression reproduced the unwanted upload. Actual loopback HTTP/PostgreSQL regressions cover revocation at each named boundary and allowed happy paths, using a synthetic core. All428 local platform cases passed without skips. This does not undo an already accepted upload or establish distributed instantaneous revocation.
+
 
 - Existing staff-management authority freshness fixed in `053973c93712c3a79ac5fb60aacb5002285f18cb`, accepted by all four ordinary jobs in [CI37732081482](https://github.com/dukkanai/onlinu/actions/runs/37732081482). A reproduced pre-fix regression showed that delayed request bodies could outlive a permission check. Named staff API mutations and browser channel/service/profile writes now recheck authority after body consumption. Actual loopback HTTP/PostgreSQL tests verify permission removal and tenant suspension before body completion prevent core writes; granted channel writes still succeed. All421 local platform cases passed without skips. This is bounded remediation, not a claim that every asynchronous authorization window is audited.
 - Runtime WhatsApp integration now has an inspected authority/lifecycle plan in `prototype/platform/WHATSAPP-AUTHORITY-PLAN.md`. A UI paired/open snapshot is not sufficient send authority. Account binding, authenticated event hops and current operation authority remain implementation/activation gates; no live account or credential was created.
