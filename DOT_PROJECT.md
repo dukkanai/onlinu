@@ -1509,3 +1509,13 @@ CI37707886484 found an intermittent lock-order deadlock in concurrent WhatsApp
 dispatch. Replaced planner-dependent joined row locks in dispatch/rendering with
 explicit head-first locking and added deterministic lock-order regressions.
 Acceptance remains pending until the replacement exact-commit CI completes.
+
+### WhatsApp send journal and deadlock correction accepted
+
+Code88d2389909a787120e7976e9de17bb777cc3e1f7 passed all ordinary jobs in
+[CI37708807823](https://github.com/dukkanai/onlinu/actions/runs/37708807823).
+Verified full Go race and396 platform cases/no skips; client, native Windows and
+control image passed. Local final checks:34 WhatsApp cases,200 restaurant cases
+plus separate opt-in core HTTP parity, and25 repeated concurrency/lock-order
+regressions. Private attempt journaling and reconciliation only; actual transport
+handoff, conversation wiring and real provider acceptance remain pending.

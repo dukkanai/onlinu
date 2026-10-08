@@ -208,3 +208,19 @@ risk was removed from read-only rendering. Deterministic regression tests hold
 the head and verify that a waiting guard/renderer has not acquired the review;
 this is a lock-order correction, not a longer timeout or blind retry of orders.
 Final local/hosted acceptance of this correction is pending.
+
+Review-send journal and lock-order acceptance: code
+`88d2389909a787120e7976e9de17bb777cc3e1f7` passed all four ordinary jobs in
+[CI37708807823](https://github.com/dukkanai/onlinu/actions/runs/37708807823).
+The verbose PostgreSQL race log confirms all seven send-journal cases and both
+deterministic head-first regressions, followed by full uncached Go race and
+396 platform tests with no skips. Client, Windows and control-image jobs passed.
+The failed CI37707886484 is superseded, not reclassified as successful.
+
+Local PostgreSQL17 verification on this final code separately passed34 focused
+WhatsApp cases,200 restaurant cases (only the opt-in parity test skipped in that
+run), and the explicit original-core HTTP parity run. The concurrent dispatch
+and both head-first regressions also passed25 repetitions under the race detector.
+Owned fixture schemas were removed and the local server stopped cleanly. These
+checks use synthetic authority/evidence; no live send, delivery, real provider
+account, new mobile execution or production deployment is included.
