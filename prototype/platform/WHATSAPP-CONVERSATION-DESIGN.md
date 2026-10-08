@@ -173,3 +173,29 @@ escaping, expired/changed/oversized rejection and actual PostgreSQL authority pl
 canonical delivery labels. Full Go race and396platform cases/no skips passed;
 client84/build/browser and Windows/control checks also passed. No WhatsApp-device
 visual review, external message, presentation receipt or provider acceptance.
+
+## Private review-send journal (acceptance pending)
+
+A private PostgreSQL journal now claims one immutable outbound review attempt,
+including review fingerprint, exact Arabic/English rendering digest, locale,
+channel-policy version and original start time. Only the first committed claim
+returns the complete text. Concurrent callers and restart return status only.
+The initial state is deliberately unknown, not sent: a crash could occur before
+or after a provider call. There is no lease reset, expiry-based resend or retry
+of a rejected attempt. No second plaintext customer-review copy is persisted.
+
+Only a trusted adapter may record positive acceptance or definitive rejection
+with an evidence digest and the exact attempt/body identity. Contradictory results
+are rejected. Acceptance is distinct from delivery/read; no such delivery claim
+is made. A current accepted review is marked presented atomically with the
+journal result. Late evidence is retained without reviving expired, superseded
+or policy-invalidated review presentation. Disabled channels can still reconcile
+already claimed evidence under current account authority, but cannot claim a new
+send. Revoked account authority blocks even that private read/write path.
+
+No sender, worker, live account, endpoint or startup initialization is added.
+A claim is not an egress permission: a future sender still needs a current,
+transport-specific handoff gate, authority/policy rechecks and reconciliation
+against actual provider evidence. Synthetic tests do not establish provider
+acceptance or safe runtime activation. Existing private Present remains a trusted
+fixture/internal boundary; a live adapter must use verified journal evidence.

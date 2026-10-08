@@ -1497,3 +1497,10 @@ remaining Go/Node HTTP parity case passed separately across five templates and
 three modes. Zero owned test schemas remained after either run. This does not
 prove persistent daemon/self-hosted-runner availability or live media/provider
 acceptance. See `integration/LOCAL-POSTGRES.md` for exact scope and provenance.
+
+### Private WhatsApp review-send journal — verification pending
+
+Added immutable one-attempt claims and accepted/rejected evidence reconciliation
+for the complete review renderer. Unknown outcomes never automatically retry;
+provider acceptance is not delivery. No live sender or account was activated.
+See `prototype/platform/WHATSAPP-CONVERSATION-DESIGN.md` for remaining egress gates.

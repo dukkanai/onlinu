@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Private preparation only: no startup hook, provider transport or order dispatch.
+// Private workflow only: no startup hook or provider transport.
 // Confirmation records customer intent; it is never an accepted order receipt.
 type restaurantWhatsappReviews struct {
 	orders *restaurantOrders
@@ -51,7 +51,20 @@ func newRestaurantWhatsappReviews(ctx context.Context, orders *restaurantOrders)
  scope_hash TEXT NOT NULL, dispatch_key TEXT NOT NULL UNIQUE,
  input_hash TEXT NOT NULL, fingerprint TEXT NOT NULL, channel_version BIGINT NOT NULL,
  order_number TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL
- )`)
+ );
+ CREATE TABLE IF NOT EXISTS restaurant_whatsapp_review_sends (
+ review_id TEXT PRIMARY KEY REFERENCES restaurant_whatsapp_reviews(id),
+ scope_hash TEXT NOT NULL, attempt_id TEXT NOT NULL UNIQUE,
+ fingerprint TEXT NOT NULL, body_hash TEXT NOT NULL, locale TEXT NOT NULL CHECK(locale IN ('ar','en')),
+ channel_version BIGINT NOT NULL, started_at TIMESTAMPTZ NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('unknown','accepted','rejected')),
+ provider_message_id TEXT NOT NULL DEFAULT '', evidence_hash TEXT NOT NULL DEFAULT '',
+ resolved_at TIMESTAMPTZ,
+ CHECK((state='unknown' AND resolved_at IS NULL AND provider_message_id='' AND evidence_hash='') OR
+       (state='accepted' AND resolved_at IS NOT NULL AND provider_message_id<>'' AND evidence_hash<>'') OR
+       (state='rejected' AND resolved_at IS NOT NULL AND provider_message_id='' AND evidence_hash<>''))
+ );
+ CREATE UNIQUE INDEX IF NOT EXISTS restaurant_whatsapp_review_sends_message ON restaurant_whatsapp_review_sends(scope_hash,provider_message_id) WHERE provider_message_id<>''`)
 	if err != nil {
 		return nil, err
 	}
