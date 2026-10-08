@@ -5,14 +5,26 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Current local increment — 2026-10-08 09:04 UTC
+## Current local increment — 2026-10-08 09:17 UTC
 
-- QR session lifecycle regression reproduced stale `open` state for six provider
-  failure events. They now publish the existing `error` state, clear obsolete
-  login challenges, preserve pairing separately, and retain `logged_out` after a
-  later disconnect. Focused Go race tests and `go vet ./cmd/server` passed.
-  Full CI for this increment is pending. This is UI lifecycle correctness, not
-  a live account binding, generation proof, send permission or shopping activation.
+- Private QR binding journal is implemented but not registered or activated.
+  Fixed restaurant scope, denied-by-default change authority, persisted epochs,
+  CAS replacement/removal and immutable change-request replay checks are covered.
+  Restart resolution requires the same verified connection/device fingerprint.
+  Final local Go race checks: all44 WhatsApp cases passed without skips; all six
+  binding cases passed25 repetitions with a two-connection pool. The immediately
+  preceding aggregate passed209 restaurant cases with the opt-in HTTP parity case
+  run separately and passed; the added deterministic binding-lock case passed in
+  the final focused run. Vet/build passed and owned PostgreSQL schemas were
+  cleaned and its server stopped. CI for the binding increment is pending.
+  This does not verify a real provider device, enable a number or authorize sends.
+
+- QR session lifecycle commit `bfb305eab202c2334671a31b6b73301dfc380d87` passed all
+  four ordinary jobs in [CI37754250180](https://github.com/dukkanai/onlinu/actions/runs/37754250180).
+  A pre-fix regression reproduced stale open state for six provider failure
+  events. They now publish the existing error state, clear obsolete login
+  challenges, preserve pairing separately and retain logged-out state after a
+  later disconnect. This is lifecycle correctness, not account-binding authority.
 
 ## Latest verified position — 2026-10-08 05:48 UTC
 

@@ -115,3 +115,32 @@ shopping operations, not acquire the owner's other management privileges.
 Creating persistent transport credentials, linking an account, sending external
 messages and production activation require the relevant explicit permissions.
 This plan is not that permission and does not resume personal WhatsApp automation.
+
+## Private binding journal increment (October 8)
+
+`restaurant_whatsapp_bindings.go` adds an unregistered PostgreSQL QR binding
+journal for a fixed runtime restaurant. Changes require an explicitly supplied,
+current authority callback (nil by default), compare-and-swap revision and an
+immutable request ID/body hash. Every explicit rebind/removal gets a fresh,
+persisted generation, even if the selected provider identity is unchanged.
+Repeated delivery of the same current change returns that generation; an old
+change cannot revive a binding after replacement. Restart resolution requires the
+same verified connection/device fingerprint. No customer text resolves identity.
+
+Local checks run on the caller's transaction: policy/entitlement before binding,
+then conversation head/review/dispatch. Two-connection-pool tests exercise retries,
+replacement, revocation before order creation and lock serialization. This does
+not cover external sends, remote instantaneous revocation or the authenticated
+platform-to-runtime hop. The future authority callback must also check signed
+operation scope and current subscription entitlement; a binding match alone is
+not permission.
+
+The pinned SDK creates fresh identity/noise keys in `sqlstore.NewDevice`, persists
+and reloads them, and marks deleted devices unusable. `Session.replaceClient`
+currently attaches the shared session handler to a new client; queued callbacks
+from an earlier client still need provenance fencing before shopping integration.
+Consequently this increment does not derive a production device fingerprint or
+claim a live pairing epoch. The independent persisted generation avoids assuming
+that a displayed phone, stable SDK key, reconnect or process restart proves a
+new owner-approved binding. No credentials, real account link or live handler
+were created, and `adapterImplemented` remains false.
