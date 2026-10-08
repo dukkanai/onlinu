@@ -17,7 +17,14 @@ All84 client cases and Go vet/build passed. PostgreSQL cleanup/shutdown verified
 
 This is a pure reducer, not persisted draft CAS or a natural-language parser.
 Durable event recovery, atomic active-review invalidation, current authority and
-transport wiring remain required before live use. Hosted acceptance is pending.
+transport wiring remain required before live use.
+
+Hosted acceptance verified at 11:30 UTC: code commit
+`99e309ced75e7c11c0c5ed5bd20ba16d51315fe4` passed server, client,
+native-Windows and control-image in
+[CI 37768710508](https://github.com/dukkanai/onlinu/actions/runs/37768710508).
+The final required job completed at 11:22 UTC. Optional mobile and full
+runtime-image jobs were not enabled. This does not establish live readiness.
 
 ## QR source-fence acceptance — 2026-10-08 10:07 UTC
 
