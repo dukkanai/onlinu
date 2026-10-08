@@ -1527,3 +1527,9 @@ self-identity and direct-chat context checks. Untrusted quoted content never
 supplies cart/price data. A synthetic integration composes durable intake, review,
 send evidence, explicit decision and exactly-once original-core order recovery.
 No live callback, catalogue language mapping or new WhatsApp connection is enabled.
+
+Explicit QR reply and composed boundary acceptance: b1041ba115e1331fca4befe3ce4508d1b1deafda
+passed all four ordinary jobs in CI37711323483. Individual job-step metadata
+confirms the focused/aggregate/database/browser checks; raw-log download timed
+out. Local final38 WhatsApp and204 restaurant cases plus separate core HTTP
+parity passed. No live messaging/account or complete conversation mapping claim.

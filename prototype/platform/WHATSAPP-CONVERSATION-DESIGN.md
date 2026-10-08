@@ -243,3 +243,15 @@ A synthetic composition test joins proposal/inbox, complete review, send evidenc
 explicit reply and original-core creation/recovery. It uses explicitly supplied
 fixture catalogue selections/contact details and synthetic provider acceptance,
 not an implemented menu-mapping or real customer conversation.
+
+Explicit-reply/composition acceptance: code
+`b1041ba115e1331fca4befe3ce4508d1b1deafda` passed all four ordinary jobs in
+[CI37711323483](https://github.com/dukkanai/onlinu/actions/runs/37711323483).
+The job metadata separately confirms success for vet/format/build, focused
+WhatsApp tests, aggregate Go, tenant/platform PostgreSQL and browser checks.
+Raw server-log download timed out, so no new remote per-case count is inferred.
+Local final PostgreSQL17 evidence verifies38 focused WhatsApp cases and204
+restaurant cases, with the opt-in HTTP parity case run and passed separately.
+Owned schema cleanup and server stop passed. This still uses fixture selections,
+contact data, authority and send evidence; real transport/conversation acceptance
+and live account activation remain open.

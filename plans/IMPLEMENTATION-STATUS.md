@@ -5,7 +5,10 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-08 00:47 UTC
+## Latest verified position — 2026-10-08 01:17 UTC
+
+- Strict QR review-reply extraction and synthetic full boundary composition `b1041ba115e1331fca4befe3ce4508d1b1deafda` passed all four ordinary jobs in [CI37711323483](https://github.com/dukkanai/onlinu/actions/runs/37711323483). Direct fresh explicit Arabic/English commands require the replied-to provider ID and separately verified self/chat context; quoted text never supplies authoritative checkout data. The composition test covers unknown-send refusal, accepted review, explicit confirmation, original order creation and replay without another order/message. Final local PostgreSQL race evidence:38 focused cases,204 restaurant cases plus separately enabled HTTP parity, with clean fixture shutdown. Live callbacks and conversational catalogue/address collection remain unimplemented.
+
 
 - Private WhatsApp review rendering and send-attempt journaling are now accepted at `88d2389909a787120e7976e9de17bb777cc3e1f7` in [CI37708807823](https://github.com/dukkanai/onlinu/actions/runs/37708807823): all four ordinary jobs passed. Full Go race and 396 platform tests passed without skips; client, Windows and control-image gates passed. A single immutable send claim, no replay after uncertainty, evidence-bound acceptance/rejection and atomic presentation are verified with synthetic transports only. The first journal CI exposed a latent dispatch lock-order deadlock; explicit head-first locks and deterministic regression tests correct it. The failed run is not counted as acceptance.
 - Local disposable PostgreSQL17 now supports real database/race testing inside one live command. Final local acceptance: 34 WhatsApp cases, 200 restaurant cases plus separately enabled original-core HTTP parity, and 25 repeated concurrency/lock-order regressions. Fixture cleanup and server stop were verified. A shell session is not a durable service and must not be assumed to survive a turn boundary.
