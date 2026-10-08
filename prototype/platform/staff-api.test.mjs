@@ -128,3 +128,35 @@ test('opening schedule rechecks read/write after body and binds the restaurant',
  await assert.rejects(api({method:'DELETE'},{},{id:'staff'},url),{code:'invalid_request'});
  await assert.rejects(api({method:'GET'},{},{id:'staff'},new URL(url+'?at=tomorrow')),{code:'invalid_request'});
 });
+
+test('channel changes recheck current authority after reading a delayed body',async()=>{
+ let granted=true,writes=0,reads=0;
+ const api=createStaffApi({directory:{async authorize(actor,tenant,permission){assert.deepEqual([actor,tenant,permission],['staff','a','channels:manage']);if(!granted)throw Object.assign(Error(),{code:'forbidden'});}},
+  body:async()=>{reads++;granted=false;return{newOrdersEnabled:true,expectedVersion:1};},
+  orderClient:{async setChannel(){writes++;return{};}},json:(_,status,data)=>({status,data})});
+ const url=new URL('https://platform.example/api/restaurants/a/staff/channels/web');
+ await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});
+ assert.equal(reads,1);assert.equal(writes,0);
+});
+
+test('remaining staff mutations reject revocation during body consumption without retry',async t=>{
+ const routes=[
+  ['orders/R00000001/courier','delivery:assign','assignCourier'],
+  ['service','settings:update','patchService'],['profile','settings:update','patchProfile'],
+  ['menu/categories/main','menu:update','patchMenuCategory'],
+  ['menu/items','menu:update','createMenuItem'],['menu/categories','menu:update','createMenuCategory'],
+  ['menu/items/rice','menu:update','patchMenuItem'],['stock/rice','stock:update','setStock'],
+  ['orders/R00000001/status','orders:update','staffChange'],['orders/R00000001/cash','payments:collect','staffChange'],
+ ];
+ for(const[path,permission,method]of routes)await t.test(path,async()=>{
+  let granted=false,revoke=true,reads=0,writes=0;
+  const input={fixture:'unchanged'};
+  const api=createStaffApi({directory:{async authorize(actor,tenant,grant){assert.deepEqual([actor,tenant,grant],['staff','a',permission]);if(!granted)throw Object.assign(Error(),{code:'forbidden'});}},
+   body:async()=>{reads++;if(revoke)granted=false;return input;},
+   orderClient:{async[method](...args){assert.equal(args.at(-1),input);writes++;throw Object.assign(Error(),{code:'order_outcome_unknown'});}},json:()=>assert.fail('unknown write reported success')});
+  const url=new URL('https://platform.example/api/restaurants/a/staff/'+path);
+  await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(reads,0);assert.equal(writes,0);
+  granted=true;await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(writes,0);
+  granted=true;revoke=false;await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'order_outcome_unknown'});assert.equal(writes,1);
+ });
+});

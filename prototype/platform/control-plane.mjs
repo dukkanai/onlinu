@@ -489,6 +489,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         if(req.method==='GET'){const data=await orderClient.service(tenantId,who.id);htmlHeaders(res);res.end(staffServicePage({tenantId,data,canUpdate:membership.permissions.includes('settings:update'),csrf:auth.csrfToken(req)}));return;}
         const input=await body(req);auth.verifyCsrf(req,input.csrf);const fields=['acceptingOrders','deliveryEnabled','pickupEnabled','tableEnabled'];
         if(input.reviewed!=='yes'||Object.keys(input).some(key=>!['csrf','expectedVersion','reviewed',...fields].includes(key))||fields.some(key=>!['true','false'].includes(input[key])))throw problem(400,'invalid_request');
+        await directory.authorize(who.id,tenantId,'settings:update');
         await orderClient.patchService(tenantId,who.id,{expectedVersion:Number(input.expectedVersion),...Object.fromEntries(fields.map(key=>[key,input[key]==='true']))});return redirect(res,url.pathname,303);
       }
       const managementProfile=/^\/manage\/([a-z0-9-]{1,64})\/profile$/.exec(url.pathname);
@@ -501,6 +502,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const input=await body(req);auth.verifyCsrf(req,input.csrf);
         const fields=['name','description','address','phone','openingHours','pickupInstructions'];
         if(input.reviewed!=='yes'||Object.keys(input).some(key=>!['csrf','expectedVersion','reviewed',...fields].includes(key))||fields.some(key=>typeof input[key]!=='string'))throw problem(400,'invalid_request');
+        await directory.authorize(who.id,tenantId,'settings:update');
         await orderClient.patchProfile(tenantId,who.id,{expectedVersion:Number(input.expectedVersion),...Object.fromEntries(fields.map(key=>[key,input[key].trim()]))});
         return redirect(res,url.pathname,303);
       }
@@ -641,6 +643,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         if(req.method==='POST'&&channel){
           const input=await body(req);auth.verifyCsrf(req,input.csrf);
           if(Object.keys(input).some(key=>!['csrf','newOrdersEnabled','expectedVersion'].includes(key))||!['true','false'].includes(input.newOrdersEnabled)||!/^\d{1,16}$/.test(input.expectedVersion??''))throw problem(400,'invalid_request');
+          await directory.authorize(who.id,tenantId,'channels:manage');
           await orderClient.setChannel(tenantId,who.id,channel,{newOrdersEnabled:input.newOrdersEnabled==='true',expectedVersion:Number(input.expectedVersion)});
           return redirect(res,`/manage/${tenantId}/channels`,303);
         }

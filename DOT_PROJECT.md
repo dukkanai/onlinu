@@ -1542,3 +1542,20 @@ permission model, lifecycle/lock-order requirements and activation gates. In
 particular, the existing UI paired/open snapshot alone is not a transport
 permission. This is a design checkpoint only; no binding, live callback, sender,
 credential or account activation is introduced by the document.
+
+### Management authority freshness correction — remote acceptance pending
+
+Runtime-authority inspection found a reproducible existing gap: several staff
+writes checked membership only before awaiting a streamed request body. The new
+regression failed on the old code. Channel, service/profile, menu/category/item,
+stock, courier assignment and order-status/cash API mutations now recheck their
+required grant after body consumption. Browser channel/service/profile writes
+also recheck before signing the core request. This narrows a request-processing
+revocation window; it is not a claim of distributed atomic authorization.
+
+Local verification:40 focused cases including real loopback HTTP with PostgreSQL
+permission removal and tenant suspension while bodies are held; both browser-form
+and staff-API routes reject before any synthetic core write. Granted channel
+writes still complete. All421 platform tests pass with no skips using three
+explicit disposable databases. Owned schemas removed and PostgreSQL stopped.
+No real membership, channel policy, account or production setting was modified.

@@ -6,6 +6,9 @@ import {problem} from './auth.mjs';
 // registry endpoints are deliberately not included here.
 export function createStaffApi({directory,orderClient,body,json,uploadSlots={active:0}}){
   const courierApi=orderClient?createCourierApi({directory,orderClient,body,json}):null;
+  // The initial grant can expire while an asynchronous body is being read.
+  // Recheck immediately before delegating a signed mutation; never retry it.
+  const authorizedBody=async(req,who,tenantId,permission,limit)=>{const input=await body(req,limit);await directory.authorize(who.id,tenantId,permission);return input;};
   return async(req,res,who,url,{restaurantOnly=false}={})=>{
         if(courierApi&&/^\/api\/restaurants\/[^/]+\/(courier-links|courier-work)(?:\/|$)/.test(url.pathname))return courierApi(req,res,who,url);
         const couriersRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/couriers$/.exec(url.pathname);
@@ -14,7 +17,7 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
         }
         const assignRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/orders\/(R[0-9]{8,20})\/courier$/.exec(url.pathname);
         if(assignRoute&&orderClient&&req.method==='POST'){
-          if(url.search)throw problem(400,'invalid_request');const [,tenantId,number]=assignRoute;await directory.authorize(who.id,tenantId,'delivery:assign');return json(res,200,await orderClient.assignCourier(tenantId,who.id,number,await body(req)));
+          if(url.search)throw problem(400,'invalid_request');const [,tenantId,number]=assignRoute;await directory.authorize(who.id,tenantId,'delivery:assign');return json(res,200,await orderClient.assignCourier(tenantId,who.id,number,await authorizedBody(req,who,tenantId,'delivery:assign')));
         }
         const paymentMethodsRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/payment-methods$/.exec(url.pathname);
         if(paymentMethodsRoute&&orderClient){
@@ -95,13 +98,13 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
         const serviceRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/service$/.exec(url.pathname);
         if(serviceRoute&&orderClient&&['GET','POST'].includes(req.method)){
           if(url.search)throw problem(400,'invalid_request');const tenantId=serviceRoute[1];await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');
-          return json(res,200,req.method==='GET'?await orderClient.service(tenantId,who.id):await orderClient.patchService(tenantId,who.id,await body(req)));
+          return json(res,200,req.method==='GET'?await orderClient.service(tenantId,who.id):await orderClient.patchService(tenantId,who.id,await authorizedBody(req,who,tenantId,'settings:update')));
         }
         const profileRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/profile$/.exec(url.pathname);
         if(profileRoute&&orderClient&&['GET','POST'].includes(req.method)){
           if(url.search)throw problem(400,'invalid_request');
           const tenantId=profileRoute[1];await directory.authorize(who.id,tenantId,req.method==='GET'?'settings:read':'settings:update');
-          return json(res,200,req.method==='GET'?await orderClient.profile(tenantId,who.id):await orderClient.patchProfile(tenantId,who.id,await body(req)));
+          return json(res,200,req.method==='GET'?await orderClient.profile(tenantId,who.id):await orderClient.patchProfile(tenantId,who.id,await authorizedBody(req,who,tenantId,'settings:update')));
         }
         const imageRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79})\/image$/.exec(url.pathname);
         if(imageRoute&&orderClient&&req.method==='POST'){
@@ -129,13 +132,13 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
         if(categoryEditRoute&&orderClient&&req.method==='POST'){
           if(url.search)throw problem(400,'invalid_request');
           const [,tenantId,categoryId]=categoryEditRoute;await directory.authorize(who.id,tenantId,'menu:update');
-          return json(res,200,await orderClient.patchMenuCategory(tenantId,who.id,categoryId,await body(req)));
+          return json(res,200,await orderClient.patchMenuCategory(tenantId,who.id,categoryId,await authorizedBody(req,who,tenantId,'menu:update')));
         }
         const menuCreateRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu\/(items|categories)$/.exec(url.pathname);
         if(menuCreateRoute&&orderClient&&req.method==='POST'){
           if(url.search)throw problem(400,'invalid_request');
           const [,tenantId,kind]=menuCreateRoute;await directory.authorize(who.id,tenantId,'menu:update');
-          const input=await body(req,128*1024);
+          const input=await authorizedBody(req,who,tenantId,'menu:update',128*1024);
           return json(res,201,await orderClient[kind==='items'?'createMenuItem':'createMenuCategory'](tenantId,who.id,input));
         }
         const menuRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/menu(?:\/items\/([A-Za-z0-9][A-Za-z0-9_-]{0,79}))?$/.exec(url.pathname);
@@ -148,7 +151,7 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
           }
           if(req.method==='POST'&&itemId){
             await directory.authorize(who.id,tenantId,'menu:update');
-            return json(res,200,await orderClient.patchMenuItem(tenantId,who.id,itemId,await body(req,128*1024)));
+            return json(res,200,await orderClient.patchMenuItem(tenantId,who.id,itemId,await authorizedBody(req,who,tenantId,'menu:update',128*1024)));
           }
         }
         const stockRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/stock(?:\/([A-Za-z0-9_-]{1,128}))?$/.exec(url.pathname);
@@ -156,7 +159,7 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
           if(url.search)throw problem(400,'invalid_request');
           const [,tenantId,itemId]=stockRoute;
           if(req.method==='GET'&&!itemId){await directory.authorize(who.id,tenantId,'stock:read');return json(res,200,await orderClient.stock(tenantId,who.id));}
-          if(req.method==='POST'&&itemId){await directory.authorize(who.id,tenantId,'stock:update');return json(res,200,await orderClient.setStock(tenantId,who.id,itemId,await body(req)));}
+          if(req.method==='POST'&&itemId){await directory.authorize(who.id,tenantId,'stock:update');return json(res,200,await orderClient.setStock(tenantId,who.id,itemId,await authorizedBody(req,who,tenantId,'stock:update')));}
         }
         const channelRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/channels(?:\/(web|chatgpt|whatsapp_qr|whatsapp_cloud))?$/.exec(url.pathname);
         if(channelRoute&&orderClient){
@@ -164,7 +167,11 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
           const [,tenantId,channel]=channelRoute;
           await directory.authorize(who.id,tenantId,'channels:manage');
           if(req.method==='GET'&&!channel)return json(res,200,await orderClient.channels(tenantId,who.id));
-          if(req.method==='POST'&&channel)return json(res,200,await orderClient.setChannel(tenantId,who.id,channel,await body(req)));
+          if(req.method==='POST'&&channel){
+            const input=await body(req);
+            await directory.authorize(who.id,tenantId,'channels:manage');
+            return json(res,200,await orderClient.setChannel(tenantId,who.id,channel,input));
+          }
         }
         const staffRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/orders(?:\/(R[0-9]{8,20})(?:\/(status|cash))?)?$/.exec(url.pathname);
         if(staffRoute&&orderClient){
@@ -176,7 +183,7 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
           }
           if(req.method==='POST'&&number){
             await directory.authorize(who.id,tenantId,action==='status'?'orders:update':'payments:collect');
-            return json(res,200,await orderClient.staffChange(tenantId,who.id,number,action,await body(req)));
+            return json(res,200,await orderClient.staffChange(tenantId,who.id,number,action,await authorizedBody(req,who,tenantId,action==='status'?'orders:update':'payments:collect')));
           }
         }
         const match = /^\/api\/restaurants\/([a-z0-9-]{1,64})\/members(?:\/([a-f0-9-]{36}))?$/.exec(url.pathname);
