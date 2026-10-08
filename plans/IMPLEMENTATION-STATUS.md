@@ -5,6 +5,15 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
+## QR source-fence acceptance — 2026-10-08 10:07 UTC
+
+Commit `e5e30fd608d202d00bdc3f3ee3e7ad66953b9812` passed all four ordinary
+jobs in [CI37760238782](https://github.com/dukkanai/onlinu/actions/runs/37760238782).
+This supersedes the pending hosted source-fence status below. Optional mobile
+and full runtime-image jobs were not enabled. The source fence remains private
+and unregistered; actual provider authentication and live conversation wiring
+are still required. No real account, message, credential or production change.
+
 ## Current local increment — 2026-10-08 09:56 UTC
 
 Private QR attachment-source fencing is implemented with immutable account/self
