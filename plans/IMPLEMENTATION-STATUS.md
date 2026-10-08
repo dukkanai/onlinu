@@ -5,6 +5,15 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
+## Current local increment — 2026-10-08 09:56 UTC
+
+Private QR attachment-source fencing is implemented with immutable account/self
+context, explicit origin-client checks, stale attachment rejection and failure
+invalidation without implicit Connected reactivation. Three race tests passed25
+repetitions; all49 WhatsApp cases and84 client cases passed, with Go vet/build,
+diff checks, zero owned fixture schemas and PostgreSQL stopped. Hosted acceptance
+is pending. No SDK callback or live provider binding has been registered.
+
 ## Hosted acceptance — 2026-10-08 09:49 UTC
 
 Signed authority and translation correction commit

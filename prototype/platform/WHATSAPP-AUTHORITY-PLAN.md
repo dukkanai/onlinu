@@ -166,3 +166,23 @@ Local acceptance:46 WhatsApp Go race cases,233 aggregate restaurant/platform
 cases plus all seven separately enabled Node/core integration cases,84 client
 cases, TypeScript/Vite build and Go vet/build passed. No local Dart SDK was used.
 Hosted acceptance is tracked in `plans/IMPLEMENTATION-STATUS.md`.
+
+## Private QR attachment fence (local acceptance)
+
+`restaurant_whatsapp_qr_source.go` captures immutable binding and verified-self
+context for one provider-client attachment. Text and decision extraction require
+both that original client pointer and the still-current attachment. Reattachment
+invalidates old sources even for the same client and durable binding; late old
+logout/failure notifications cannot invalidate a replacement. Eight failure event
+types close the source; Connected alone never reactivates it. Pure extraction runs
+under the fence lock, with no database or SDK/network call held under that lock.
+Returned intent retains its original scope and still requires current durable
+binding/entitlement checks before persistence or execution.
+
+Three source-fence race tests passed25 repetitions; all49 WhatsApp race cases
+and84 client cases passed, as did Go vet/build. This is not a registered SDK
+callback and does not independently verify the supplied device or establish a
+signed event hop. A future lifecycle controller must resolve the actual provider
+identity and preserve captured-source provenance when registering callbacks.
+Legacy asynchronous Session handlers are not claimed to be fully isolated by
+this private increment. No connection, permission or sender is activated.
