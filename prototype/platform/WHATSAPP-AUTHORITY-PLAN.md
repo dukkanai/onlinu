@@ -144,3 +144,25 @@ claim a live pairing epoch. The independent persisted generation avoids assuming
 that a displayed phone, stable SDK key, reconnect or process restart proves a
 new owner-approved binding. No credentials, real account link or live handler
 were created, and `adapterImplemented` remains false.
+
+## Private signed dispatch boundary (local acceptance)
+
+The unregistered `restaurant_whatsapp_authority.go` boundary verifies the existing
+platform signature format with a dedicated `transport:whatsapp:dispatch` scope,
+configured transport principal, fixed tenant, exact method/path/body and canonical
+request UUID. It captures a single immutable peer/generation/review operation.
+Staff scopes or another valid signer subject cannot substitute for that principal.
+The internal path constant is not a registered endpoint or new account grant.
+
+Dispatch uses a per-operation service copy, not a shared always-authorized service.
+It rechecks the signed expiry and current persisted binding in the claim and
+original order transactions, including after waiting for binding/review locks.
+Replay still uses the original durable order key. There is no remote call under a
+transaction and no new token, transport principal or persistent signing key is
+created by this code. Platform-side entitlement-backed issuance, real provider
+identity provenance and live ingress/egress remain required before activation.
+
+Local acceptance:46 WhatsApp Go race cases,233 aggregate restaurant/platform
+cases plus all seven separately enabled Node/core integration cases,84 client
+cases, TypeScript/Vite build and Go vet/build passed. No local Dart SDK was used.
+Hosted acceptance is tracked in `plans/IMPLEMENTATION-STATUS.md`.

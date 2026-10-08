@@ -65,6 +65,12 @@ func restaurantRequireWhatsappDispatch(ctx context.Context, tx *sql.Tx, channel 
 	if err != nil {
 		return err
 	}
+	// Review/head locks may have waited after the first authority check.
+	// Recheck the already-held binding/operation lease before accepting a new
+	// order; callbacks must retain the same lock order and transaction.
+	if !permit.authorize(ctx, tx, permit.scope) {
+		return restaurantFail(403, "whatsapp_scope_mismatch")
+	}
 	if savedFingerprint != fingerprint {
 		return restaurantFail(409, "whatsapp_review_changed")
 	}
@@ -128,6 +134,9 @@ func (s *restaurantWhatsappReviews) Dispatch(ctx context.Context, scope restaura
 	}
 	if err != nil {
 		return empty, err
+	}
+	if !s.authorizeDispatch(ctx, tx, scope) {
+		return empty, restaurantFail(403, "whatsapp_scope_mismatch")
 	}
 	var input restaurantOrderInput
 	var quote restaurantQuote

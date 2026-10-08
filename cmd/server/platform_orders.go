@@ -60,35 +60,44 @@ func platformAuthFromEnv() (*platformRequestAuth, error) {
 }
 
 func (a *platformRequestAuth) verify(r *http.Request, body []byte, scope string) (string, error) {
+	claims, err := a.verifyClaims(r, body, scope)
+	if err != nil {
+		return "", err
+	}
+	// A different namespace from local account UUIDs; no email/phone linking.
+	return platformPrincipalRef(claims.Issuer, claims.Audience, claims.Subject), nil
+}
+
+func (a *platformRequestAuth) verifyClaims(r *http.Request, body []byte, scope string) (platformRequestClaims, error) {
 	denied := restaurantFail(401, "platform_unauthorized")
 	if a == nil {
-		return "", restaurantFail(404, "not_found")
+		return platformRequestClaims{}, restaurantFail(404, "not_found")
 	}
 	value := r.Header.Get("Authorization")
 	if len(value) > 4096 || !strings.HasPrefix(value, "Platform ") {
-		return "", denied
+		return platformRequestClaims{}, denied
 	}
 	parts := strings.Split(strings.TrimPrefix(value, "Platform "), ".")
 	if len(parts) != 2 {
-		return "", denied
+		return platformRequestClaims{}, denied
 	}
 	payload, err := base64.RawURLEncoding.Strict().DecodeString(parts[0])
 	if err != nil {
-		return "", denied
+		return platformRequestClaims{}, denied
 	}
 	signature, err := base64.RawURLEncoding.Strict().DecodeString(parts[1])
 	if err != nil || !ed25519.Verify(a.publicKey, payload, signature) {
-		return "", denied
+		return platformRequestClaims{}, denied
 	}
 	var claims platformRequestClaims
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&claims) != nil || decoder.Decode(new(any)) != io.EOF {
-		return "", denied
+		return platformRequestClaims{}, denied
 	}
 	actor, err := uuid.Parse(claims.Subject)
 	if err != nil || actor.String() != claims.Subject {
-		return "", denied
+		return platformRequestClaims{}, denied
 	}
 	now := a.now().Unix()
 	digest := sha256.Sum256(body)
@@ -96,10 +105,9 @@ func (a *platformRequestAuth) verify(r *http.Request, body []byte, scope string)
 		claims.Method != r.Method || claims.Path != r.URL.RequestURI() || claims.BodySHA256 != hex.EncodeToString(digest[:]) ||
 		claims.IdempotencyKey != r.Header.Get("Idempotency-Key") || claims.ExpiresAt <= now ||
 		claims.IssuedAt > now+15 || claims.IssuedAt < now-75 || claims.ExpiresAt <= claims.IssuedAt || claims.ExpiresAt-claims.IssuedAt > 60 {
-		return "", denied
+		return platformRequestClaims{}, denied
 	}
-	// A different namespace from local account UUIDs; no email/phone linking.
-	return platformPrincipalRef(a.issuer, a.tenantID, claims.Subject), nil
+	return claims, nil
 }
 func platformPrincipalRef(issuer, tenant, subject string) string {
 	owner := sha256.Sum256([]byte(issuer + "\x00" + tenant + "\x00" + subject))

@@ -5,26 +5,38 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Current local increment — 2026-10-08 09:17 UTC
+## Current verified increment — 2026-10-08 09:37 UTC
 
-- Private QR binding journal is implemented but not registered or activated.
-  Fixed restaurant scope, denied-by-default change authority, persisted epochs,
-  CAS replacement/removal and immutable change-request replay checks are covered.
-  Restart resolution requires the same verified connection/device fingerprint.
-  Final local Go race checks: all44 WhatsApp cases passed without skips; all six
-  binding cases passed25 repetitions with a two-connection pool. The immediately
-  preceding aggregate passed209 restaurant cases with the opt-in HTTP parity case
-  run separately and passed; the added deterministic binding-lock case passed in
-  the final focused run. Vet/build passed and owned PostgreSQL schemas were
-  cleaned and its server stopped. CI for the binding increment is pending.
-  This does not verify a real provider device, enable a number or authorize sends.
-
-- QR session lifecycle commit `bfb305eab202c2334671a31b6b73301dfc380d87` passed all
-  four ordinary jobs in [CI37754250180](https://github.com/dukkanai/onlinu/actions/runs/37754250180).
-  A pre-fix regression reproduced stale open state for six provider failure
-  events. They now publish the existing error state, clear obsolete login
-  challenges, preserve pairing separately and retain logged-out state after a
-  later disconnect. This is lifecycle correctness, not account-binding authority.
+- Private signed dispatch authority binds the configured transport principal,
+  dedicated scope, tenant, peer, account generation, review, exact body/path and
+  request ID. Expiry and binding are rechecked after waiting for binding/review
+  locks and in the original order transaction. Per-operation service copies avoid
+  granting persistent authority to shared services. No endpoint or account is activated.
+- Final local Go race aggregate:233 passed with7 opt-in integration cases then
+  separately enabled and passed (original-core HTTP parity and six actual
+  Node-signed compatibility fixtures). All46 WhatsApp cases passed; signed
+  authority scenarios passed10 repetitions, including expiry during lock waits.
+  The initial waiter-observation harness used a cached PostgreSQL statistics
+  snapshot; refreshing it corrected the harness, and the known leftover synthetic
+  schema was removed. Final cleanup found zero fixture schemas in all four owned
+  databases and stopped PostgreSQL. Local84 client cases, TypeScript/Vite build,
+  Go vet/build and diff checks passed. Optional Dart execution was not repeated
+  locally because its SDK is absent.
+- Published binding commit `af073cfa7bfc3f70f84f156b828727ca9f232526` passed server,
+  native-Windows and control-image in [CI37755940866](https://github.com/dukkanai/onlinu/actions/runs/37755940866),
+  but FAILED the client guard for untranslated binding errors. That run is not
+  accepted as green. All new error messages are now included in Arabic/English
+  and locally verified. Hosted CI for the correction and signed authority is pending.
+- The binding journal is fixed-tenant, denied by default, revision-CAS controlled
+  and replay-safe. Explicit rebind/removal changes its persisted generation;
+  restart resolution requires the same verified connection/device fingerprint.
+  Six binding tests passed25 repetitions with a two-connection pool. Real provider
+  identity provenance, platform entitlement-backed issuance and live conversation
+  ingress/egress remain activation prerequisites.
+- QR lifecycle commit `bfb305eab202c2334671a31b6b73301dfc380d87` passed all four
+  ordinary jobs in [CI37754250180](https://github.com/dukkanai/onlinu/actions/runs/37754250180).
+  Six provider failure events clear stale open/login-challenge state while
+  preserving pairing independently and retaining logged-out state.
 
 ## Latest verified position — 2026-10-08 05:48 UTC
 
