@@ -165,3 +165,11 @@ Reading a stored rendered review requires current transaction-scoped authority,
 enabled channel intent and the active pending unexpired review. Rendering does
 not record a presentation, create an order, send a message or establish delivery.
 String-level tests are not WhatsApp-device visual or provider acceptance.
+
+Review-text acceptance: code `9e4367edc7be29f30c6cc8b83574c32daf8cc2fc` passed
+all four ordinary jobs in [CI37704442623](https://github.com/dukkanai/onlinu/actions/runs/37704442623).
+Verbose race logs verify complete Arabic/English fields, money/tax, deterministic
+escaping, expired/changed/oversized rejection and actual PostgreSQL authority plus
+canonical delivery labels. Full Go race and396platform cases/no skips passed;
+client84/build/browser and Windows/control checks also passed. No WhatsApp-device
+visual review, external message, presentation receipt or provider acceptance.

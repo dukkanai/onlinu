@@ -1,6 +1,6 @@
 # onlinu — project reference
 
-Updated: 2026-10-07 UTC. Initial inspected upstream: `main` at
+Updated: 2026-10-08 UTC. Initial inspected upstream: `main` at
 `90b16a000c2cad908e51e78d01a07bfb4e785410`.
 
 ## Workspace and source of truth
@@ -1480,3 +1480,10 @@ details and an explicit internal byte bound. Oversized reviews fail without
 truncation. Geography labels are frozen authoritatively at preparation. There
 is no send/provider hook or presentation claim; local string tests/vet/build
 and client checks precede hosted database authority/canonical-address acceptance.
+
+Complete review-text acceptance:9e4367edc7be29f30c6cc8b83574c32daf8cc2fc,
+CI37704442623 all four ordinary jobs passed. Four focused race cases verify
+complete bilingual/money/tax text, escaping/size/expiry and actual PostgreSQL
+current-authority/canonical-address behavior. Full Go race and396platform tests
+passed without skips. This is string/database acceptance, not a live WhatsApp
+message or device rendering test.
