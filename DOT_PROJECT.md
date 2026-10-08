@@ -1487,3 +1487,13 @@ complete bilingual/money/tax text, escaping/size/expiry and actual PostgreSQL
 current-authority/canonical-address behavior. Full Go race and396platform tests
 passed without skips. This is string/database acceptance, not a live WhatsApp
 message or device rendering test.
+
+Local database testing was restored on2026-10-08 using checksum-verified official
+Debian PostgreSQL17.11 packages extracted outside Git. An owned loopback-only,
+synthetic cluster runs with the test command and is stopped by its cleanup trap.
+All25focused WhatsApp top-level race tests passed locally without skips. The wider
+restaurant race run passed191top-level cases with one opt-in parity skip; that
+remaining Go/Node HTTP parity case passed separately across five templates and
+three modes. Zero owned test schemas remained after either run. This does not
+prove persistent daemon/self-hosted-runner availability or live media/provider
+acceptance. See `integration/LOCAL-POSTGRES.md` for exact scope and provenance.
