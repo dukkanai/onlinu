@@ -1504,3 +1504,8 @@ Added immutable one-attempt claims and accepted/rejected evidence reconciliation
 for the complete review renderer. Unknown outcomes never automatically retry;
 provider acceptance is not delivery. No live sender or account was activated.
 See `prototype/platform/WHATSAPP-CONVERSATION-DESIGN.md` for remaining egress gates.
+
+CI37707886484 found an intermittent lock-order deadlock in concurrent WhatsApp
+dispatch. Replaced planner-dependent joined row locks in dispatch/rendering with
+explicit head-first locking and added deterministic lock-order regressions.
+Acceptance remains pending until the replacement exact-commit CI completes.

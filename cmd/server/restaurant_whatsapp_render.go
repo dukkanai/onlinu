@@ -126,17 +126,33 @@ func (s *restaurantWhatsappReviews) Render(ctx context.Context, scope restaurant
 	if !s.authorizeDispatch(ctx, tx, scope) {
 		return empty, restaurantFail(403, "whatsapp_scope_mismatch")
 	}
-	var review restaurantWhatsappReview
-	var event string
-	var checkout, quoteJSON []byte
-	err = tx.QueryRowContext(ctx, `SELECT r.id,r.version,r.fingerprint,r.state,r.expires_at,r.proposal_event,r.checkout,r.quote
- FROM restaurant_whatsapp_reviews r JOIN restaurant_whatsapp_review_heads h ON h.scope_hash=r.scope_hash
- WHERE r.id=$1 AND r.scope_hash=$2 AND h.review_id=r.id AND h.version=r.version FOR SHARE OF r,h`, id, restaurantWhatsappDigest(scope)).Scan(&review.ID, &review.Version, &review.Fingerprint, &review.State, &review.ExpiresAt, &event, &checkout, &quoteJSON)
+	// Explicit head-first locking also applies to read-only rendering. A join
+	// may lock the review first and deadlock with a concurrent newer preparation.
+	var active string
+	var headVersion int64
+	err = tx.QueryRowContext(ctx, `SELECT review_id,version FROM restaurant_whatsapp_review_heads WHERE scope_hash=$1 FOR SHARE`, restaurantWhatsappDigest(scope)).Scan(&active, &headVersion)
 	if err == sql.ErrNoRows {
 		return empty, restaurantFail(404, "not_found")
 	}
 	if err != nil {
 		return empty, err
+	}
+	if active != id {
+		return empty, restaurantFail(404, "not_found")
+	}
+	var review restaurantWhatsappReview
+	var event string
+	var checkout, quoteJSON []byte
+	err = tx.QueryRowContext(ctx, `SELECT id,version,fingerprint,state,expires_at,proposal_event,checkout,quote
+ FROM restaurant_whatsapp_reviews WHERE id=$1 AND scope_hash=$2 FOR SHARE`, id, restaurantWhatsappDigest(scope)).Scan(&review.ID, &review.Version, &review.Fingerprint, &review.State, &review.ExpiresAt, &event, &checkout, &quoteJSON)
+	if err == sql.ErrNoRows {
+		return empty, restaurantFail(404, "not_found")
+	}
+	if err != nil {
+		return empty, err
+	}
+	if review.Version != headVersion {
+		return empty, restaurantFail(404, "not_found")
 	}
 	var input restaurantOrderInput
 	var quote restaurantQuote

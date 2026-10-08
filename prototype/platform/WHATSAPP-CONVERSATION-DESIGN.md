@@ -199,3 +199,12 @@ transport-specific handoff gate, authority/policy rechecks and reconciliation
 against actual provider evidence. Synthetic tests do not establish provider
 acceptance or safe runtime activation. Existing private Present remains a trusted
 fixture/internal boundary; a live adapter must use verified journal evidence.
+
+Journal CI37707886484 exposed an intermittent PostgreSQL deadlock in the earlier
+concurrent dispatch guard. Its multi-table `FOR SHARE` allowed the planner to
+acquire review and conversation-head locks in a different order than preparation.
+The guard now locks head, review and dispatch explicitly in that order. The same
+risk was removed from read-only rendering. Deterministic regression tests hold
+the head and verify that a waiting guard/renderer has not acquired the review;
+this is a lock-order correction, not a longer timeout or blind retry of orders.
+Final local/hosted acceptance of this correction is pending.

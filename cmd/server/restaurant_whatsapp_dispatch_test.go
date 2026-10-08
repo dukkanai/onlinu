@@ -249,3 +249,72 @@ func TestRestaurantWhatsappDispatchRejectsSupersededReviewAndUnwiredContext(t *t
 	_, err = reviews.Dispatch(context.Background(), scope, review.ID)
 	restaurantOrdersRequireError(t, err, "invalid_whatsapp_proposal")
 }
+
+// Reproduce the ordering boundary without relying on probabilistic stress:
+// while the guard waits for the head, it must not already hold the review lock.
+func TestRestaurantWhatsappDispatchHeadLockPrecedesReview(t *testing.T) {
+	s, scope, review, now := whatsappDispatchFixture(t, "whatsapp_cloud")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	s.dispatchCreate = func(context.Context, restaurantOrderInput, string, string) (restaurantReceipt, error) {
+		return restaurantReceipt{}, errors.New("synthetic no provider/core handoff")
+	}
+	if _, err := s.Dispatch(ctx, scope, review.ID); err == nil {
+		t.Fatal("expected durable claim only")
+	}
+	var key, hash string
+	if err := s.orders.store.db.QueryRowContext(ctx, `SELECT dispatch_key,input_hash FROM restaurant_whatsapp_dispatches WHERE review_id=$1`, review.ID).Scan(&key, &hash); err != nil {
+		t.Fatal(err)
+	}
+	head, err := s.orders.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer head.Rollback()
+	var id string
+	if err = head.QueryRowContext(ctx, `SELECT review_id FROM restaurant_whatsapp_review_heads WHERE scope_hash=$1 FOR UPDATE`, restaurantWhatsappDigest(scope)).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	guard, err := s.orders.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pid int
+	if err = guard.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
+		guard.Rollback()
+		t.Fatal(err)
+	}
+	permit := &restaurantWhatsappPermit{reviewID: review.ID, scope: scope, fingerprint: review.Fingerprint, authorize: s.authorizeDispatch, now: func() time.Time { return now }}
+	checkCtx := context.WithValue(ctx, restaurantOrderChannelKey{}, scope.Channel)
+	checkCtx = context.WithValue(checkCtx, restaurantWhatsappPermitKey{}, permit)
+	checkCtx = context.WithValue(checkCtx, restaurantWhatsappSubmissionKey{}, restaurantWhatsappSubmission{Key: key, Hash: hash, Owner: "whatsapp:" + restaurantWhatsappDigest(scope)})
+	done := make(chan error, 1)
+	go func() { defer guard.Rollback(); done <- restaurantRequireNewOrderChannel(checkCtx, guard) }()
+	deadline := time.Now().Add(5 * time.Second)
+	waiting := false
+	for time.Now().Before(deadline) {
+		err = s.orders.store.db.QueryRowContext(ctx, `SELECT COALESCE(wait_event_type='Lock',false) FROM pg_stat_activity WHERE pid=$1`, pid).Scan(&waiting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !waiting {
+		t.Fatal("guard did not reach the blocked conversation head")
+	}
+	// NOWAIT turns an inverse lock order into a deterministic failure rather than
+	// waiting for PostgreSQL's deadlock detector or increasing a test timeout.
+	err = head.QueryRowContext(ctx, `SELECT id FROM restaurant_whatsapp_reviews WHERE id=$1 FOR UPDATE NOWAIT`, review.ID).Scan(&id)
+	if err != nil {
+		t.Fatal("guard locked review before conversation head", err)
+	}
+	if err = head.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-done; err != nil {
+		t.Fatal("guard rejected valid durable claim", err)
+	}
+}

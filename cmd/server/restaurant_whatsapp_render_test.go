@@ -186,3 +186,58 @@ func TestRestaurantWhatsappRenderTaxAndValidOversizedCart(t *testing.T) {
 	_, err = restaurantRenderWhatsappReview(scope, event, review, input, quote, "ar", now)
 	restaurantOrdersRequireError(t, err, "whatsapp_review_too_large")
 }
+
+func TestRestaurantWhatsappRenderHeadLockPrecedesReview(t *testing.T) {
+	s, scope, review, now := whatsappSendFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	head, err := s.orders.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer head.Rollback()
+	var id string
+	if err = head.QueryRowContext(ctx, `SELECT review_id FROM restaurant_whatsapp_review_heads WHERE scope_hash=$1 FOR UPDATE`, restaurantWhatsappDigest(scope)).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	backend := make(chan int, 1)
+	s.authorizeDispatch = func(ctx context.Context, tx *sql.Tx, actual restaurantWhatsappScope) bool {
+		var pid int
+		if tx.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&pid) != nil {
+			return false
+		}
+		backend <- pid
+		return actual == scope
+	}
+	done := make(chan error, 1)
+	go func() { _, e := s.Render(ctx, scope, review.ID, "en", now); done <- e }()
+	var pid int
+	select {
+	case pid = <-backend:
+	case <-ctx.Done():
+		t.Fatal("renderer did not reach authority check")
+	}
+	waiting := false
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if err = s.orders.store.db.QueryRowContext(ctx, `SELECT COALESCE(wait_event_type='Lock',false) FROM pg_stat_activity WHERE pid=$1`, pid).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !waiting {
+		t.Fatal("renderer did not wait for the conversation head")
+	}
+	if err = head.QueryRowContext(ctx, `SELECT id FROM restaurant_whatsapp_reviews WHERE id=$1 FOR UPDATE NOWAIT`, review.ID).Scan(&id); err != nil {
+		t.Fatal("renderer locked review before head", err)
+	}
+	if err = head.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+}

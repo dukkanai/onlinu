@@ -33,19 +33,40 @@ func restaurantRequireWhatsappDispatch(ctx context.Context, tx *sql.Tx, channel 
 	if !permit.authorize(ctx, tx, permit.scope) {
 		return restaurantFail(403, "whatsapp_scope_mismatch")
 	}
-	var key, inputHash, fingerprint, state, active, orderNumber string
-	var version, headVersion, claimChannelVersion int64
-	var expires time.Time
-	err := tx.QueryRowContext(ctx, `SELECT d.dispatch_key,d.input_hash,r.fingerprint,r.state,r.expires_at,h.review_id,r.version,h.version,d.order_number,d.channel_version
- FROM restaurant_whatsapp_dispatches d JOIN restaurant_whatsapp_reviews r ON r.id=d.review_id
- JOIN restaurant_whatsapp_review_heads h ON h.scope_hash=r.scope_hash
- WHERE d.review_id=$1 AND d.scope_hash=$2 AND r.scope_hash=$2 AND d.fingerprint=r.fingerprint
- FOR SHARE OF d,r,h`, permit.reviewID, restaurantWhatsappDigest(permit.scope)).Scan(&key, &inputHash, &fingerprint, &state, &expires, &active, &version, &headVersion, &orderNumber, &claimChannelVersion)
+	// Lock each relation explicitly. A joined FOR SHARE can lock review before
+	// head according to its query plan, opposing Prepare/Dispatch's head-first
+	// order and deadlocking simultaneous identical submissions.
+	var active string
+	var headVersion int64
+	scopeHash := restaurantWhatsappDigest(permit.scope)
+	err := tx.QueryRowContext(ctx, `SELECT review_id,version FROM restaurant_whatsapp_review_heads WHERE scope_hash=$1 FOR SHARE`, scopeHash).Scan(&active, &headVersion)
 	if err == sql.ErrNoRows {
 		return restaurantFail(409, "whatsapp_review_changed")
 	}
 	if err != nil {
 		return err
+	}
+	var fingerprint, state string
+	var version int64
+	var expires time.Time
+	err = tx.QueryRowContext(ctx, `SELECT fingerprint,state,expires_at,version FROM restaurant_whatsapp_reviews WHERE id=$1 AND scope_hash=$2 FOR SHARE`, permit.reviewID, scopeHash).Scan(&fingerprint, &state, &expires, &version)
+	if err == sql.ErrNoRows {
+		return restaurantFail(409, "whatsapp_review_changed")
+	}
+	if err != nil {
+		return err
+	}
+	var key, inputHash, savedFingerprint, orderNumber string
+	var claimChannelVersion int64
+	err = tx.QueryRowContext(ctx, `SELECT dispatch_key,input_hash,fingerprint,order_number,channel_version FROM restaurant_whatsapp_dispatches WHERE review_id=$1 AND scope_hash=$2 FOR SHARE`, permit.reviewID, scopeHash).Scan(&key, &inputHash, &savedFingerprint, &orderNumber, &claimChannelVersion)
+	if err == sql.ErrNoRows {
+		return restaurantFail(409, "whatsapp_review_changed")
+	}
+	if err != nil {
+		return err
+	}
+	if savedFingerprint != fingerprint {
+		return restaurantFail(409, "whatsapp_review_changed")
 	}
 	if submission.Owner != "whatsapp:"+restaurantWhatsappDigest(permit.scope) || key != submission.Key || inputHash != submission.Hash || fingerprint != permit.fingerprint || state != "confirmed" ||
 		claimChannelVersion != channelVersion || active != permit.reviewID || version != headVersion || orderNumber != "" || permit.now().IsZero() || !permit.now().Before(expires) {
