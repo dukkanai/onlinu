@@ -5,7 +5,11 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
-## Latest verified position — 2026-10-08 01:17 UTC
+## Latest verified position — 2026-10-08 05:32 UTC
+
+- Existing staff-management authority freshness fixed in `053973c93712c3a79ac5fb60aacb5002285f18cb`, accepted by all four ordinary jobs in [CI37732081482](https://github.com/dukkanai/onlinu/actions/runs/37732081482). A reproduced pre-fix regression showed that delayed request bodies could outlive a permission check. Named staff API mutations and browser channel/service/profile writes now recheck authority after body consumption. Actual loopback HTTP/PostgreSQL tests verify permission removal and tenant suspension before body completion prevent core writes; granted channel writes still succeed. All421 local platform cases passed without skips. This is bounded remediation, not a claim that every asynchronous authorization window is audited.
+- Runtime WhatsApp integration now has an inspected authority/lifecycle plan in `prototype/platform/WHATSAPP-AUTHORITY-PLAN.md`. A UI paired/open snapshot is not sufficient send authority. Account binding, authenticated event hops and current operation authority remain implementation/activation gates; no live account or credential was created.
+
 
 - Strict QR review-reply extraction and synthetic full boundary composition `b1041ba115e1331fca4befe3ce4508d1b1deafda` passed all four ordinary jobs in [CI37711323483](https://github.com/dukkanai/onlinu/actions/runs/37711323483). Direct fresh explicit Arabic/English commands require the replied-to provider ID and separately verified self/chat context; quoted text never supplies authoritative checkout data. The composition test covers unknown-send refusal, accepted review, explicit confirmation, original order creation and replay without another order/message. Final local PostgreSQL race evidence:38 focused cases,204 restaurant cases plus separately enabled HTTP parity, with clean fixture shutdown. Live callbacks and conversational catalogue/address collection remain unimplemented.
 

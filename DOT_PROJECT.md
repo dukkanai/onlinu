@@ -1559,3 +1559,11 @@ and staff-API routes reject before any synthetic core write. Granted channel
 writes still complete. All421 platform tests pass with no skips using three
 explicit disposable databases. Owned schemas removed and PostgreSQL stopped.
 No real membership, channel policy, account or production setting was modified.
+
+Management authority freshness acceptance: code
+053973c93712c3a79ac5fb60aacb5002285f18cb passed all four ordinary jobs in
+[CI37732081482](https://github.com/dukkanai/onlinu/actions/runs/37732081482).
+Final local platform suite:421 passed,0failed,0skipped, including40 focused
+permission/body/HTTP cases. This accepts the named request-body corrections,
+not every possible read/upload-to-write authorization window or real-account
+operation. The runtime authority plan remains a design, not activation.
