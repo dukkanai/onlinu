@@ -5,6 +5,15 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
+## Current local increment — 2026-10-08 09:04 UTC
+
+- QR session lifecycle regression reproduced stale `open` state for six provider
+  failure events. They now publish the existing `error` state, clear obsolete
+  login challenges, preserve pairing separately, and retain `logged_out` after a
+  later disconnect. Focused Go race tests and `go vet ./cmd/server` passed.
+  Full CI for this increment is pending. This is UI lifecycle correctness, not
+  a live account binding, generation proof, send permission or shopping activation.
+
 ## Latest verified position — 2026-10-08 05:48 UTC
 
 - Adjacent menu authorization windows corrected in `27ddf885f4c4da4d11e1cf92351ef4fad6b59f80`, accepted by all four ordinary jobs in [CI37733362029](https://github.com/dukkanai/onlinu/actions/runs/37733362029). Native image upload rechecks after catalogue read; browser multipart processing rechecks after body, before upload and before assignment; option edits recheck after metadata reads. A pre-fix regression reproduced the unwanted upload. Actual loopback HTTP/PostgreSQL regressions cover revocation at each named boundary and allowed happy paths, using a synthetic core. All428 local platform cases passed without skips. This does not undo an already accepted upload or establish distributed instantaneous revocation.

@@ -383,14 +383,19 @@ func (s *Session) handleEvent(rawEvt any) {
 		go s.notifyDisconnected("desconectada (o aparelho desvinculou este dispositivo)",
 			"Reconecte lendo o QR no painel do AstraCalls para voltar a enviar e receber.")
 	case *events.StreamReplaced:
+		s.markTransportUnavailable()
 		go s.notifyDisconnected("substituída por outra conexão do mesmo número",
 			"Se não foi proposital, reconecte pelo painel do AstraCalls.")
 	case *events.TemporaryBan:
+		s.markTransportUnavailable()
 		go s.notifyDisconnected("bloqueada temporariamente pelo WhatsApp ("+evt.String()+")",
 			"Aguarde o fim do bloqueio e evite disparos em massa.")
 	case *events.ClientOutdated:
+		s.markTransportUnavailable()
 		go s.notifyDisconnected("recusada pelo WhatsApp: cliente desatualizado",
 			"É necessário atualizar o AstraCalls. Avise o suporte técnico.")
+	case *events.Disconnected, *events.ConnectFailure, *events.StreamError:
+		s.markTransportUnavailable()
 	case *events.Message:
 		h := fnv.New32a()
 		_, _ = h.Write([]byte(evt.Info.Chat.String()))
@@ -545,6 +550,21 @@ func (s *Session) startPhonePairing(ctx context.Context, phone string) (string, 
 	}
 	s.setAuth(AuthSnapshot{State: "pairing_code", Code: code})
 	return code, nil
+}
+
+// A transport failure does not unlink the device. Keep pairing distinct from
+// connectivity, clear obsolete login challenges, and never resurrect a logout.
+// This UI snapshot is not authority to send or to bind a shopping account.
+func (s *Session) markTransportUnavailable() {
+	s.mu.Lock()
+	a := AuthSnapshot{State: "error", Paired: s.auth.Paired}
+	if s.auth.State == "logged_out" {
+		a = AuthSnapshot{State: "logged_out"}
+	}
+	s.auth = a
+	s.mu.Unlock()
+	s.mgr.broker.emitAuthState(s.id, a)
+	s.mgr.broker.emitSessionList(s.mgr.infos())
 }
 
 func (s *Session) setAuth(a AuthSnapshot) {

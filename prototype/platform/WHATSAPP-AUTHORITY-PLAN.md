@@ -18,11 +18,12 @@ The accepted private components are described in `WHATSAPP-CONVERSATION-DESIGN.m
 - `Session.handleEvent` already handles real message events. The new private QR
   extractor is not registered there. Existing Chatwoot/webhook/read behavior must
   not be adopted as shopping consent or silently expanded by integration.
-- `Session.setAuth` updates a UI snapshot. The current stream-replaced, temporary
-  ban and outdated-client branches report disconnection without setting that
-  snapshot to a closed state. Therefore `AuthSnapshot.Paired` or its string state
-  alone cannot authorize a new shopping send. This observation is not evidence
-  that an actual connected account is currently affected.
+- `Session.setAuth` updates a UI snapshot. Transport disconnect, replacement,
+  ban, outdated-client and generic connection/stream failures now clear a stale
+  open state to the existing error state, preserving pairing independently and
+  not overwriting logged-out state. `AuthSnapshot.Paired` or its string state
+  alone still cannot authorize a new shopping send. This is synthetic event
+  regression coverage, not evidence about a currently connected account.
 
 ## Chosen direction
 
