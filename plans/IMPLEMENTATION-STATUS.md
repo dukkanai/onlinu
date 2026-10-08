@@ -5,6 +5,17 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
+## Hosted acceptance — 2026-10-08 09:49 UTC
+
+Signed authority and translation correction commit
+`6c2f1c0909f79daa56e8c4fb58ff4ed314c0b374` passed all four ordinary jobs in
+[CI37758257677](https://github.com/dukkanai/onlinu/actions/runs/37758257677):
+server, client, native-Windows and control-image. Optional mobile/runtime-image
+jobs were intentionally skipped. This supersedes the prior pending hosted status
+below; the earlier translation-failing run remains recorded as failed.
+Real provider identity, entitlement-backed issuance, live ingress/egress and
+conversational checkout remain unfinished. No production or real account activation.
+
 ## Current verified increment — 2026-10-08 09:37 UTC
 
 - Private signed dispatch authority binds the configured transport principal,
