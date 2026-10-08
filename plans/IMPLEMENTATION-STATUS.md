@@ -5,6 +5,20 @@ scope and decide implementation details autonomously. Work is performed directly
 by the user's dot in its cloud computer, with no coding-agent delegation.
 Existing production/security and external-account approval boundaries remain.
 
+## Current collection increment — 2026-10-08 11:13 UTC
+
+Private immutable checkout collection now accepts explicit service, cart, contact,
+address, payment and notes choices without deriving a phone from the peer or
+accepting customer prices. Scoped revisions, same-event payload checks, fixed
+expiry, bounded history, out-of-order rejection, mode-change cleanup and deep
+copies are verified. Five reducer tests passed10 race repetitions; all54 WhatsApp
+cases and220 restaurant cases passed, plus separately enabled core HTTP parity.
+All84 client cases and Go vet/build passed. PostgreSQL cleanup/shutdown verified.
+
+This is a pure reducer, not persisted draft CAS or a natural-language parser.
+Durable event recovery, atomic active-review invalidation, current authority and
+transport wiring remain required before live use. Hosted acceptance is pending.
+
 ## QR source-fence acceptance — 2026-10-08 10:07 UTC
 
 Commit `e5e30fd608d202d00bdc3f3ee3e7ad66953b9812` passed all four ordinary

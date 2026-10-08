@@ -255,3 +255,39 @@ restaurant cases, with the opt-in HTTP parity case run and passed separately.
 Owned schema cleanup and server stop passed. This still uses fixture selections,
 contact data, authority and send evidence; real transport/conversation acceptance
 and live account activation remain open.
+
+## Private checkout collection reducer (local acceptance)
+
+`restaurant_whatsapp_checkout_collection.go` adds an immutable, bounded value
+reducer for explicit service, cart, contact, delivery-address, payment and notes
+choices. It is not a natural-language parser, persistent draft store, registered
+handler or authorized transport. A caller must not interpret arbitrary text/model
+output as verified choices, or infer a customer's phone from the messaging peer.
+
+Each transition checks the same scope, fresh direct source, expected local
+revision, immutable event/payload identity and fixed original 15-minute expiry.
+Identical redelivery returns the current value marked duplicate; it cannot restore
+an older draft or renew expiry. New out-of-order events, conflicting event content,
+mixed-field commands, malformed contacts/coordinates and more than100 updates are
+rejected. Mode changes clear hidden address/payment selections. Input/output
+slices and coordinate pointers are copied, and old snapshots remain unchanged.
+
+Missing-field output guides collection, not acceptance of a valid order. Internal
+item/option IDs still need current catalogue validation; delivery coverage, stock,
+opening hours, taxes and provider availability remain original-core checks. Prices
+and quote hashes are never accepted from collection patches. A snapshot cannot
+create, pay for, present, confirm or dispatch an order.
+
+Before activation, a durable controller must serialize these local revisions in
+PostgreSQL, preserve event outcomes across restart, and atomically invalidate the
+active review head whenever a checkout field changes. A reviewed snapshot must
+use that same revision and cannot outlive the collection expiry. Current signed
+operation authority and provider provenance must be rechecked at persistence and
+egress boundaries. None of that persistence/transport wiring is implemented by
+this pure reducer; no private callback is registered and no account is linked.
+
+Local acceptance: five reducer cases passed10 race repetitions; all54 WhatsApp
+race cases and220 restaurant cases passed, with the opt-in core HTTP parity case
+then enabled and passed separately. All84 client cases passed, along with Go
+vet/build and diff checks. The owned PostgreSQL fixture had zero remaining test
+schemas and was stopped. Hosted acceptance is recorded in the completion ledger.
