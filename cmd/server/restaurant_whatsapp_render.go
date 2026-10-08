@@ -92,7 +92,7 @@ func restaurantRenderWhatsappReview(scope restaurantWhatsappScope, proposalEvent
 	if input.Notes != "" {
 		lines = append(lines, label("Notes", "ملاحظات")+": "+value(input.Notes))
 	}
-	lines = append(lines, label("Valid until", "صالحة حتى")+": "+review.ExpiresAt.UTC().Format(time.RFC3339), label("Review ID", "رقم المراجعة")+": "+review.ID, label("Confirm or cancel this exact review. Confirmation alone does not charge a card.", "أكد هذه المراجعة أو ألغها. التأكيد وحده لا يخصم مبلغًا من البطاقة."))
+	lines = append(lines, label("Valid until", "صالحة حتى")+": "+review.ExpiresAt.UTC().Format(time.RFC3339), label("Review ID", "رقم المراجعة")+": "+review.ID, label("Reply to this exact message with CONFIRM or CANCEL. Confirmation alone does not charge a card.", "رد على هذه الرسالة بكلمة تأكيد أو إلغاء. التأكيد وحده لا يخصم مبلغًا من البطاقة."))
 	text := strings.Join(lines, "\n")
 	// Conservative internal UTF-8 byte limit, not a claim about provider limits.
 	if len(text) > 3000 {

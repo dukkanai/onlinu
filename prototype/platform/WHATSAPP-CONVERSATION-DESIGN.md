@@ -224,3 +224,22 @@ and both head-first regressions also passed25 repetitions under the race detecto
 Owned fixture schemas were removed and the local server stopped cleanly. These
 checks use synthetic authority/evidence; no live send, delivery, real provider
 account, new mobile execution or production deployment is included.
+
+## Explicit QR reply extraction (acceptance pending)
+
+The private QR decision extractor accepts only exact CONFIRM/CANCEL or
+تأكيد/إلغاء commands replying to a provider message ID. Current direct-source
+freshness/replay-class checks are reused. The quoted participant must match the
+current account's separately verified own JID; an explicit remote-chat identity
+must match the direct peer. Unknown PN/LID aliases are not guessed. Generic yes,
+multiple commands, unrelated chat/participant context, forwards and edits are
+rejected. The review renderer now states the exact reply commands.
+
+Quoted message text is never used for prices, cart or checkout. Extraction only
+returns scope/source/action/replied-to ID; the future adapter must resolve that
+ID through its accepted send journal and current binding before deciding. No
+incoming callback or automatic natural-language interpretation is activated.
+A synthetic composition test joins proposal/inbox, complete review, send evidence,
+explicit reply and original-core creation/recovery. It uses explicitly supplied
+fixture catalogue selections/contact details and synthetic provider acceptance,
+not an implemented menu-mapping or real customer conversation.

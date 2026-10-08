@@ -1519,3 +1519,11 @@ control image passed. Local final checks:34 WhatsApp cases,200 restaurant cases
 plus separate opt-in core HTTP parity, and25 repeated concurrency/lock-order
 regressions. Private attempt journaling and reconciliation only; actual transport
 handoff, conversation wiring and real provider acceptance remain pending.
+
+### Explicit QR review reply preparation — acceptance pending
+
+Added strict Arabic/English confirmation/cancel reply extraction with current
+self-identity and direct-chat context checks. Untrusted quoted content never
+supplies cart/price data. A synthetic integration composes durable intake, review,
+send evidence, explicit decision and exactly-once original-core order recovery.
+No live callback, catalogue language mapping or new WhatsApp connection is enabled.
