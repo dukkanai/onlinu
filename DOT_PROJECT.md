@@ -1533,3 +1533,12 @@ passed all four ordinary jobs in CI37711323483. Individual job-step metadata
 confirms the focused/aggregate/database/browser checks; raw-log download timed
 out. Local final38 WhatsApp and204 restaurant cases plus separate core HTTP
 parity passed. No live messaging/account or complete conversation mapping claim.
+
+### Next runtime authority integration plan
+
+`prototype/platform/WHATSAPP-AUTHORITY-PLAN.md` records the inspected signed-request,
+channel-permission and QR session integration points, chosen operation-bound
+permission model, lifecycle/lock-order requirements and activation gates. In
+particular, the existing UI paired/open snapshot alone is not a transport
+permission. This is a design checkpoint only; no binding, live callback, sender,
+credential or account activation is introduced by the document.
