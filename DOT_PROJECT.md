@@ -1567,3 +1567,17 @@ Final local platform suite:421 passed,0failed,0skipped, including40 focused
 permission/body/HTTP cases. This accepts the named request-body corrections,
 not every possible read/upload-to-write authorization window or real-account
 operation. The runtime authority plan remains a design, not activation.
+
+### Menu read/upload authority correction — remote acceptance pending
+
+The adjacent audit reproduced an image-upload side effect after a grant was
+revoked during catalogue reading. Native/shared image upload now rechecks before
+upload; browser multipart handling rechecks after body parsing, before upload
+and before image assignment. Browser option updates recheck after catalogue read.
+No automatic retry or cleanup of an already accepted upload was introduced.
+
+New tests use actual loopback browser-form HTTP and isolated PostgreSQL roles,
+with a synthetic core, to revoke permission during multipart body, catalogue
+read and upload response. They verify no subsequent forbidden upload/assignment,
+plus successful allowed image and option writes. These are authorization tests,
+not new codec/image-normalization or actual browser visual acceptance.

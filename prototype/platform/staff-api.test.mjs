@@ -12,7 +12,7 @@ test('binary staff image assignment shares slots, authorization and the original
   async patchMenuItem(tenant,actor,item,input){calls.push(['patch',tenant,actor,item,input]);return{version:5};},
  },json:(res,status,data)=>({status,data})});
  const result=await api(request(bytes),{}, {id:'staff'},uri);assert.equal(result.status,200);assert.equal(slots.active,0);
- assert.equal(calls.filter(v=>v[0]==='authorize').length,3);assert.deepEqual(calls.at(-1),['patch','a','staff','rice',{expectedVersion:4,imageUrl:'/restaurant-media/'+'a'.repeat(64)+'.png'}]);
+ assert.equal(calls.filter(v=>v[0]==='authorize').length,4);assert.deepEqual(calls.at(-1),['patch','a','staff','rice',{expectedVersion:4,imageUrl:'/restaurant-media/'+'a'.repeat(64)+'.png'}]);
 });
 test('image metadata, stale versions, revoked access and quota fail before assignment',async()=>{
  const slots={active:2};let uploads=0,reads=0,authorizations=0;
@@ -30,9 +30,9 @@ test('binary image byte limit is enforced and slot is released',async()=>{
  await assert.rejects(api(request(Buffer.alloc(0)),{}, {id:'staff'},uri),{code:'image_invalid'});assert.equal(slots.active,0);
 });
 test('revocation during original-core upload prevents assignment and releases the shared slot',async()=>{
- const slots={active:0};let checks=0,uploaded=false,patched=false;
- const api=createStaffApi({uploadSlots:slots,directory:{async authorize(){if(++checks===3)throw Object.assign(Error(),{status:403,code:'forbidden'});}},orderClient:{
-  async menuItem(){return{version:4};},async uploadImage(){uploaded=true;return{url:'/restaurant-media/'+'a'.repeat(64)+'.png'};},async patchMenuItem(){patched=true;}
+ const slots={active:0};let granted=true,uploaded=false,patched=false;
+ const api=createStaffApi({uploadSlots:slots,directory:{async authorize(){if(!granted)throw Object.assign(Error(),{status:403,code:'forbidden'});}},orderClient:{
+  async menuItem(){return{version:4};},async uploadImage(){uploaded=true;granted=false;return{url:'/restaurant-media/'+'a'.repeat(64)+'.png'};},async patchMenuItem(){patched=true;}
  },json(){throw Error('unexpected');}});
  await assert.rejects(api(request(Buffer.from('x')),{}, {id:'staff'},uri),{code:'forbidden'});
  assert.equal(uploaded,true);assert.equal(patched,false);assert.equal(slots.active,0);
@@ -159,4 +159,13 @@ test('remaining staff mutations reject revocation during body consumption withou
   granted=true;await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'forbidden'});assert.equal(writes,0);
   granted=true;revoke=false;await assert.rejects(api({method:'POST'},{},{id:'staff'},url),{code:'order_outcome_unknown'});assert.equal(writes,1);
  });
+});
+
+test('revocation during catalogue read prevents image upload itself',async()=>{
+ const slots={active:0};let granted=true,uploaded=false,patched=false;
+ const api=createStaffApi({uploadSlots:slots,directory:{async authorize(){if(!granted)throw Object.assign(Error(),{status:403,code:'forbidden'});}},orderClient:{
+  async menuItem(){granted=false;return{version:4};},async uploadImage(){uploaded=true;granted=false;return{url:'/restaurant-media/'+'a'.repeat(64)+'.png'};},async patchMenuItem(){patched=true;}
+ },json(){throw Error('unexpected assignment');}});
+ await assert.rejects(api(request(Buffer.from('x')),{}, {id:'staff'},uri),{code:'forbidden'});
+ assert.equal(uploaded,false);assert.equal(patched,false);assert.equal(slots.active,0);
 });

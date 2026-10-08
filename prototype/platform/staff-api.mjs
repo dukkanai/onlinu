@@ -120,6 +120,7 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
             await directory.authorize(who.id,tenantId,'menu:update');
             const current=await orderClient.menuItem(tenantId,who.id,itemId);
             if(current.version!==version)throw problem(409,'catalog_changed');
+            await directory.authorize(who.id,tenantId,'menu:update');
             const uploaded=await orderClient.uploadImage(tenantId,who.id,Buffer.concat(chunks));
             // Recheck authority after reading/normalizing a potentially large file.
             // The final original-core catalogue CAS still guards concurrent edits.

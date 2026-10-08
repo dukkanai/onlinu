@@ -557,9 +557,13 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           auth.verifyCsrf(req,form.get('csrf'));
           const version=form.get('expectedVersion'),file=form.get('image');
           if(typeof version!=='string'||!/^\d{1,16}$/.test(version)||!(file instanceof File)||file.size<1||file.size>5*1024*1024)throw problem(400,'image_invalid');
+          await directory.authorize(who.id,tenantId,'menu:update');
           const current=await orderClient.menuItem(tenantId,who.id,itemId);
           if(current.version!==Number(version))throw problem(409,'catalog_changed');
-          const uploaded=await orderClient.uploadImage(tenantId,who.id,Buffer.from(await file.arrayBuffer()));
+          const bytes=Buffer.from(await file.arrayBuffer());
+          await directory.authorize(who.id,tenantId,'menu:update');
+          const uploaded=await orderClient.uploadImage(tenantId,who.id,bytes);
+          await directory.authorize(who.id,tenantId,'menu:update');
           await orderClient.patchMenuItem(tenantId,who.id,itemId,{expectedVersion:current.version,imageUrl:uploaded.url});
           return redirect(res,`/manage/${tenantId}/menu/items/${itemId}`,303);
         }finally{uploads.active--;}
@@ -586,6 +590,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         const options=[...(menu.item.options??[])],option={id:optionId??input.id,name:input.name,priceMinor,available:input.available==='true'};
         if(optionId){const index=options.findIndex(value=>value.id===optionId);if(index<0)throw problem(404,'not_found');options[index]=option;}
         else {if(options.some(value=>value.id===input.id))throw problem(409,'conflict');options.push(option);}
+        await directory.authorize(who.id,tenantId,'menu:update');
         await orderClient.patchMenuItem(tenantId,who.id,itemId,{expectedVersion:menu.version,options});
         return redirect(res,`/manage/${tenantId}/menu/items/${itemId}`,303);
       }

@@ -13,13 +13,19 @@ test('browser and staff management writes reject authority revoked during stream
  const schema='channel_authority_'+randomBytes(8).toString('hex');
  const admin=new pg.Pool({connectionString:url.href});await admin.query(`CREATE SCHEMA ${schema}`);
  const pool=new pg.Pool({connectionString:url.href,options:`-c search_path=${schema}`,max:8});
- let server,coreServer,writes=0;
+ let server,coreServer,writes=0,menuReads=0,mediaUploads=0,menuWrites=0;
+ let coreHook=async()=>{};
+ const menu={version:4,currency:'SAR',categories:[{id:'main',name:'Main',sort:0}],item:{id:'rice',categoryId:'main',name:'Rice',description:'',priceMinor:1000,imageUrl:'',available:true,sort:0,options:[]}};
  t.after(async()=>{
   for(const s of [server,coreServer])if(s){s.closeAllConnections();await new Promise(resolve=>s.close(resolve));}
   await pool.end();await admin.query(`DROP SCHEMA ${schema} CASCADE`);await admin.end();
  });
  coreServer=createServer(async(req,res)=>{
   for await(const unused of req){};
+  res.setHeader('content-type','application/json');
+  if(req.method==='GET'&&req.url==='/platform-api/staff/menu/items/rice'){menuReads++;await coreHook('read');res.end(JSON.stringify(menu));return;}
+  if(req.method==='POST'&&req.url==='/platform-api/staff/images'){mediaUploads++;await coreHook('upload');res.end(JSON.stringify({url:'/restaurant-media/'+'a'.repeat(64)+'.png'}));return;}
+  if(req.method==='POST'&&req.url==='/platform-api/staff/menu/items/rice'){menuWrites++;await coreHook('patch');res.end(JSON.stringify({...menu,version:5}));return;}
   writes++;
   assert.equal(req.url,'/platform-api/staff/channels/web');
   assert.match(req.headers.authorization,/^Platform /);
@@ -89,4 +95,43 @@ test('browser and staff management writes reject authority revoked during stream
   assert.equal(result.status,surface==='browser'?303:200);
  }
  assert.equal(writes,2);
+
+ function managementRequest(path,bytes,contentType,hold=false){
+  let request;
+  const response=new Promise((resolve,reject)=>{
+   request=httpRequest(local+path,{method:'POST',headers:{host:'platform.example',origin:base,cookie,'content-type':contentType}},res=>{
+    const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>{const text=Buffer.concat(chunks).toString();resolve({status:res.statusCode,data:text?JSON.parse(text):null});});
+   });
+   request.on('error',reject);request.setTimeout(8000,()=>request.destroy(Error('fixture request timeout')));
+   if(hold)request.write(bytes.subarray(0,-4));else request.end(bytes);
+  });
+  return{response,finish:()=>request.end(bytes.subarray(-4))};
+ }
+ const form=new FormData();form.set('csrf',csrf);form.set('expectedVersion','4');form.set('image',new Blob([Buffer.from([137,80,78,71])],{type:'image/png'}),'fixture.png');
+ const encoded=new Response(form),imageBytes=Buffer.from(await encoded.arrayBuffer()),imageType=encoded.headers.get('content-type');
+ permission='menu:update';
+ for(const stage of ['body','read','upload','allowed'])await t.test('browser image '+stage,async()=>{
+  await membership(true);const before={reads:menuReads,uploads:mediaUploads,writes:menuWrites};
+  coreHook=async at=>{if(at===stage)await membership(false);};
+  let authorized;
+  if(stage==='body')authorized=new Promise(resolve=>{observed=resolve;});
+  const pending=managementRequest('/manage/a/menu/items/rice/image',imageBytes,imageType,stage==='body');
+  if(stage==='body'){
+   await Promise.race([authorized,pending.response.then(()=>{throw Error('image completed before body released');})]);
+   await membership(false);pending.finish();
+  }
+  const result=await pending.response;
+  assert.equal(result.status,stage==='allowed'?303:403);
+  assert.equal(menuReads-before.reads,stage==='body'?0:1);
+  assert.equal(mediaUploads-before.uploads,['upload','allowed'].includes(stage)?1:0);
+  assert.equal(menuWrites-before.writes,stage==='allowed'?1:0);
+ });
+ for(const revoked of [true,false])await t.test('browser option metadata authority '+revoked,async()=>{
+  await membership(true);const before=menuWrites;
+  coreHook=async stage=>{if(revoked&&stage==='read')await membership(false);};
+  const bytes=Buffer.from(new URLSearchParams({csrf,expectedVersion:'4',id:'extra',name:'Extra',price:'1.00',available:'true'}).toString());
+  const result=await managementRequest('/manage/a/menu/items/rice/options',bytes,'application/x-www-form-urlencoded').response;
+  assert.equal(result.status,revoked?403:303);assert.equal(menuWrites-before,revoked?0:1);
+ });
+ coreHook=async()=>{};
 });
