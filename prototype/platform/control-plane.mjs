@@ -107,13 +107,8 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
   if(checkouts)await checkouts.init();
   if(eventsEncryptionKey){
     if(!orderClient)throw new Error('events_require_owned_core_integration');
-    events=createEvents({pool,encryptionKey:eventsEncryptionKey,webhookFetch,authorizeOrder:async(identity,args)=>{
+    events=createEvents({pool,encryptionKey:eventsEncryptionKey,webhookFetch,authorizeGrant:auth.authorizeEventGrant,authorizeOrder:async(identity,args)=>{
       if(!await directory.resolve(identity.id))throw problem(403,'identity_disabled');
-      const consent=await pool.query(`SELECT 1 FROM demo_sessions s LEFT JOIN demo_oauth_grants g ON g.id=s.oauth_family_id
-        WHERE s.principal_id=$1 AND s.session_kind='oauth' AND s.expires_at>now() AND s.scopes ? 'events:read'
-          AND (s.oauth_family_id IS NULL OR (g.revoked=FALSE AND g.expires_at>now()))
-        UNION SELECT 1 FROM demo_oauth_grants WHERE principal_id=$1 AND revoked=FALSE AND expires_at>now() AND scopes ? 'events:read' LIMIT 1`,[identity.id]);
-      if(!consent.rows.length)throw problem(403,'event_grant_expired');
       return orderClient.status(args.tenantId,identity.id,args.orderId);
     }});await events.init();
     eventWorker=createCoreEventWorker({pool,orderClient,events,resolvePrincipal:directory.resolve});await eventWorker.init();
@@ -315,6 +310,8 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
         }
         const input=await body(req);auth.verifyCsrf(req,input.csrf);
         if(input.reviewed!=='yes'||typeof input.courierId!=='string'||input.courierId===''||Object.keys(input).some(k=>!['csrf','version','courierId','reviewed'].includes(k)))throw problem(400,'invalid_request');
+        // Permission changes may complete while the browser is uploading its form.
+        await directory.authorize(who.id,tenantId,'orders:read');await directory.authorize(who.id,tenantId,'delivery:assign');
         await orderClient.assignCourier(tenantId,who.id,number,{version:Number(input.version),courierId:input.courierId==='__remove__'?'':input.courierId});
         return redirect(res,'/manage/'+tenantId+'/orders/'+number,303);
       }

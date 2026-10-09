@@ -150,7 +150,7 @@ export async function createPlatform(config, { pool = new pg.Pool({connectionStr
     requireScope(principal,'orders:read');
     return loadOwnedOrder(principal,args);
   };
-  const events = createEvents({pool,encryptionKey:config.encryptionKey,authorizeOrder:loadOwnedOrder,webhookFetch});
+  const events = createEvents({pool,encryptionKey:config.encryptionKey,authorizeOrder:loadOwnedOrder,authorizeGrant:auth.authorizeEventGrant,webhookFetch});
   await auth.init(); await store.init(); await events.init();if(login)await login.init();
   const gateway = config.paymentMode === 'moyasar-test' ? createMoyasarTestGateway({secretKey:config.moyasarKey}) : null;
   const uiHtml = await readFile(new URL('./public/widget.html',import.meta.url),'utf8');

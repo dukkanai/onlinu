@@ -33,11 +33,26 @@ SSRF, ownership, revocation and retry protections. No event from before a new
 subscription is replayed. Clients read current order status when subscribing.
 
 Core statuses include cancellation, delivery, unpaid/review/refunded outcomes;
-they are not forced into the simplified prototype's state machine. OAuth grant
-expiry/revocation and disabled identities stop callbacks. Revocation without a
-refresh-token family is covered as well. Already-started delivery can finish
-before the subscription cancellation transaction obtains its lock, consistent
-with the documented at-least-once contract.
+they are not forced into the simplified prototype's state machine. Each callback
+is bound to its originating OAuth refresh family or code-only session. Another
+active connection for the same customer cannot keep that subscription authorized.
+OAuth grant expiry/revocation and disabled identities stop callbacks.
+
+A durable per-owner revocation epoch fences subscriptions still awaiting an
+owned-order read or callback challenge. The subscription and verification cache
+are saved together only after the original grant and epoch are checked under
+transactional locks. Delivery uses the same grant → owner → subscription lock
+order as revocation. Already-started delivery can finish before revocation obtains
+these locks, consistent with the documented at-least-once contract. Existing
+subscriptions without an originating-grant binding fail closed and require the
+client to subscribe again after this code is deployed.
+
+Queued deliveries also carry their subscription generation. Cancellation,
+re-creation after expiry, or a change of originating connection invalidates the
+old generation, including an enqueue that finishes late. Renewing a still-active
+subscription on the same connection preserves its pending deliveries. Workers
+skip busy grants, owners and subscriptions and inspect a bounded set of distinct
+subscriptions, so one busy callback does not occupy every candidate slot.
 
 ## Runtime entry point
 

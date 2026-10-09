@@ -22,7 +22,8 @@ try {
     if(payload.type!=='verification')received.push(payload);
     return {status:200,ok:true,json:async()=>({challenge:payload.challenge})};
   }});
-  const alice=await app.auth.principal('customer-alice');
+  const access=await app.auth.issue('customer-alice');
+  const alice=await app.auth.authenticate({headers:{authorization:`Bearer ${access.accessToken}`}},{bearerOnly:true});
   const cart={tenantId:'demo-b',items:[{itemId:'drink',quantity:1}],expectedTotalMinor:700,idempotencyKey:randomUUID()};
   const checkout=await app.store.prepare(alice,cart);
   const order=await app.store.confirm(alice,checkout.checkoutId);

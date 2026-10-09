@@ -37,7 +37,8 @@ function owner(principal) {
   if (!principal || !identifier(principal.id) || principal.role !== 'customer') {
     throw new EventError('Customer authentication required', -32001);
   }
-  return { id: principal.id, role: principal.role, tenantIds: [] };
+  return { id: principal.id, role: principal.role, tenantIds: [],
+    ...(principal.eventGrant ? { eventGrant: { kind: principal.eventGrant.kind, id: principal.eventGrant.id } } : {}) };
 }
 
 export function canonicalJson(value) {
@@ -200,8 +201,9 @@ function eventBody(event) {
   };
 }
 
-export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch = secureWebhookFetch, now = Date.now }) {
+export function createEvents({ pool, encryptionKey, authorizeOrder, authorizeGrant, webhookFetch = secureWebhookFetch, now = Date.now }) {
   if (!pool?.query || !pool?.connect || typeof authorizeOrder !== 'function') throw new Error('Events require a PostgreSQL pool and authorization callback');
+  if (authorizeGrant !== undefined && typeof authorizeGrant !== 'function') throw new Error('Invalid Events grant authorization callback');
   const key = Buffer.isBuffer(encryptionKey) ? Buffer.from(encryptionKey)
     : typeof encryptionKey === 'string' ? Buffer.from(encryptionKey, 'base64') : Buffer.alloc(0);
   if (key.length !== 32) throw new Error('Events require an external 32-byte encryption key');
@@ -243,8 +245,15 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
         secret_cipher text NOT NULL, secret_hash text NOT NULL,
         previous_secret_cipher text, rotation_until timestamptz,
         expires_at timestamptz NOT NULL, active boolean NOT NULL DEFAULT true,
-        created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL
+        created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL,
+        revocation_epoch bigint NOT NULL DEFAULT 0, generation bigint NOT NULL DEFAULT 0
       );
+      ALTER TABLE event_subscriptions ADD COLUMN IF NOT EXISTS revocation_epoch bigint NOT NULL DEFAULT 0;
+      ALTER TABLE event_subscriptions ADD COLUMN IF NOT EXISTS generation bigint NOT NULL DEFAULT 0;
+      CREATE TABLE IF NOT EXISTS event_owner_epochs (
+        owner_id text PRIMARY KEY, epoch bigint NOT NULL DEFAULT 0
+      );
+      INSERT INTO event_owner_epochs(owner_id) SELECT DISTINCT owner_id FROM event_subscriptions ON CONFLICT DO NOTHING;
       CREATE INDEX IF NOT EXISTS event_subscriptions_match ON event_subscriptions
         (owner_id, event_name) WHERE active;
       CREATE TABLE IF NOT EXISTS event_callback_verifications (
@@ -255,10 +264,13 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
         subscription_id text NOT NULL REFERENCES event_subscriptions(id), event_id text NOT NULL,
         body text NOT NULL, status text NOT NULL DEFAULT 'pending', attempts integer NOT NULL DEFAULT 0,
         next_attempt_at timestamptz NOT NULL, created_at timestamptz NOT NULL,
-        finished_at timestamptz, last_status integer,
+        finished_at timestamptz, last_status integer, subscription_generation bigint NOT NULL DEFAULT 0,
         PRIMARY KEY (subscription_id,event_id)
       );
+      ALTER TABLE event_deliveries ADD COLUMN IF NOT EXISTS subscription_generation bigint NOT NULL DEFAULT 0;
       CREATE INDEX IF NOT EXISTS event_deliveries_due ON event_deliveries (next_attempt_at) WHERE status='pending';
+      CREATE INDEX IF NOT EXISTS event_deliveries_subscription_due ON event_deliveries
+        (subscription_id,next_attempt_at,created_at,event_id) WHERE status='pending';
     `);
   }
 
@@ -281,7 +293,7 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
     const cached = await pool.query(`SELECT 1 FROM event_callback_verifications
       WHERE owner_id=$1 AND callback_url=$2 AND secret_hash=$3 AND verified_until>$4`,
     [subscription.identity.id, subscription.callback_url, secretHash, at]);
-    if (cached.rowCount) return;
+    if (cached.rowCount) return null;
     const challenge = randomBytes(32).toString('base64url');
     const body = JSON.stringify({ type: 'verification', challenge });
     const started = Date.now();
@@ -299,44 +311,90 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
       if (error instanceof EventError && error.code === -32015) throw error;
       throw callbackFailure(error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'timeout' : 'challenge_failed');
     }
-    await pool.query(`INSERT INTO event_callback_verifications (owner_id,callback_url,secret_hash,verified_until)
-      VALUES ($1,$2,$3,$4) ON CONFLICT (owner_id,callback_url,secret_hash)
-      DO UPDATE SET verified_until=EXCLUDED.verified_until`,
-    [subscription.identity.id, subscription.callback_url, secretHash, new Date(at.getTime() + VERIFY_CACHE_MS)]);
+    // Persist verification only with the fenced subscription transaction. A
+    // challenge completing after revokeAll must not restore the cleared cache.
+    return new Date(at.getTime() + VERIFY_CACHE_MS);
   }
 
+  const grantDenied = () => new EventError('Event grant expired or revoked', -32001);
+  const denied = error => [401, 403, 404].includes(error?.status ?? error?.statusCode) || error?.code === -32001;
+  async function ownerEpoch(db, principalId, lock = false, nowait = false) {
+    if (lock && !nowait) await db.query('INSERT INTO event_owner_epochs(owner_id) VALUES($1) ON CONFLICT DO NOTHING', [principalId]);
+    const result = await db.query(`SELECT epoch FROM event_owner_epochs WHERE owner_id=$1${lock ? ` FOR SHARE${nowait ? ' NOWAIT' : ''}` : ''}`, [principalId]);
+    if (lock && !result.rowCount) throw grantDenied();
+    return String(result.rows[0]?.epoch ?? '0');
+  }
+  async function grantExpiry(identity, db = pool, lock = false, nowait = false) {
+    if (!authorizeGrant) return Infinity; // Standalone use delegates account policy to authorizeOrder.
+    const value = Date.parse(await authorizeGrant(identity, db, { lock, nowait }));
+    if (!Number.isFinite(value) || value <= clock().getTime()) throw grantDenied();
+    return value;
+  }
   async function subscribe(principal, params) {
     const { id, identity, args, url } = subscriptionInput(principal, params, true);
-    // Authorization precedes all callback traffic and all subscription writes.
+    // Snapshot before any remote await: revokeAll also fences operations that
+    // have not inserted a subscription yet, even if this grant stays valid.
+    const epoch = await ownerEpoch(pool, identity.id);
+    let expiry = await grantExpiry(identity);
+    if (principal.eventGrantExpiresAt !== undefined) {
+      const requestedExpiry = Date.parse(principal.eventGrantExpiresAt);
+      if (!Number.isFinite(requestedExpiry)) throw grantDenied();
+      expiry = Math.min(expiry, requestedExpiry);
+    }
+    // Ownership authorization still precedes callback traffic and all writes.
     await authorizeOrder(identity, args);
     let ttl = params.ttlMs;
-    if (ttl === undefined || ttl === null) ttl = DAY; // Never grant non-expiring subscriptions.
+    if (ttl === undefined || ttl === null) ttl = DAY;
     if (!Number.isSafeInteger(ttl) || ttl < 1) invalid('Invalid subscription lifetime');
     ttl = Math.min(ttl, 7 * DAY);
-    if(principal.eventGrantExpiresAt!==undefined){
-      const remaining=Date.parse(principal.eventGrantExpiresAt)-clock().getTime();
-      if(!Number.isFinite(remaining)||remaining<=0)throw new EventError('Event grant expired',-32001);
-      ttl=Math.min(ttl,remaining);
-    }
+    // Avoid starting verification after a revocation observed during the remote
+    // read. The final locked check is authoritative for concurrent changes.
+    expiry = Math.min(expiry, await grantExpiry(identity));
+    if (expiry <= clock().getTime() || await ownerEpoch(pool, identity.id) !== epoch) throw grantDenied();
     const secret = validateSecret(params.delivery.secret);
     const secretHash = digest(secret);
-    await verify({ id, identity, secret, callback_url: url }, secretHash);
-    const at = clock();
-    const expires = new Date(at.getTime() + ttl);
-    await pool.query(`INSERT INTO event_subscriptions
-      (id,owner_id,principal,event_name,arguments,callback_url,secret_cipher,secret_hash,expires_at,created_at,updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
-      ON CONFLICT (id) DO UPDATE SET
-        previous_secret_cipher=CASE WHEN event_subscriptions.secret_hash<>EXCLUDED.secret_hash
-          THEN event_subscriptions.secret_cipher ELSE event_subscriptions.previous_secret_cipher END,
-        rotation_until=CASE WHEN event_subscriptions.secret_hash<>EXCLUDED.secret_hash
-          THEN $11 ELSE event_subscriptions.rotation_until END,
-        secret_cipher=EXCLUDED.secret_cipher, secret_hash=EXCLUDED.secret_hash,
-        created_at=CASE WHEN NOT event_subscriptions.active OR event_subscriptions.expires_at<=EXCLUDED.updated_at
-          THEN EXCLUDED.created_at ELSE event_subscriptions.created_at END,
-        expires_at=EXCLUDED.expires_at, principal=EXCLUDED.principal, active=true, updated_at=EXCLUDED.updated_at`,
-    [id, identity.id, identity, NAME, args, url, encrypt(secret, id), secretHash, expires, at, new Date(at.getTime() + ROTATION_MS)]);
-    return { id, refreshBefore: expires.toISOString(), cursor: null, truncated: false };
+    const verifiedUntil = await verify({ id, identity, secret, callback_url: url }, secretHash);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      expiry = Math.min(expiry, await grantExpiry(identity, client, true));
+      if (await ownerEpoch(client, identity.id, true) !== epoch) throw grantDenied();
+      const at = clock();
+      const expires = new Date(Math.min(at.getTime() + ttl, expiry));
+      if (expires <= at) throw grantDenied();
+      if (verifiedUntil && verifiedUntil > at) await client.query(`INSERT INTO event_callback_verifications (owner_id,callback_url,secret_hash,verified_until)
+        VALUES ($1,$2,$3,$4) ON CONFLICT (owner_id,callback_url,secret_hash)
+        DO UPDATE SET verified_until=EXCLUDED.verified_until`, [identity.id, url, secretHash, verifiedUntil]);
+      await client.query(`INSERT INTO event_subscriptions
+        (id,owner_id,principal,event_name,arguments,callback_url,secret_cipher,secret_hash,expires_at,created_at,updated_at,revocation_epoch)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$12)
+        ON CONFLICT (id) DO UPDATE SET
+          previous_secret_cipher=CASE WHEN event_subscriptions.secret_hash<>EXCLUDED.secret_hash
+            THEN event_subscriptions.secret_cipher ELSE event_subscriptions.previous_secret_cipher END,
+          rotation_until=CASE WHEN event_subscriptions.secret_hash<>EXCLUDED.secret_hash
+            THEN $11 ELSE event_subscriptions.rotation_until END,
+          secret_cipher=EXCLUDED.secret_cipher, secret_hash=EXCLUDED.secret_hash,
+          created_at=CASE WHEN NOT event_subscriptions.active OR event_subscriptions.expires_at<=EXCLUDED.updated_at
+            OR event_subscriptions.revocation_epoch<>EXCLUDED.revocation_epoch
+            OR event_subscriptions.principal->'eventGrant' IS DISTINCT FROM EXCLUDED.principal->'eventGrant'
+            THEN EXCLUDED.created_at ELSE event_subscriptions.created_at END,
+          generation=CASE WHEN NOT event_subscriptions.active OR event_subscriptions.expires_at<=EXCLUDED.updated_at
+            OR event_subscriptions.revocation_epoch<>EXCLUDED.revocation_epoch
+            OR event_subscriptions.principal->'eventGrant' IS DISTINCT FROM EXCLUDED.principal->'eventGrant'
+            THEN event_subscriptions.generation+1 ELSE event_subscriptions.generation END,
+          expires_at=EXCLUDED.expires_at, principal=EXCLUDED.principal, revocation_epoch=EXCLUDED.revocation_epoch,
+          active=true, updated_at=EXCLUDED.updated_at`,
+      [id, identity.id, identity, NAME, args, url, encrypt(secret, id), secretHash, expires, at, new Date(at.getTime() + ROTATION_MS), epoch]);
+      // Cancel already queued data on re-creation/rebinding. An enqueue that
+      // read an older snapshot may still arrive afterward; dispatch separately
+      // checks its saved generation so that late row can never borrow this grant.
+      await client.query(`UPDATE event_deliveries d SET status='revoked',finished_at=$2
+        FROM event_subscriptions s WHERE s.id=$1 AND d.subscription_id=s.id
+          AND d.status='pending' AND d.subscription_generation<>s.generation`, [id, at]);
+      await client.query('COMMIT');
+      return { id, refreshBefore: expires.toISOString(), cursor: null, truncated: false };
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
   }
 
   async function unsubscribe(principal, params) {
@@ -354,7 +412,7 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
     // this statement acquires its subscription lock, never after cancellation
     // has returned successfully.
     await db.query(`WITH stopped AS (
-      UPDATE event_subscriptions SET active=false,updated_at=$2
+      UPDATE event_subscriptions SET active=false,updated_at=$2,generation=generation+1
       WHERE owner_id=$1 AND ($3::text IS NULL OR id=$3) RETURNING id
     ) UPDATE event_deliveries d SET status=$4,finished_at=$2
       FROM stopped WHERE d.subscription_id=stopped.id AND d.status='pending'`,
@@ -365,7 +423,10 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
     // Trusted platform lifecycle hook, never an MCP tool or user-selected ID.
     // Deliberately return no counts or details about the owner's subscriptions.
     if (!identifier(principalId)) invalid('Invalid principal identifier');
+    const fence = db => db.query(`INSERT INTO event_owner_epochs(owner_id,epoch) VALUES($1,1)
+      ON CONFLICT (owner_id) DO UPDATE SET epoch=event_owner_epochs.epoch+1`, [principalId]);
     if (transaction) {
+      await fence(transaction);
       await cancelSubscriptions(transaction, principalId, null, 'revoked');
       await transaction.query('DELETE FROM event_callback_verifications WHERE owner_id=$1', [principalId]);
       return;
@@ -373,6 +434,7 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      await fence(client);
       await cancelSubscriptions(client, principalId, null, 'revoked');
       await client.query('DELETE FROM event_callback_verifications WHERE owner_id=$1', [principalId]);
       await client.query('COMMIT');
@@ -384,8 +446,8 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
     const body = JSON.stringify(eventBody(event));
     if (Buffer.byteLength(body) > MAX_BYTES) invalid('Event payload too large');
     const at = clock();
-    const result = await pool.query(`INSERT INTO event_deliveries (subscription_id,event_id,body,next_attempt_at,created_at)
-      SELECT id,$1,$2,$3,$3 FROM event_subscriptions
+    const result = await pool.query(`INSERT INTO event_deliveries (subscription_id,event_id,body,next_attempt_at,created_at,subscription_generation)
+      SELECT id,$1,$2,$3,$3,generation FROM event_subscriptions
       WHERE active AND expires_at>$3 AND owner_id=$4 AND event_name=$5
         AND arguments->>'tenantId'=$6 AND arguments->>'orderId'=$7
         AND created_at<=$8
@@ -402,26 +464,61 @@ export function createEvents({ pool, encryptionKey, authorizeOrder, webhookFetch
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const found = await client.query(`SELECT d.*, s.id, s.owner_id, s.principal, s.arguments,
-        s.callback_url,s.secret_cipher,s.previous_secret_cipher,s.rotation_until,s.expires_at,s.active
-        FROM event_deliveries d JOIN event_subscriptions s ON s.id=d.subscription_id
-        WHERE d.status='pending' AND d.next_attempt_at<=$1
-        ORDER BY d.next_attempt_at, d.created_at LIMIT 1 FOR UPDATE OF d,s SKIP LOCKED`, [clock()]);
-      if (!found.rowCount) { await client.query('COMMIT'); return counts; }
-      const row = found.rows[0];
+      // Inspect a bounded batch without row locks. Every candidate uses a
+      // savepoint so an unavailable candidate releases ALL grant/owner locks
+      // before the next, preserving grant -> owner -> subscription ordering.
+      const candidates = (await client.query(`SELECT d.subscription_id,d.event_id,s.owner_id,s.principal
+        FROM (SELECT DISTINCT ON (subscription_id) subscription_id,event_id,next_attempt_at,created_at
+          FROM event_deliveries WHERE status='pending' AND next_attempt_at<=$1
+          ORDER BY subscription_id,next_attempt_at,created_at,event_id) d
+        JOIN event_subscriptions s ON s.id=d.subscription_id
+        ORDER BY d.next_attempt_at,d.created_at,d.subscription_id,d.event_id LIMIT 32`, [clock()])).rows;
+      let row, expiry, epoch, grantAuthorized;
+      for (const candidate of candidates) {
+        await client.query('SAVEPOINT event_candidate');
+        try {
+          expiry = Infinity; grantAuthorized = true;
+          try { expiry = await grantExpiry(candidate.principal, client, true, true); }
+          catch (error) { if (!denied(error)) throw error; grantAuthorized = false; }
+          epoch = await ownerEpoch(client, candidate.owner_id, true, true);
+          const found = await client.query(`SELECT d.*, s.id, s.owner_id, s.principal, s.arguments,
+            s.callback_url,s.secret_cipher,s.previous_secret_cipher,s.rotation_until,s.expires_at,s.active,s.revocation_epoch,s.generation
+            FROM event_deliveries d JOIN event_subscriptions s ON s.id=d.subscription_id
+            WHERE d.subscription_id=$1 AND d.event_id=$2 AND s.principal=$3::jsonb
+              AND d.status='pending' AND d.next_attempt_at<=$4
+            FOR UPDATE OF d,s SKIP LOCKED`, [candidate.subscription_id,candidate.event_id,candidate.principal,clock()]);
+          row = found.rows[0];
+          if (!row) await client.query('ROLLBACK TO SAVEPOINT event_candidate');
+        } catch (error) {
+          await client.query('ROLLBACK TO SAVEPOINT event_candidate');
+          if (error?.code !== '55P03') throw error; // A busy grant/owner is skipped, never revoked.
+        }
+        await client.query('RELEASE SAVEPOINT event_candidate');
+        if (row) break;
+      }
+      if (!row) { await client.query('COMMIT'); return counts; }
       const at = clock();
       let outcome;
       let httpStatus = null;
-      if (!row.active || new Date(row.expires_at) <= at) {
+      if (String(row.subscription_generation) !== String(row.generation)) {
+        // This old delivery must not disable the newly authorized subscription.
+        outcome = 'revoked'; counts.revoked++;
+      } else if (!grantAuthorized || String(row.revocation_epoch) !== epoch) {
+        outcome = 'revoked'; counts.revoked++;
+        await cancelSubscriptions(client, row.owner_id, row.id, 'revoked');
+      } else if (!row.active || new Date(row.expires_at) <= at) {
         outcome = 'expired'; counts.expired++;
       } else {
         let authorized = false;
         try { await authorizeOrder(row.principal, row.arguments); authorized = true; }
         catch (error) {
-          if ([401, 403, 404].includes(error?.status ?? error?.statusCode) || error?.code === -32001) {
+          if (denied(error)) {
             outcome = 'revoked'; counts.revoked++;
-            await client.query('UPDATE event_subscriptions SET active=false,updated_at=$2 WHERE id=$1', [row.id, at]);
+            await cancelSubscriptions(client, row.owner_id, row.id, 'revoked');
           } else outcome = 'retry';
+        }
+        if (authorized && (expiry <= clock().getTime() || new Date(row.expires_at) <= clock())) {
+          outcome = 'expired'; counts.expired++; authorized = false;
         }
         if (authorized) {
           // Decryption failure is not an event failure: retain the delivery and

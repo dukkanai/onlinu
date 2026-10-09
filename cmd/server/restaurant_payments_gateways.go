@@ -279,11 +279,112 @@ type restaurantMoyasarInvoice struct {
 	ID, Status, Currency, URL string
 	Amount                    int64
 	Description               string
-	Payments                  []struct {
-		Status           string
-		Amount, Refunded int64
+	Payments                  []restaurantMoyasarPayment
+	Metadata                  map[string]string
+	restaurantMoyasarMode
+}
+
+type restaurantMoyasarPayment struct {
+	ID, Status, Currency string
+	InvoiceID            string `json:"invoice_id"`
+	Amount               int64
+	// Missing or null amounts must not turn into a zero-refund/capture proof.
+	Captured, Refunded *int64
+	restaurantMoyasarMode
+}
+
+// Moyasar's authenticated key determines mode; the documented invoice/payment
+// objects do not require mode flags. Reject contradictions if flags are present,
+// including null or mistyped values, without requiring an invented response field.
+type restaurantMoyasarMode struct {
+	Live        json.RawMessage `json:"live"`
+	LiveMode    json.RawMessage `json:"livemode"`
+	LiveModeAlt json.RawMessage `json:"live_mode"`
+	Test        json.RawMessage `json:"test"`
+	TestMode    json.RawMessage `json:"test_mode"`
+	TestModeAlt json.RawMessage `json:"testMode"`
+	Mode        json.RawMessage `json:"mode"`
+	Environment json.RawMessage `json:"environment"`
+}
+
+func (m restaurantMoyasarMode) matches(mode string) bool {
+	if mode != "test" && mode != "live" {
+		return false
 	}
-	Metadata map[string]string
+	for _, flag := range []json.RawMessage{m.Live, m.LiveMode, m.LiveModeAlt} {
+		if len(flag) != 0 && string(flag) != strconv.FormatBool(mode == "live") {
+			return false
+		}
+	}
+	for _, flag := range []json.RawMessage{m.Test, m.TestMode, m.TestModeAlt} {
+		if len(flag) != 0 && string(flag) != strconv.FormatBool(mode == "test") {
+			return false
+		}
+	}
+	for _, flag := range []json.RawMessage{m.Mode, m.Environment} {
+		if len(flag) == 0 {
+			continue
+		}
+		var value string
+		if json.Unmarshal(flag, &value) != nil || (mode == "test" && value != "test" && value != "sandbox") || (mode == "live" && value != "live" && value != "production") {
+			return false
+		}
+	}
+	return true
+}
+
+func (i restaurantMoyasarInvoice) paymentStatus(mode string) string {
+	// An invoice's aggregate status is not capture evidence. Require exactly one
+	// coherent collected payment, bound to this invoice and its gross amount.
+	// https://docs.moyasar.com/api/invoices/04-show-invoice
+	if i.Amount <= 0 || !i.matches(mode) || i.Payments == nil || len(i.Payments) > 100 {
+		return "review"
+	}
+	status := "pending"
+	switch i.Status {
+	case "failed", "canceled", "expired", "voided":
+		status = "failed"
+	case "initiated", "on_hold", "paid", "refunded":
+	default:
+		return "review"
+	}
+	seen := map[string]bool{}
+	var charged *restaurantMoyasarPayment
+	incomplete := false
+	for n := range i.Payments {
+		p := &i.Payments[n]
+		if !restaurantPaymentID.MatchString(p.ID) || seen[p.ID] || p.InvoiceID != i.ID || p.Amount != i.Amount || p.Currency != i.Currency || !p.matches(mode) || p.Captured == nil || p.Refunded == nil || *p.Captured < 0 || *p.Captured > i.Amount || *p.Refunded < 0 || *p.Refunded > i.Amount {
+			return "review"
+		}
+		seen[p.ID] = true
+		switch p.Status {
+		case "initiated", "authorized":
+			incomplete = true
+		case "paid", "captured", "refunded", "failed", "voided", "verified", "expired":
+		default:
+			return "review"
+		}
+		if p.Status == "paid" || p.Status == "captured" || p.Status == "refunded" || *p.Captured > 0 || *p.Refunded > 0 {
+			if charged != nil {
+				return "review"
+			}
+			charged = p
+		}
+	}
+	if charged != nil {
+		p := charged
+		if i.Status == "paid" && !incomplete && *p.Refunded == 0 && (p.Status == "paid" && (*p.Captured == 0 || *p.Captured == i.Amount) || p.Status == "captured" && *p.Captured == i.Amount) {
+			return "paid"
+		}
+		if i.Status == "refunded" && !incomplete && p.Status == "refunded" && *p.Refunded == i.Amount && (*p.Captured == 0 || *p.Captured == i.Amount) {
+			return "refunded"
+		}
+		return "review"
+	}
+	if i.Status == "paid" || i.Status == "refunded" {
+		return "review"
+	}
+	return status
 }
 
 func (g *restaurantPaymentGateways) createMoyasar(ctx context.Context, c restaurantPaymentConfig, r restaurantPaymentRequest) (restaurantPaymentRemote, error) {
@@ -293,7 +394,7 @@ func (g *restaurantPaymentGateways) createMoyasar(ctx context.Context, c restaur
 	if err != nil {
 		return restaurantPaymentRemote{}, err
 	}
-	if out.Amount != r.AmountMinor || out.Currency != r.Currency || out.Description != "Restaurant payment "+r.AttemptID {
+	if out.Amount != r.AmountMinor || out.Currency != r.Currency || out.Description != "Restaurant payment "+r.AttemptID || !out.matches(c.Mode) {
 		return restaurantPaymentRemote{}, restaurantPaymentProviderError()
 	}
 	return restaurantPaymentRemote{ID: out.ID, URL: out.URL}, nil
@@ -306,23 +407,7 @@ func (g *restaurantPaymentGateways) fetchMoyasar(ctx context.Context, c restaura
 	if out.ID != id {
 		return restaurantPaymentRemote{}, restaurantPaymentProviderError()
 	}
-	status := "pending"
-	switch out.Status {
-	case "paid":
-		status = "paid"
-	case "refunded":
-		status = "refunded"
-	case "expired", "canceled", "voided":
-		status = "failed"
-	}
-	for _, payment := range out.Payments {
-		if payment.Refunded > 0 {
-			status = "review"
-			if payment.Refunded == out.Amount {
-				status = "refunded"
-			}
-		}
-	}
+	status := out.paymentStatus(c.Mode)
 	ref := strings.TrimPrefix(out.Description, "Restaurant payment ")
 	return restaurantPaymentRemote{ID: out.ID, Status: status, Currency: out.Currency, AmountMinor: out.Amount, Reference: ref}, nil
 }

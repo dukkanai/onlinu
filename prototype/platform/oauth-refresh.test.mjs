@@ -21,7 +21,7 @@ test('rotating OAuth refresh and event revocation on isolated PostgreSQL', {skip
   try {
     await admin.query(`CREATE SCHEMA ${schema}`);created=true;
     await auth.init();
-    events=createEvents({pool,encryptionKey:randomBytes(32).toString('base64'),authorizeOrder:async()=>({id:'order-1'}),
+    events=createEvents({pool,encryptionKey:randomBytes(32).toString('base64'),authorizeOrder:async()=>({id:'order-1'}),authorizeGrant:auth.authorizeEventGrant,
       webhookFetch:async(url,options)=>new Response(JSON.stringify({challenge:JSON.parse(options.body).challenge}),{status:200})});
     await events.init();
     const client=await auth.register({redirect_uris:[redirect],token_endpoint_auth_method:'none',grant_types:['authorization_code','refresh_token'],response_types:['code']});

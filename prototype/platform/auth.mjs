@@ -159,7 +159,7 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
       token = browserToken(req);
     }
     if (!token) return null;
-    const { rows } = await pool.query(`SELECT s.principal_id,s.scopes,s.session_kind,s.expires_at,g.expires_at AS grant_expires_at,g.client_id AS grant_client_id FROM demo_sessions s
+    const { rows } = await pool.query(`SELECT s.principal_id,s.scopes,s.session_kind,s.expires_at,g.id AS grant_id,g.expires_at AS grant_expires_at,g.client_id AS grant_client_id FROM demo_sessions s
       LEFT JOIN demo_oauth_grants g ON g.id=s.oauth_family_id
       WHERE s.token_hash=$1 AND s.issuer=$2 AND s.audience=$3 AND s.expires_at>now()
       AND (s.oauth_family_id IS NULL OR (g.revoked=FALSE AND g.expires_at>now()))`, [hash(token), baseUrl, resource]);
@@ -167,8 +167,30 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
     if((cookieOnly || !authorization) && rows[0]?.session_kind!=='browser')return null;
     if(!allowSyntheticAuthorization && authorization && !cookieOnly && rows[0]?.session_kind!=='oauth')return null;
     const identity=rows[0]?await principal(rows[0].principal_id,rows[0].scopes):null;
-    if(identity&&!native&&rows[0].session_kind==='oauth'&&rows[0].expires_at)return{...identity,eventGrantExpiresAt:new Date(rows[0].grant_expires_at??rows[0].expires_at).toISOString()};
+    if(identity&&!native&&rows[0].session_kind==='oauth'&&rows[0].expires_at)return{...identity,
+      eventGrant:{kind:rows[0].grant_id?'family':'session',id:rows[0].grant_id??hash(token)},
+      eventGrantExpiresAt:new Date(rows[0].grant_expires_at??rows[0].expires_at).toISOString()};
     return identity;
+  }
+  // An Events subscription belongs to the connection that created it. Another
+  // active connection for the same owner is never evidence of this grant.
+  // Transactional callers lock the grant BEFORE owner/subscription rows, matching
+  // revokeFamily's ordering and keeping revocation atomic with callback dispatch.
+  async function authorizeEventGrant(identity,database=pool,{lock=false,nowait=false}={}) {
+    const grant=identity?.eventGrant;
+    if(native||identity?.role!=='customer'||!grant||
+      !['family','session'].includes(grant.kind)||typeof grant.id!=='string'||
+      !(grant.kind==='family'?/^[A-Za-z0-9_-]{43}$/:/^[a-f0-9]{64}$/).test(grant.id))throw problem(403,'event_grant_required');
+    const statement=grant.kind==='family'
+      ? `SELECT expires_at FROM demo_oauth_grants WHERE id=$1 AND principal_id=$2 AND resource=$3
+          AND revoked=FALSE AND expires_at>clock_timestamp() AND scopes ? 'events:read'${lock?` FOR SHARE${nowait?' NOWAIT':''}`:''}`
+      : `SELECT expires_at FROM demo_sessions WHERE token_hash=$1 AND principal_id=$2 AND audience=$3 AND issuer=$4
+          AND session_kind='oauth' AND oauth_family_id IS NULL AND expires_at>clock_timestamp()
+          AND scopes ? 'events:read'${lock?` FOR SHARE${nowait?' NOWAIT':''}`:''}`;
+    const values=grant.kind==='family'?[grant.id,identity.id,resource]:[grant.id,identity.id,resource,baseUrl];
+    const {rows}=await database.query(statement,values);
+    if(!rows[0])throw problem(403,'event_grant_expired');
+    return new Date(rows[0].expires_at).toISOString();
   }
   async function register(input) {
     if(native)throw problem(403,'registration_disabled');
@@ -375,6 +397,6 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
       await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   }
-  return { init, principal, issue, authenticate, browserToken, csrfToken, verifyCsrf, register, validateAuthorization, authorize, exchange, revoke, nativeGrants, revokeNativeGrant, metadata,
+  return { init, principal, issue, authenticate, authorizeEventGrant, browserToken, csrfToken, verifyCsrf, register, validateAuthorization, authorize, exchange, revoke, nativeGrants, revokeNativeGrant, metadata,
     resourceMetadata: { resource, authorization_servers: [baseUrl], scopes_supported: supportedScopes } };
 }

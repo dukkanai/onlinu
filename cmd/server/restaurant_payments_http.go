@@ -38,7 +38,12 @@ func (s *server) registerRestaurantPaymentHandlers(pub, admin, hooks *http.Serve
 			writeRestaurantError(w, err)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"providers": v})
+		reconciliation, err := s.payments.ReconciliationSummary(r.Context())
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"providers": v, "reconciliation": reconciliation})
 	})
 	admin.HandleFunc("PUT /api/restaurant/payments/{provider}", func(w http.ResponseWriter, r *http.Request) {
 		var in restaurantPaymentConfigInput

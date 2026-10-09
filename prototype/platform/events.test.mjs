@@ -110,7 +110,7 @@ test('DNS resolution respects abort deadlines', async () => {
 
 test('customer ownership is checked before callback contact or persistence', async () => {
   let checked = 0;
-  const events = createEvents({ pool: { query: () => assert.fail('No database write'), connect() {} },
+  const events = createEvents({ pool: { query: async sql => { assert.match(sql, /^SELECT epoch /, 'No database write'); return { rows: [], rowCount: 0 }; }, connect() {} },
     encryptionKey: randomBytes(32),
     authorizeOrder: async () => { checked++; throw forbidden(); },
     webhookFetch: () => assert.fail('No callback contact'),
@@ -130,7 +130,7 @@ test('customer ownership is checked before callback contact or persistence', asy
 
 // A separate schema keeps integration assertions away from the platform's
 // synthetic orders/sessions. Set TEST_DATABASE_URL to the prototype DB only.
-test('PostgreSQL event lifecycle and durable delivery security', { skip: !process.env.TEST_DATABASE_URL }, async t => {
+test('PostgreSQL event lifecycle and durable delivery security', { skip: !process.env.TEST_DATABASE_URL, timeout: 30_000 }, async t => {
   const schema = `event_test_${randomBytes(8).toString('hex')}`;
   const admin = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
   await admin.query(`CREATE SCHEMA ${schema}`);
@@ -186,6 +186,18 @@ test('PostgreSQL event lifecycle and durable delivery security', { skip: !proces
       assert.equal(Object.hasOwn(verified.data, 'ownerId'), false);
       assert.equal(Object.hasOwn(verified, 'type'), false);
       assert.equal((await events.dispatchOnce()).attempted, 0);
+    });
+
+    await t.test('additive fencing migration is repeatable and seeds existing owner rows', async () => {
+      await reset();
+      await events.subscribe(alice, params());
+      await events.enqueue(source());
+      await pool.query(`ALTER TABLE event_subscriptions DROP COLUMN revocation_epoch, DROP COLUMN generation;
+        ALTER TABLE event_deliveries DROP COLUMN subscription_generation;
+        DROP TABLE event_owner_epochs`);
+      await events.init(); await events.init();
+      assert.equal((await pool.query('SELECT owner_id FROM event_owner_epochs')).rows[0].owner_id, alice.id);
+      assert.equal((await events.dispatchOnce()).delivered, 1);
     });
 
     await t.test('failed challenge never activates a subscription', async () => {
@@ -281,6 +293,66 @@ test('PostgreSQL event lifecycle and durable delivery security', { skip: !proces
       assert.equal((await bothOwners.dispatchOnce()).attempted, 0);
     });
 
+    for (const pauseAt of ['order authorization', 'callback verification']) {
+      await t.test(`revocation fences a pending subscription during ${pauseAt}`, async () => {
+        await reset();
+        const started = Promise.withResolvers(), resume = Promise.withResolvers();
+        const delayed = createEvents({ ...options,
+          authorizeOrder: async (...args) => {
+            if (pauseAt === 'order authorization') { started.resolve(); await resume.promise; }
+            return options.authorizeOrder(...args);
+          },
+          webhookFetch: async (...args) => {
+            if (pauseAt === 'callback verification') { started.resolve(); await resume.promise; }
+            return options.webhookFetch(...args);
+          },
+        });
+        const pending = delayed.subscribe(alice, params());
+        const rejected = assert.rejects(pending, error => error.code === -32001);
+        await started.promise;
+        await events.revokeAll(alice.id);
+        resume.resolve();
+        await rejected;
+        assert.equal((await pool.query('SELECT 1 FROM event_subscriptions WHERE active')).rowCount, 0);
+        assert.equal((await pool.query('SELECT 1 FROM event_callback_verifications')).rowCount, 0);
+        // A fresh explicitly authorized operation after revocation may subscribe.
+        await events.subscribe(alice, params());
+        assert.equal((await events.enqueue(source('evt-after-fresh-subscribe'))).enqueued, 1);
+        assert.equal((await events.dispatchOnce()).delivered, 1);
+      });
+    }
+
+    await t.test('callback delay cannot extend or outlive the originating grant expiry', async () => {
+      await reset();
+      const expiresAt = time + 1000;
+      const delayed = createEvents({ ...options, webhookFetch: async (...args) => {
+        const response = await options.webhookFetch(...args); time += 1001; return response;
+      } });
+      await assert.rejects(delayed.subscribe({ ...alice, eventGrantExpiresAt: new Date(expiresAt).toISOString() }, params()),
+        error => error.code === -32001);
+      assert.equal((await pool.query('SELECT 1 FROM event_subscriptions')).rowCount, 0);
+      assert.equal((await pool.query('SELECT 1 FROM event_callback_verifications')).rowCount, 0);
+    });
+
+    await t.test('callback time is not added to the absolute grant expiry', async () => {
+      await reset();
+      const expiresAt = time + 1000;
+      const delayed = createEvents({ ...options, webhookFetch: async (...args) => {
+        const response = await options.webhookFetch(...args); time += 500; return response;
+      } });
+      const result = await delayed.subscribe({ ...alice, eventGrantExpiresAt: new Date(expiresAt).toISOString() }, params());
+      assert.equal(Date.parse(result.refreshBefore), expiresAt);
+    });
+
+    await t.test('failed subscription persistence rolls back callback verification', async () => {
+      await reset();
+      await pool.query('ALTER TABLE event_subscriptions ADD CONSTRAINT reject_test_subscription CHECK (FALSE) NOT VALID');
+      try {
+        await assert.rejects(events.subscribe(alice, params()), error => error.code === '23514');
+        assert.equal((await pool.query('SELECT 1 FROM event_callback_verifications')).rowCount, 0);
+      } finally { await pool.query('ALTER TABLE event_subscriptions DROP CONSTRAINT reject_test_subscription'); }
+    });
+
     await t.test('unsubscribe permanently cancels a retry even if the same subscription is recreated', async () => {
       await reset(); await events.subscribe(alice, params()); await events.enqueue(source()); responseStatus = 503;
       assert.equal((await events.dispatchOnce()).retried, 1);
@@ -292,6 +364,26 @@ test('PostgreSQL event lifecycle and durable delivery security', { skip: !proces
       assert.equal(requests.length, before);
       await events.enqueue(source('evt-fresh'));
       assert.equal((await events.dispatchOnce()).delivered, 1);
+    });
+
+    await t.test("a busy delivery does not block another owner's due delivery", async () => {
+      await reset();
+      const started = Promise.withResolvers(), resume = Promise.withResolvers();
+      const parallel = createEvents({ ...options, authorizeOrder: async () => ({}), webhookFetch: async (...args) => {
+        if (JSON.parse(args[1].body).eventId === 'evt-slow-alice') { started.resolve(); await resume.promise; }
+        return options.webhookFetch(...args);
+      } });
+      await parallel.subscribe(alice, params());
+      await parallel.subscribe(bob, params());
+      await parallel.enqueue(source('evt-slow-alice'));
+      // One busy subscription cannot occupy the whole bounded candidate batch.
+      for (let index = 0; index < 40; index++) await parallel.enqueue(source(`evt-slow-alice-${index}`));
+      time++;
+      await parallel.enqueue(source('evt-fast-bob', { ownerId: bob.id }));
+      const first = parallel.dispatchOnce();
+      await started.promise;
+      try { assert.equal((await parallel.dispatchOnce()).delivered, 1, 'A different unlocked delivery must be claimed'); }
+      finally { resume.resolve(); await first; }
     });
 
     await t.test('parallel dispatchers claim a delivery once; wrong encryption key preserves it', async () => {

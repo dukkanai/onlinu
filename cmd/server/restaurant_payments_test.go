@@ -132,9 +132,9 @@ func TestRestaurantPaymentMoyasarTapAndHyperpayMappings(t *testing.T) {
 	attempt := uuid.NewString()
 	ctx := context.Background()
 	for _, tc := range []struct{ provider, id, response, status string }{
-		{"moyasar", "invoice_id", `{"id":"invoice_id","amount":11500,"currency":"SAR","status":"paid","description":"Restaurant payment ` + attempt + `"}`, "paid"},
-		{"moyasar", "invoice_id", `{"id":"invoice_id","amount":11500,"currency":"SAR","status":"failed","description":"Restaurant payment ` + attempt + `"}`, "pending"},
-		{"moyasar", "invoice_id", `{"id":"invoice_id","amount":11500,"currency":"SAR","status":"paid","description":"Restaurant payment ` + attempt + `","payments":[{"refunded":100}]}`, "review"},
+		{"moyasar", "invoice_id", `{"id":"invoice_id","amount":11500,"currency":"SAR","status":"paid","description":"Restaurant payment ` + attempt + `","payments":[{"id":"payment_id","invoice_id":"invoice_id","status":"paid","amount":11500,"currency":"SAR","captured":0,"refunded":0}]}`, "paid"},
+		{"moyasar", "invoice_id", `{"id":"invoice_id","amount":11500,"currency":"SAR","status":"failed","description":"Restaurant payment ` + attempt + `","payments":[]}`, "failed"},
+		{"moyasar", "invoice_id", `{"id":"invoice_id","amount":11500,"currency":"SAR","status":"paid","description":"Restaurant payment ` + attempt + `","payments":[{"id":"payment_id","invoice_id":"invoice_id","status":"paid","amount":11500,"currency":"SAR","captured":0,"refunded":100}]}`, "review"},
 		{"tap", "charge_id", `{"id":"charge_id","amount":115.00,"currency":"SAR","status":"CAPTURED","live_mode":false,"reference":{"transaction":"` + attempt + `"}}`, "paid"},
 		{"tap", "charge_id", `{"id":"charge_id","amount":115.00,"currency":"SAR","status":"AUTHORIZED","live_mode":false,"reference":{"transaction":"` + attempt + `"}}`, "pending"},
 		{"hyperpay", "checkout.uat01", `{"id":"transaction","amount":"115.00","currency":"SAR","paymentType":"DB","paymentBrand":"VISA","merchantTransactionId":"` + attempt + `","result":{"code":"000.100.110"}}`, "paid"},

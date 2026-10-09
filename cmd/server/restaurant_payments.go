@@ -104,21 +104,27 @@ type restaurantPaymentAttempt struct {
 	CreatedAt                                         time.Time
 }
 type restaurantPayments struct {
-	db      *sql.DB
-	orders  *restaurantOrders
-	seal    cipher.AEAD
-	baseURL string
-	adapter restaurantPaymentAdapter
+	db               *sql.DB
+	orders           *restaurantOrders
+	seal             cipher.AEAD
+	baseURL          string
+	adapter          restaurantPaymentAdapter
+	settlementPolicy restaurantPaymentSettlementPolicy
 }
 
 func newRestaurantPayments(ctx context.Context, db *sql.DB, orders *restaurantOrders, publicBaseURL string) (*restaurantPayments, error) {
-	_, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS restaurant_payment_secret (id integer PRIMARY KEY CHECK(id=1),secret bytea NOT NULL CHECK(octet_length(secret)=32));
+	policy, err := restaurantPaymentSettlementPolicyFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS restaurant_payment_secret (id integer PRIMARY KEY CHECK(id=1),secret bytea NOT NULL CHECK(octet_length(secret)=32));
  CREATE TABLE IF NOT EXISTS restaurant_payment_configs (provider text PRIMARY KEY, sealed bytea NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
 	CREATE TABLE IF NOT EXISTS restaurant_payment_attempts (id text PRIMARY KEY,order_number text NOT NULL UNIQUE REFERENCES restaurant_orders(number),provider text NOT NULL, mode text NOT NULL,status text NOT NULL,remote_id text NOT NULL DEFAULT '',url text NOT NULL DEFAULT '',widget jsonb, sealed_config bytea NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),checked_at timestamptz);
 	ALTER TABLE restaurant_payment_attempts ADD COLUMN IF NOT EXISTS needs_refresh boolean NOT NULL DEFAULT false;
 	ALTER TABLE restaurant_payment_attempts ADD COLUMN IF NOT EXISTS refresh_version bigint NOT NULL DEFAULT 0;
 	ALTER TABLE restaurant_payment_attempts ADD COLUMN IF NOT EXISTS capture_verified boolean NOT NULL DEFAULT false;
 	ALTER TABLE restaurant_payment_attempts ADD COLUMN IF NOT EXISTS captured_minor bigint NOT NULL DEFAULT 0;
+	ALTER TABLE restaurant_payment_attempts ADD COLUMN IF NOT EXISTS settlement_watch_started_at timestamptz;
  CREATE INDEX IF NOT EXISTS restaurant_payment_attempt_status_idx ON restaurant_payment_attempts(status,updated_at);`)
 	if err != nil {
 		return nil, err
@@ -144,7 +150,7 @@ func newRestaurantPayments(ctx context.Context, db *sql.DB, orders *restaurantOr
 	if err != nil {
 		return nil, err
 	}
-	p := &restaurantPayments{db: db, orders: orders, seal: seal, baseURL: strings.TrimRight(publicBaseURL, "/"), adapter: &restaurantPaymentGateways{client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}}
+	p := &restaurantPayments{db: db, orders: orders, seal: seal, baseURL: strings.TrimRight(publicBaseURL, "/"), settlementPolicy: policy, adapter: &restaurantPaymentGateways{client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}}
 	return p, nil
 }
 func restaurantPaymentDefinitionByID(id string) (restaurantPaymentDefinition, bool) {
@@ -535,7 +541,10 @@ func (p *restaurantPayments) apply(ctx context.Context, a restaurantPaymentAttem
 	// A cancelled order remains cancelled/review but may still need a refund.
 	validCapture := verified && r.Status == "paid"
 	if validCapture {
-		if _, err = tx.ExecContext(ctx, `UPDATE restaurant_payment_attempts SET capture_verified=true,captured_minor=$2 WHERE id=$1`, a.ID, o.TotalMinor); err != nil {
+		// Start once, from actual verified capture for new attempts. For legacy
+		// paid/captured rows, creation time is a conservative polling anchor, not
+		// an invented capture date. Neither refresh nor status edits extend it.
+		if _, err = tx.ExecContext(ctx, `UPDATE restaurant_payment_attempts SET capture_verified=true,captured_minor=$2,settlement_watch_started_at=COALESCE(settlement_watch_started_at,CASE WHEN capture_verified OR status='paid' THEN created_at ELSE now() END) WHERE id=$1`, a.ID, o.TotalMinor); err != nil {
 			return restaurantPaymentView{}, err
 		}
 	}
@@ -619,10 +628,14 @@ func (p *restaurantPayments) Refresh(ctx context.Context, number, token, custome
 	return p.refreshAttempt(ctx, a)
 }
 func (p *restaurantPayments) refreshAttempt(ctx context.Context, a restaurantPaymentAttempt) (restaurantPaymentView, error) {
+	return p.refreshAttemptAfter(ctx, a, 30*time.Second)
+}
+
+func (p *restaurantPayments) refreshAttemptAfter(ctx context.Context, a restaurantPaymentAttempt, interval time.Duration) (restaurantPaymentView, error) {
 	// Shared durable rate limit/lease also prevents forged notifications from
 	// producing unbounded provider requests. Hooks never consume supplied status.
 	var generation int64
-	err := p.db.QueryRowContext(ctx, `UPDATE restaurant_payment_attempts SET checked_at=now() WHERE id=$1 AND (checked_at IS NULL OR checked_at < now()-interval '30 seconds') RETURNING refresh_version`, a.ID).Scan(&generation)
+	err := p.db.QueryRowContext(ctx, `UPDATE restaurant_payment_attempts SET checked_at=now(),needs_refresh=true WHERE id=$1 AND (checked_at IS NULL OR checked_at < now()-($2 * interval '1 second')) RETURNING refresh_version`, a.ID, interval.Seconds()).Scan(&generation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a.view(), nil
 	}
@@ -680,8 +693,9 @@ func (p *restaurantPayments) notifyAttempt(ctx context.Context, a restaurantPaym
 }
 
 // Run reconciles bounded batches independently of the customer's tab and webhook
-// timing. Only pending/uncertain or durably notified attempts are read; it never creates a
-// payment, captures an authorization, retries a charge, or sends a refund.
+// timing, including a limited post-capture watch for dashboard refunds. Payment
+// lookups never create/capture/retry charges or initiate refunds. The separate
+// refund worker retains its existing explicit-authorization dispatch boundary.
 func (p *restaurantPayments) Run(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -690,37 +704,21 @@ func (p *restaurantPayments) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			batchCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
-			_ = p.Reconcile(batchCtx)
-			_ = p.ReconcileRefunds(batchCtx)
-			cancel()
+			p.runReconciliationCycle(ctx, 45*time.Second)
 		}
 	}
 }
-func (p *restaurantPayments) Reconcile(ctx context.Context) error {
-	rows, err := p.db.QueryContext(ctx, restaurantPaymentAttemptSelect+` WHERE needs_refresh OR (status IN ('creating','pending','review') AND created_at > now()-interval '7 days') ORDER BY needs_refresh DESC,checked_at NULLS FIRST LIMIT 10`)
-	if err != nil {
-		return err
-	}
-	attempts := []restaurantPaymentAttempt{}
-	for rows.Next() {
-		a, e := p.readAttempt(rows)
-		if e != nil {
-			rows.Close()
-			return e
-		}
-		attempts = append(attempts, a)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return err
-	}
-	for _, a := range attempts {
+
+func (p *restaurantPayments) runReconciliationCycle(ctx context.Context, budget time.Duration) {
+	// Slow payment reads must not hand the refund ledger an expired context.
+	// Each queue gets its own bounded budget, still canceled by service shutdown.
+	// Run is sequential, so a slow cycle cannot overlap the next ticker event.
+	for _, reconcile := range []func(context.Context) error{p.Reconcile, p.ReconcileRefunds} {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return
 		}
-		_, _ = p.refreshAttempt(ctx, a)
+		batchCtx, cancel := context.WithTimeout(ctx, budget)
+		_ = reconcile(batchCtx)
+		cancel()
 	}
-	return nil
 }
