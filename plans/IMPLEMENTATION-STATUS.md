@@ -18,6 +18,19 @@ end-to-end restaurant + ChatGPT ordering/recovery/administration journey and rem
 launch gates. No production deployment or deletion of old external data is authorized.
 The 0.4.0 runtime/offline package requires a new build; the old 0.3.0 binary is not it.
 
+## Planned restaurant links and custom domains — 2026-10-09
+
+The owner adopted the complete plan for one Onlinu plugin with general restaurant
+discovery, per-restaurant ChatGPT deep links and optional customer-owned subdomains
+that CNAME to an Onlinu HTTPS redirect service. See the
+[architecture and acceptance plan](RESTAURANT-LINKS-AND-CUSTOM-DOMAINS.ar.md).
+This is **planned, not implemented**. Core-mode Global entrypoint/deep-link handling,
+distribution/mobile acceptance, domain ownership, TLS, safe routing, visible web
+fallback and offboarding remain open. Existing synthetic entrypoints do not close
+these gates. Work follows the current security/key and payment acceptance priorities.
+This documentation-only decision changes no DNS, certificates, provider accounts,
+permissions, host configuration or deployed service, and claims no runtime/CI pass.
+
 ## Historical implementation evidence below
 
 # Product completion ledger
