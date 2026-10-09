@@ -10,7 +10,6 @@ import (
 	"database/sql"
 	"encoding/base32"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +22,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Orders deliberately do not share state with WhatsApp, table sessions, or the
+// Orders deliberately do not share state with table sessions or the
 // customer's browser cart. Every successful Create creates one independent
 // immutable set of item/price snapshots. A retry of that operation is not a new
 // order: its receipt (including guest credentials) survives process restarts.
@@ -180,7 +179,6 @@ func (s *restaurantOrders) Create(ctx context.Context, input restaurantOrderInpu
 		return restaurantReceipt{}, restaurantFail(400, "invalid_request")
 	}
 	requestHash := sha256.Sum256(request)
-	ctx = context.WithValue(ctx, restaurantWhatsappSubmissionKey{}, restaurantWhatsappSubmission{Key: parsedKey.String(), Hash: hex.EncodeToString(requestHash[:]), Owner: customerID})
 	// A submission stays unique even when its customer's cookie expires or
 	// another account signs in. Identity mismatches reject rather than creating
 	// a duplicate or returning the original owner's private receipt.

@@ -26,13 +26,9 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       WACALLS_API_KEY: ${WACALLS_API_KEY:?Set WACALLS_API_KEY in .env}
-      WACALLS_META_ENCRYPTION_KEY: ${WACALLS_META_ENCRYPTION_KEY:-}
       WACALLS_PG_URL: postgres://astracalls:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
-      WACALLS_PUBLIC_IP: ${WACALLS_PUBLIC_IP:-127.0.0.1}
-      WACALLS_UDP_PORT: ${WACALLS_UDP_PORT:-50000}
-      WACALLS_RECORDING_DIR: /data/recordings
+      WACALLS_MEDIA_DIR: /data/recordings
       WACALLS_PUBLIC_BASE_URL: ${WACALLS_PUBLIC_BASE_URL:-}
       WACALLS_PLATFORM_ISSUER: ${WACALLS_PLATFORM_ISSUER:-}
       WACALLS_PLATFORM_TENANT_ID: ${WACALLS_PLATFORM_TENANT_ID:-}
@@ -41,8 +37,6 @@ services:
       - translation-recordings:/data/recordings
     ports:
       - "${WACALLS_HTTP_BIND:-127.0.0.1}:${WACALLS_HTTP_PORT:-8080}:8080"
-      - "${WACALLS_MEDIA_BIND:-127.0.0.1}:${WACALLS_UDP_PORT:-50000}:${WACALLS_UDP_PORT:-50000}/udp"
-      - "${WACALLS_MEDIA_BIND:-127.0.0.1}:${WACALLS_UDP_PORT:-50000}:${WACALLS_UDP_PORT:-50000}/tcp"
     init: true
     read_only: true
     tmpfs:

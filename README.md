@@ -1,401 +1,68 @@
-<div align="center">
+# Onlinu — restaurant and ChatGPT ordering
 
-# 📞 AstraCalls
+Restaurant storefront, administration, courier operations and signed ChatGPT/MCP
+commerce integration. WhatsApp Business/QR, messaging, calling, voice translation,
+Chatwoot and their conversation archive were removed from this branch on 9 October 2026.
 
-> **OpenAI live translation (custom integration):** two-way voice interpretation in the React calling panel, with Arabic playback and a selectable remote language. See [دليل التشغيل بالعربية](TRANSLATION.ar.md) for setup, Docker deployment, tests and limitations.
+## Restore point
 
-> **Docker distribution:** versioned application image, isolated Compose instances, persistent database/recordings and update instructions: [دليل Docker بالعربية](DOCKER.ar.md).
+`before-whatsapp-removal-20261009` identifies commit
+`3614be85c97744b95e25f55ac4e0e77de4b06394` before removal. It is published on the
+origin repository. Create a separate worktree/branch at the tag to inspect or restore
+old code; do not reset a working tree containing uncommitted work. Git does not
+back up external databases, secrets, uploaded media or live provider settings.
 
-> **Portable installer:** a single installer file for independent Docker instances: [دليل التثبيت بالعربية](deploy/INSTALL.ar.md).
+## Current surfaces
 
-> **Optional official WhatsApp Calling (0.2.0):** select Meta instead of QR for an eligible business number. Audio/WebRTC and the existing translation path are integrated; production activation and a real-call acceptance test require customer Meta credentials. See [دليل الربط الرسمي بالعربية](META.ar.md).
+- `/`: customer menu, pickup/delivery checkout, tracking and customer accounts.
+- `/admin`: restaurant administration, menu, brand, payments, stock and couriers.
+- `/courier`: scoped courier work.
+- `prototype/platform/`: signed commerce/control plane, OAuth/OIDC, MCP/ChatGPT,
+  staff/native integration and isolated acceptance fixtures. See its documentation
+  for configured integration requirements; source presence is not production readiness.
+- `prototype/admin_flutter/`: restaurant staff application prototype.
 
-> **Restaurant ordering (0.3.0):** public menu and guest checkout at `/`, private order tracking, optional customer accounts, table QR codes and restaurant administration at `/admin`. The original WhatsApp calling panel is at `/admin/calls`. Fresh installations start with a labelled demo menu; no payment gateway or delivery provider is connected. See [دليل المطعم بالعربية](RESTAURANT.ar.md).
+Only `web` and `chatgpt` are supported order channels. Menu/table QR codes are
+restaurant features and are unrelated to removed WhatsApp pairing.
 
-> **Restaurant audit, September 30:** the development UI is now Arabic/English only, retaining five visual layouts and merchant menu text. Template/font, district delivery, reopening and print corrections were verified on an isolated test installation. Current status and remaining external prerequisites are in [نقطة استئناف العمل](RESTAURANT-RESUMPTION.ar.md), with evidence in [تقرير التدقيق](RESTAURANT-ITERATION-AUDIT.ar.md). These changes have not been deployed; the clean distributable release remains deferred.
+## Development
 
-**Chamadas de voz do WhatsApp em Go puro, direto do navegador — agora prontas para produção SaaS.**
-
-Mídia VoIP nativa, multi-conta (multi-sessão), API de mensagens, webhooks, integração com **Chatwoot** e deploy em **Docker Swarm + Traefik**.
-
-[![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![whatsmeow](https://img.shields.io/badge/whatsmeow-VoIP-25D366?logo=whatsapp&logoColor=white)](https://github.com/tulir/whatsmeow)
-[![pion](https://img.shields.io/badge/pion-WebRTC-FF6B6B)](https://github.com/pion/webrtc)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org)
-[![Docker](https://img.shields.io/badge/Docker-Swarm-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/engine/swarm/)
-[![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](#-licença)
-
-[Visão Geral](#-visão-geral) · [Novidades](#-o-que-o-astracalls-adiciona) · [Arquitetura](#-arquitetura) · [Início Rápido](#-início-rápido) · [Deploy](#-deploy-em-produção-docker-swarm--traefik) · [API](#-api) · [Suporte](#️-suporte-profissional)
-
-</div>
-
----
-
-> **AstraCalls** é um fork de produção do [**WaCalls**](https://github.com/JotaDev66/WaCalls)
-> (de [@jotadev66](https://github.com/jotadev66)). Mantém todo o núcleo VoIP nativo em Go e
-> adiciona a camada que faltava para operar como serviço: **PostgreSQL por sessão**,
-> **API de mensagens**, **webhooks**, **integração nativa com Chatwoot** (inclusive um
-> **widget de chamada dentro do Chatwoot**), **autenticação por API key** e **deploy
-> containerizado em Docker Swarm com Traefik/HTTPS**. Todos os créditos do projeto original
-> estão preservados em [Colaboradores](#-colaboradores).
-
----
-
-## 📋 Visão Geral
-
-O AstraCalls pareia uma ou mais contas do WhatsApp via **QR code** e permite **fazer e
-receber chamadas de voz 1:1** de qualquer navegador. O microfone do navegador é enviado
-por **WebRTC (Opus)** para o servidor Go, que transcodifica para o codec **MLow** da Meta
-e injeta a mídia na malha de **relay SRTP** do WhatsApp — e o caminho inverso traz o áudio
-do outro lado de volta ao navegador.
-
-Toda a pilha VoIP roda **nativamente em Go**: o codec de voz MLow, a empacotagem
-**RTP/SRTP**, **STUN**, o transporte **WebRTC/SCTP relay** e a sinalização `<call>`,
-integrados ao [**whatsmeow**](https://github.com/tulir/whatsmeow) e servidos a um cliente
-**React 19**. A única dependência em C é o codec `opus_mlow` (via cgo) — e ela é opcional:
-sem ela o servidor roda em modo **somente sinalização** (pareamento e setup de chamada
-funcionam; sem áudio ao vivo).
-
-Várias contas do WhatsApp podem ser pareadas e operadas lado a lado, cada uma com seu QR,
-status de conexão e histórico próprios. Uma única conta também pode manter **várias
-chamadas 1:1 simultâneas** — uma por operador no navegador — roteadas de forma independente
-por call ID.
-
-> **Status:** estável e em produção. Chamadas de saída e de entrada chegam a `ACTIVE` com
-> áudio bidirecional; chamadas recebidas abrem o widget e tocam dentro do Chatwoot. As
-> sessões persistem em **PostgreSQL** (um banco por sessão, estilo WAHA).
-
----
-
-## 🚀 O que o AstraCalls adiciona
-
-Tudo abaixo foi construído **por cima** do WaCalls original, sem quebrar o núcleo VoIP:
-
-### 🗄️ Persistência em PostgreSQL (1 banco por sessão)
-Saímos do SQLite único para um modelo no estilo **WAHA**: um banco **principal**
-(`wacalls_main`, com a tabela de config das sessões) + **um banco por sessão**
-(`wacalls_<id>`, com o store do whatsmeow daquela conta — criado no `CREATE` e derrubado no
-`DELETE`). Configurável por `WACALLS_PG_URL` e `WACALLS_PG_NAMESPACE`. Isola credenciais por
-conta e escala muito melhor em cenário multi-tenant/SaaS.
-
-### 💬 API de mensagens
-Além de chamadas, a API agora **envia mensagens** via whatsmeow:
-`POST /api/sessions/{sid}/messages/{text|image|audio|video|document}` (mídia por base64 ou
-URL).
-
-### 🔔 Webhooks por sessão
-`GET/POST/DELETE /api/sessions/{sid}/webhook` — dispara eventos `message` e `receipt`
-recebidos para a URL configurada, permitindo integrar com qualquer backend.
-
-### 🤝 Integração nativa com Chatwoot
-Módulo `chatwoot.go` (inspirado no app de Chatwoot do WAHA): contato e conversa
-find/create por telefone, mensagens **WhatsApp → Chatwoot** (texto + mídia) e
-**Chatwoot → WhatsApp** via webhook (`message_created/outgoing`). Tudo com **1 QR só** por
-número — a mesma sessão serve chamadas, mensagens e Chatwoot.
-
-### 📲 Widget de chamada dentro do Chatwoot
-`widget.js` é injetado no Chatwoot via `<script src=".../widget.js" data-api-key="...">` e
-adiciona um **botão de telefone na conversa**. Faz a chamada WebRTC direto do navegador do
-agente, **abre e toca automaticamente quando chega uma ligação**, mostra "Chamando…" até o
-outro lado atender, inicia o cronômetro só na conexão real e silencia o toque ao atender.
-
-### 🔐 Autenticação por API key
-Middleware `withAuth`: se `WACALLS_API_KEY` estiver setada, todas as rotas `/api/*` exigem
-o header `X-API-Key` (ou `?apiKey=` no SSE). O cliente React ganhou tela de login (URL +
-key). Essencial para expor o serviço fora de uma LAN confiável.
-
-### 🌐 Mídia WebRTC pronta para nuvem (ICE-TCP / NAT 1:1)
-Muitos provedores cloud (ex.: Hetzner) **bloqueiam UDP de entrada novo** na interface
-pública, o que derruba o WebRTC padrão. O `bridge.go` agora configura
-`SetNAT1To1IPs` + **ICE-TCP** na mesma porta, permitindo que o navegador conecte por TCP
-quando o UDP não passa. Gated por `WACALLS_PUBLIC_IP` (aceita `auto` para auto-detecção) e
-`WACALLS_UDP_PORT`.
-
-### 🐳 Deploy em Docker Swarm + Traefik (HTTPS)
-Stack pronta com Postgres dedicado, rede de host para a mídia enxergar a interface real,
-proxy `socat` com labels do Traefik para publicar em HTTPS e imagem versionada no Docker
-Hub. Detalhes em [Deploy](#-deploy-em-produção-docker-swarm--traefik).
-
-### ⚡ UX e robustez
-Envio do `offer`/`accept` assíncrono (a UI não trava mais até 15s no timeout do ack),
-parsing correto do `<relay>` de entrada (áudio nas chamadas recebidas) e auto-detecção do
-IP público.
-
----
-
-## 🏗️ Arquitetura
+Go 1.26.4 and Node 22+. Main database configuration is `WACALLS_PG_URL`, an existing
+compatibility name. Use an isolated PostgreSQL database for tests and never production
+credentials. The backend retains the `<namespace>_main` database convention; it no
+longer creates, migrates, connects to or drops WhatsApp session databases.
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                BROWSER (cliente React)  +  Widget no Chatwoot               │
-│   mic + alto-falante  ·  WebRTC (Opus 48 kHz)  ·  HTTP + SSE                │
-└───────────────────────────────┬──────────────────────────────────────────┘
-                                 │  POST /api/sessions/{sid}/calls/{id}/webrtc  (SDP)
-                                 │  GET  /api/events                            (SSE)
-                                 ▼
-┌──────────────────────────── GO SERVER (cmd/server) ────────────────────────┐
-│  SessionManager   registry de contas (client + CallManager + bridge)       │
-│  Broker           hub SSE (sessões, auth, ciclo de vida das chamadas)       │
-│  Bridge           ponte pion WebRTC (Opus do navegador ⇄ PCM 16 kHz)        │
-│  Auth             middleware X-API-Key                                      │
-│  Messaging        envio de texto/mídia via whatsmeow                        │
-│  Webhook/Chatwoot integração externa (eventos + Chatwoot bidirecional)      │
-│                                                                            │
-│  internal/wa      adaptador VoipSocket sobre o whatsmeow                    │
-│  internal/voip    call · signaling · media · transport · core · wanode     │
-└───────────────┬──────────────────────────────────────┬────────────────────┘
-                │ sinalização <call>                    │ mídia SRTP
-                ▼                                        ▼
-        ┌───────────────┐                    ┌──────────────────────┐
-        │  WhatsApp WS  │                    │   relay do WhatsApp   │
-        │  (whatsmeow)  │                    │  (SRTP sobre SCTP/DC) │
-        └───────────────┘                    └──────────────────────┘
-                                                         │
-                                              ┌──────────────────────┐
-                                              │  PostgreSQL 16        │
-                                              │  wacalls_main + 1/db  │
-                                              └──────────────────────┘
-```
-
-### Estrutura
-
-| Caminho | Responsabilidade |
-|---|---|
-| `cmd/server` | Broker HTTP/SSE, session manager + store, ponte WebRTC, **auth, messaging, webhook, Chatwoot, db (Postgres)** |
-| `internal/wa` | `VoipSocket` — envia/recebe stanzas `<call>` via whatsmeow |
-| `internal/voip/core` | Tipos de domínio, constantes, interface `VoipSocket` |
-| `internal/voip/wanode` | Helpers de node WhatsApp e JID |
-| `internal/voip/media` | Codec MLow, RTP, SRTP, SSRC, resampling, derivação de chaves |
-| `internal/voip/transport` | Relay SCTP, STUN, encoding de subscription |
-| `internal/voip/signaling` | Build/parse de stanza `<call>`, cripto da call-key, parse do relay-ack |
-| `internal/voip/call` | `CallManager` — orquestra uma chamada de ponta a ponta |
-| `client/` | React 19 + Vite + Tailwind v4 + shadcn/ui (discador, cards de chamada, sessões, histórico, login) |
-| `client/public/widget.js` | Widget de chamada embutível no Chatwoot |
-
----
-
-## ⚙️ Início Rápido
-
-```bash
-git clone https://github.com/AstraOnlineWeb/AstraCalls.git
-cd AstraCalls
-
-go mod download                 # dependências Go
-cd client && npm install && cd ..   # dependências do cliente React
-```
-
-### Rodar (somente sinalização — sem compilador C; pareia e chama, sem áudio)
-
-```bash
-go run ./cmd/server -addr :8080          # adicione -debug para logs verbosos
-```
-
-### Rodar (áudio ao vivo — codec MLow nativo via cgo)
-
-```bash
-CGO_ENABLED=1 \
-CGO_LDFLAGS="-L$PWD/native -Wl,-rpath,$PWD/native" \
-go run -tags mlow ./cmd/server -addr :8080 -debug
-```
-
-> O áudio real exige cgo + `native/libopus_mlow.so` (compilada de
-> [opus_mlow](https://github.com/edgardmessias/opus_mlow), com a SONAME corrigida para
-> `libopus_mlow.so`).
-
-Abra `http://localhost:8080/admin/calls`, clique em **Nova sessão** e escaneie o QR (também impresso no
-terminal) em **WhatsApp → Aparelhos conectados**.
-
-### Cliente React em modo dev
-
-```bash
+go test ./...
+go vet ./...
+go build ./...
 cd client
-npm run dev      # Vite na :5173, faz proxy de /api → http://localhost:8080
+npm ci
+npm test
+npm run build
 ```
 
-### Flags / variáveis de ambiente
+Run the backend with `go run ./cmd/server -addr 127.0.0.1:3001` and the frontend
+with `npm run dev -- --host 127.0.0.1`. Use `WACALLS_API_KEY` for administrator
+authentication. Secrets stay out of Git. File-backed secrets are supported for the
+administrator key and PostgreSQL URL. Restaurant media uses `WACALLS_MEDIA_DIR`;
+existing `WACALLS_RECORDING_DIR` is accepted solely as an old media-directory alias.
 
-| Flag / Env | Padrão | Significado |
-|---|---|---|
-| `-addr` | `:8080` | Endereço HTTP |
-| `-static` | `client/dist` | Diretório do cliente estático (opcional) |
-| `-debug` | `false` | Logs verbosos (inclui o log interno do whatsmeow) |
-| `-max-calls-per-session` | `8` | Chamadas simultâneas por sessão (`0` = ilimitado) |
-| `WACALLS_PG_URL` | — | URL do Postgres (usuário com `CREATEDB`) |
-| `WACALLS_PG_NAMESPACE` | `wacalls` | Prefixo dos bancos por sessão |
-| `WACALLS_API_KEY` | — | Se setada, exige `X-API-Key` em `/api/*` |
-| `WACALLS_PUBLIC_IP` | — | IP público p/ NAT 1:1 / ICE-TCP (`auto` detecta) |
-| `WACALLS_UDP_PORT` | — | Porta de mídia (UDP + ICE-TCP) |
-| `WACALLS_MAX_CALLS` | `8` | Equivalente a `-max-calls-per-session` por env |
-| `WACALLS_RECORDING_DIR` | `$TMPDIR/wacalls-recordings` | Armazenamento privado de gravações; a retenção depende da política opt-in do arquivo de conversas. Arquivos antigos não indexados são preservados. |
-| `WACALLS_PUBLIC_BASE_URL` | — | Base externa da URL autenticada de gravação no evento `recording` (ex.: `https://call.seudominio.com`); não torna o áudio público. |
+The root Dockerfile builds a codec-free, non-root HTTP-only image. See
+[deployment](DOCKER.ar.md). The old 0.3.0 offline bundle is not this version; the
+0.4.0 release manifest is intentionally unbuilt until a clean image/archive is verified.
+No deployment, real payment or external account revocation is part of this cleanup.
 
-> **Gravação de chamada (opt-in por sessão).** Ligue em `PUT /api/sessions/{sid}/recording {"enabled":true}`
-> (ou pelo toggle "Gravar" no painel). Nas chamadas QR suportadas, o áudio original
-> recebido do interlocutor e o áudio enviado a ele são mixados num MP3 mono 16 kHz.
-> Com tradução, o áudio enviado pode ser traduzido: não é uma captura separada de
-> todas as vozes originais e traduções. Chamadas abaixo de 3 segundos não geram
-> arquivo; a captura tem limite de 60 minutos. Ao
-> fim da chamada, vira **nota privada** na conversa do número no Chatwoot (se
-> configurado — nunca é reenviado ao cliente) e dispara um evento `recording` no
-> webhook da sessão com `{ callId, to, url, seconds, requiresMasterHeader: true, contentDescription }`.
-> O MP3 fica em `GET /recordings/{callId}.mp3`, exigindo a chave **mestra** no header
-> `X-API-Key`; chave na URL, chave de widget e nome de arquivo não autorizam o download.
-> O áudio não é público. Requer `ffmpeg` (já na imagem). Base
-> feita a partir da contribuição de @Mercantes (PR #12).
+## Data safety and limitations
 
-O arquivo de conversas e a exclusão automática são opções separadas, desativadas
-por padrão. Quando explicitamente ativada, a política propõe 24 horas para os
-originais e 90 dias para resumos após o fechamento manual da conversa, com prazos
-configuráveis e bloqueio de exclusão durante reclamações ou retenções legais.
-O antigo limpador indiscriminado de 48 horas foi desativado; arquivos legados não
-indexados permanecem privados e exigem uma política deliberada de migração/limpeza.
-O arquivo aceita gravações de chamada até 64 MiB e mensagens de voz até 25 MiB.
-A gravação de chamadas Meta oficiais ainda não é suportada. Cópias no Chatwoot,
-webhooks, backups e downloads dos administradores têm retenção independente.
-Consulte [o guia do arquivo e seus limites](CONVERSATION-ARCHIVE.ar.md).
+Existing historical database tables, recordings, keys and provider accounts are not
+deleted. Removed routes cannot access them. Back up and review them separately before
+any irreversible purge. Personal WhatsApp tools outside this repository are unaffected.
 
----
+Current implementation and remaining launch work: [status](plans/IMPLEMENTATION-STATUS.md).
+Earlier audit documents describe their dated scope and are historical evidence.
 
-## 🐳 Deploy em produção (Docker Swarm + Traefik)
+## License and attribution
 
-```bash
-# imagem oficial publicada no Docker Hub:
-#   astraonline/astracalls:develop   (ou uma tag estável, ex.: astraonline/astracalls:v0.0.2)
-# para usar direto, basta referenciá-la na stack (PullImage).
-
-# para buildar a sua própria a partir do código:
-docker build -t astraonline/astracalls:develop .
-docker push astraonline/astracalls:develop
-
-# deploy da stack (Postgres + servidor em rede de host + proxy Traefik)
-docker stack deploy -c astracalls-stack.yml astracalls
-```
-
-Notas de produção:
-- O servidor roda em **rede de host** para a mídia WebRTC enxergar a interface real.
-- Um serviço **socat** com labels do Traefik publica o HTTP em **HTTPS** (necessário porque
-  `getUserMedia` só funciona em contexto seguro).
-- O **PostgreSQL** dedicado escuta apenas em `127.0.0.1` (não exposto à internet).
-- Defina `WACALLS_PUBLIC_IP=auto`, `WACALLS_UDP_PORT`, `WACALLS_PG_URL` e uma
-  `WACALLS_API_KEY` forte nas variáveis da stack.
-
----
-
-## 🔌 API
-
-Todas as rotas são escopadas por sessão. Os eventos chegam por um único canal SSE,
-marcados com o `sessionId` de origem. Se `WACALLS_API_KEY` estiver setada, envie
-`X-API-Key` (ou `?apiKey=` no SSE).
-
-### Sessões e chamadas
-
-| Método | Rota | Função |
-|---|---|---|
-| `GET` | `/api/sessions` | Lista contas (id, nome, jid, status, pareado) |
-| `POST` | `/api/sessions` | Cria uma conta e inicia o pareamento por QR |
-| `DELETE` | `/api/sessions/{sid}` | Desloga e remove uma conta |
-| `POST` | `/api/sessions/{sid}/logout` | Desconecta (mantém p/ re-parear) |
-| `POST` | `/api/sessions/{sid}/pair` | Re-pareia (gera novo QR) |
-| `POST` | `/api/sessions/{sid}/calls` | Inicia chamada de saída (`{ phone, duration_ms?, record? }`) |
-| `POST` | `/api/sessions/{sid}/calls/{id}/webrtc` | Troca o SDP WebRTC do navegador |
-| `POST` | `/api/sessions/{sid}/calls/{id}/accept` | Atende uma chamada recebida |
-| `POST` | `/api/sessions/{sid}/calls/{id}/reject` | Rejeita uma chamada recebida |
-| `DELETE` | `/api/sessions/{sid}/calls/{id}` | Encerra a chamada ativa |
-| `GET` | `/api/sessions/{sid}/history` | Histórico recente (até 50 registros) |
-| `GET` | `/api/events` | Server-sent events (sessões, auth, chamadas) |
-
-### Mensagens, webhooks e Chatwoot *(novo no AstraCalls)*
-
-| Método | Rota | Função |
-|---|---|---|
-| `POST` | `/api/sessions/{sid}/messages/text` | Envia texto |
-| `POST` | `/api/sessions/{sid}/messages/{image\|audio\|video\|document}` | Envia mídia (base64 ou URL) |
-| `GET/POST/DELETE` | `/api/sessions/{sid}/webhook` | Configura webhook de eventos da sessão |
-| `GET/POST/DELETE` | `/api/sessions/{sid}/chatwoot` | Configura a integração Chatwoot |
-| `POST` | `/api/sessions/{sid}/chatwoot/webhook` | Recebe eventos do Chatwoot (outgoing → WhatsApp) |
-| `GET` | `/api/chatwoot/resolve` | Resolve sessão/contato para o widget (`?account_id=&conversation_id=`) |
-
----
-
-## 🧪 Testes
-
-```bash
-go test ./...                 # pilha de mídia: SRTP, STUN, RTP, relay-ack, codec, estado
-cd client && npm run build    # type-check + build de produção do cliente
-```
-
----
-
-## 🔒 Segurança
-
-- Em produção, **sempre** defina `WACALLS_API_KEY` — sem ela qualquer um com acesso HTTP
-  pode criar contas, fazer chamadas e ler histórico.
-- O banco de cada sessão guarda **credenciais do WhatsApp**. Mantenha o Postgres protegido
-  e fora da internet.
-- Exponha sempre por **HTTPS** (o `getUserMedia` exige contexto seguro).
-
----
-
-## 👥 Colaboradores
-
-O AstraCalls é construído sobre o excelente trabalho da equipe do **WaCalls**. Todos os
-créditos do projeto original:
-
-<div align="center">
-
-<a href="https://github.com/jotadev66"><img src="https://github.com/jotadev66.png" width="72" height="72" style="border-radius:50%" alt="jotadev66"/></a>
-<a href="https://github.com/edgardmessias"><img src="https://github.com/edgardmessias.png" width="72" height="72" style="border-radius:50%" alt="edgardmessias"/></a>
-<a href="https://github.com/w3nder"><img src="https://github.com/w3nder.png" width="72" height="72" style="border-radius:50%" alt="w3nder"/></a>
-<a href="https://github.com/purpshell"><img src="https://github.com/purpshell.png" width="72" height="72" style="border-radius:50%" alt="purpshell"/></a>
-
-[**@jotadev66**](https://github.com/jotadev66) · [**@edgardmessias**](https://github.com/edgardmessias) · [**@w3nder**](https://github.com/w3nder)
-
-**Projeto original:** [WaCalls](https://github.com/JotaDev66/WaCalls)
-
-</div>
-
----
-
-## 🙏 Agradecimentos
-
-- [**whatsmeow**](https://github.com/tulir/whatsmeow) — biblioteca Go do protocolo WhatsApp Web
-- [**pion/webrtc**](https://github.com/pion/webrtc) — pilha WebRTC em Go puro (ICE + DTLS + SCTP)
-- [**opus_mlow**](https://github.com/edgardmessias/opus_mlow) — codec MLow nativo
-- [**meowcaller**](https://github.com/purpshell/meowcaller) — referência do motor de chamadas VoIP do WhatsApp
-- [**zapo**](https://github.com/w3nder/zapo) — referência da pilha de mídia VoIP
-- [**WAHA**](https://github.com/devlikeapro/waha) — inspiração para o storage por sessão e a integração Chatwoot
-
----
-
-## 🛠️ Suporte Profissional
-
-Precisa de ajuda para melhorar, customizar ou implementar o projeto?
-
-📱 **WhatsApp:** +55 61 9 9687-8959
-
-💼 Temos uma equipe especializada para:
-
-✅ Customizações e melhorias
-✅ Implementação e deploy completo
-✅ Configuração de arquitetura SaaS
-✅ Integração com outras APIs
-✅ Desenvolvimento de features específicas
-✅ Suporte técnico dedicado
-✅ Consultoria em automação WhatsApp
-✅ Treinamento e documentação
-
----
-
-## 📄 Licença
-
-O AstraCalls é distribuído sob a licença **GNU AGPL-3.0** — veja [LICENSE](./LICENSE).
-
-Isso significa que qualquer uso em rede (inclusive SaaS) exige disponibilizar o
-código-fonte das modificações aos usuários do serviço.
-
-O AstraCalls é um fork do [WaCalls](https://github.com/JotaDev66/WaCalls), que é
-licenciado sob **MIT**. Conforme exigido pela MIT, o aviso de copyright original
-(© 2026 jotadev66) é preservado em [LICENSE.WaCalls](./LICENSE.WaCalls). As porções
-originais permanecem sob os termos MIT; o trabalho derivado, como um todo, é
-licenciado sob AGPL-3.0.
+AGPL-3.0; see LICENSE and LICENSE.WaCalls. This project derives from AstraCalls/WaCalls.
+Original copyright/license notices remain even though the calling subsystem was removed.

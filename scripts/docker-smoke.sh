@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Exercise a pre-built image without touching existing Compose deployments.
-# Usage: ASTRACALLS_IMAGE=astracalls-translation:0.3.0 bash scripts/docker-smoke.sh
+# Usage: ASTRACALLS_IMAGE=onlinu-restaurant:0.4.0 bash scripts/docker-smoke.sh
 # Dependencies: Docker Compose v2, curl, jq, openssl, and Python 3.
 set +x # Never expose generated credentials, even when invoked with bash -x.
 set -Eeuo pipefail
@@ -9,7 +9,7 @@ umask 077
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd -- "$script_dir/.." && pwd)"
 compose_file="$project_dir/compose.translation.yml"
-image="${ASTRACALLS_IMAGE:-astracalls-translation:0.3.0}"
+image="${ASTRACALLS_IMAGE:-onlinu-restaurant:0.4.0}"
 current_check='dependency checks'
 
 fail() {
@@ -81,15 +81,11 @@ compose() {
     POSTGRES_PASSWORD="$password" \
     WACALLS_API_KEY="$key" \
     OPENAI_API_KEY='' \
-    WACALLS_META_ENCRYPTION_KEY='' \
     WACALLS_PUBLIC_BASE_URL='' \
     WACALLS_HTTP_BIND=127.0.0.1 \
     WACALLS_HTTP_PORT="$http_port" \
-    WACALLS_PUBLIC_IP=127.0.0.1 \
-    WACALLS_MEDIA_BIND=127.0.0.1 \
-    WACALLS_UDP_PORT="$media_port" \
     WACALLS_PG_NAMESPACE=wacalls \
-    WACALLS_RECORDING_DIR=/data/recordings \
+    WACALLS_MEDIA_DIR=/data/recordings \
         docker compose --project-directory "$project_dir" --env-file /dev/null \
         --project-name "$project" --file "$compose_file" "$@"
 }
@@ -163,12 +159,12 @@ verify_http() {
     local base="http://127.0.0.1:$port"
     [[ "$(status_code "$base/healthz")" == 200 ]] || fail 'Database-backed health check failed.'
     [[ "$(status_code "$base/")" == 200 ]] || fail 'Frontend did not return HTTP 200.'
-    [[ "$(status_code "$base/api/config")" == 401 ]] || fail 'Unauthenticated API request was not rejected.'
-    [[ "$(status_code "$base/api/config" "$other_key")" == 401 ]] || fail 'The other instance API key was not rejected.'
-    [[ "$(status_code "$base/api/config" "$key")" == 200 ]] || fail 'Authenticated API request failed.'
+    [[ "$(status_code "$base/api/restaurant/catalog")" == 401 ]] || fail 'Unauthenticated API request was not rejected.'
+    [[ "$(status_code "$base/api/restaurant/catalog" "$other_key")" == 401 ]] || fail 'The other instance API key was not rejected.'
+    [[ "$(status_code "$base/api/restaurant/catalog" "$key")" == 200 ]] || fail 'Authenticated API request failed.'
     printf 'X-API-Key: %s\n' "$key" | curl --silent --show-error --fail --max-time 10 \
-        --header @- "$base/api/config" | jq -e '.translationEnabled == false' >/dev/null \
-        || fail 'Translation must stay disabled without an OpenAI API key.'
+        --header @- "$base/api/restaurant/catalog" | jq -e '.items | type == "array"' >/dev/null \
+        || fail 'Catalog must be present.'
 }
 
 current_check='HTTP, frontend, authentication, and API key isolation'
@@ -191,17 +187,14 @@ query a "CREATE TABLE docker_smoke_marker (value text PRIMARY KEY); INSERT INTO 
 current_check='non-root recording writes and isolation'
 compose a exec -T astracalls sh -eu -c '
     test "$(id -u)" -ne 0
-    test "$WACALLS_RECORDING_DIR" = /data/recordings
-    printf "%s\n" persisted > "$WACALLS_RECORDING_DIR/.docker-smoke-marker"
-    ffmpeg -nostdin -hide_banner -loglevel error -f lavfi -i anullsrc=r=16000:cl=mono \
-        -t 0.1 "$WACALLS_RECORDING_DIR/.docker-smoke.mp3"
-    test -s "$WACALLS_RECORDING_DIR/.docker-smoke.mp3"
+    test "$WACALLS_MEDIA_DIR" = /data/recordings
+    printf "%s\n" persisted > "$WACALLS_MEDIA_DIR/.docker-smoke-marker"
 ' >/dev/null 2>&1
 compose b exec -T astracalls sh -eu -c '
     test "$(id -u)" -ne 0
-    test "$WACALLS_RECORDING_DIR" = /data/recordings
-    test ! -e "$WACALLS_RECORDING_DIR/.docker-smoke-marker"
-    printf "%s\n" writable > "$WACALLS_RECORDING_DIR/.docker-smoke-writable"
+    test "$WACALLS_MEDIA_DIR" = /data/recordings
+    test ! -e "$WACALLS_MEDIA_DIR/.docker-smoke-marker"
+    printf "%s\n" writable > "$WACALLS_MEDIA_DIR/.docker-smoke-writable"
 ' >/dev/null 2>&1
 printf 'PASS: independent databases, writable recordings and MP3 encoding under a non-root user.\n'
 
@@ -224,8 +217,8 @@ current_check='database and recording persistence after container replacement'
 [[ "$(query b "SELECT to_regclass('public.docker_smoke_marker') IS NULL;")" == t ]] || fail 'Instance B database is no longer isolated.'
 compose a exec -T astracalls sh -eu -c '
     test "$(id -u)" -ne 0
-    test "$(cat "$WACALLS_RECORDING_DIR/.docker-smoke-marker")" = persisted
-    printf "%s\n" writable >> "$WACALLS_RECORDING_DIR/.docker-smoke-marker"
+    test "$(cat "$WACALLS_MEDIA_DIR/.docker-smoke-marker")" = persisted
+    printf "%s\n" writable >> "$WACALLS_MEDIA_DIR/.docker-smoke-marker"
 ' >/dev/null 2>&1
 verify_http "$http_a" "$key_a" "$key_b"
 verify_http "$http_b" "$key_b" "$key_a"

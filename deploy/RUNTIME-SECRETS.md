@@ -11,10 +11,7 @@ installer remains compatible with its existing `.env` configuration.
 | Existing variable | Optional file variable | Purpose |
 | --- | --- | --- |
 | `WACALLS_API_KEY` | `WACALLS_API_KEY_FILE` | Existing tenant administrator/API authentication and cookie namespace |
-| `WACALLS_PG_URL` | `WACALLS_PG_URL_FILE` | Existing PostgreSQL maintenance connection used by the per-session database provider |
-| `WACALLS_META_ENCRYPTION_KEY` | `WACALLS_META_ENCRYPTION_KEY_FILE` | Existing encryption key for persisted Meta credentials |
-| `WACALLS_WIDGET_KEY` | `WACALLS_WIDGET_KEY_FILE` | Existing limited widget authentication |
-| `OPENAI_API_KEY` | `OPENAI_API_KEY_FILE` | Optional existing translation/archive AI provider access |
+| `WACALLS_PG_URL` | `WACALLS_PG_URL_FILE` | Existing PostgreSQL maintenance connection used by the restaurant database provider |
 
 These are names, not requests to paste credentials into chat or Git. Supply
 existing credentials only through the approved private deployment handoff.

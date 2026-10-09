@@ -216,50 +216,17 @@ class SettingsTests(InstallerTestCase):
 
 
 class ReleaseSettingsTests(InstallerTestCase):
-    release = {"version": "0.2.0", "images": {
-        "app": {"tag": "astracalls-private/app:release-new"},
-        "postgres": {"tag": "astracalls-private/postgres:release-new"},
-    }}
-
-    def new_settings(self, release=None):
-        return installer.new_settings(release or self.release, public_ip="127.0.0.1", http_bind="127.0.0.1",
-                                      media_bind="127.0.0.1", http_port=18080, media_port=55000, public_url=None)
-
-    def test_meta_key_is_independent_base64_encoded_32_byte_random_value(self):
-        first, second = self.new_settings(), self.new_settings()
-        for settings in (first, second):
-            key = settings["WACALLS_META_ENCRYPTION_KEY"]
-            self.assertEqual(len(base64.b64decode(key, validate=True)), 32)
-            self.assertNotIn("\n", key)
-            self.assertEqual(settings["OPENAI_API_KEY"], "")
-            self.assertEqual(settings["ASTRACALLS_VERSION"], "0.2.0")
-            self.assertNotEqual(key, settings["WACALLS_API_KEY"])
-        for name in ("WACALLS_META_ENCRYPTION_KEY", "WACALLS_API_KEY", "POSTGRES_PASSWORD"):
-            self.assertNotEqual(first[name], second[name])
-
-    def test_old_manifest_keeps_its_managed_files_and_settings_format(self):
-        release = {**self.release, "version": "0.1.0"}
-        self.assertEqual(installer.managed_files(release), installer.MANAGED)
-        self.assertNotIn("WACALLS_META_ENCRYPTION_KEY", self.new_settings(release))
-        self.assertIn("META.ar.md", installer.managed_files(self.release))
-
-    def test_only_explicitly_supported_versions_are_allowed(self):
-        for version in (None, "", "0.4.0", "0.3.0-other", "../0.3.0"):
-            with self.subTest(version=version), self.assertRaises(installer.InstallError):
-                installer.validate_release_version({"version": version})
-
-    def test_restaurant_release_keeps_independent_meta_keys_and_versioned_docs(self):
-        release = {**self.release, "version": "0.3.0"}
-        installer.validate_release_version(release)
-        self.assertEqual(installer.managed_files(release), installer.MANAGED + ("META.ar.md", "RESTAURANT.ar.md"))
-        self.assertNotIn("RESTAURANT.ar.md", installer.managed_files(self.release))
-        first, second = self.new_settings(release), self.new_settings(release)
-        for settings in (first, second):
-            self.assertEqual(settings["ASTRACALLS_VERSION"], "0.3.0")
-            self.assertEqual(len(base64.b64decode(settings["WACALLS_META_ENCRYPTION_KEY"], validate=True)), 32)
-            self.assertEqual(settings["OPENAI_API_KEY"], "")
-        for name in ("WACALLS_META_ENCRYPTION_KEY", "WACALLS_API_KEY", "POSTGRES_PASSWORD"):
-            self.assertNotEqual(first[name], second[name])
+    release = {"version":"0.4.0","images":{"app":{"tag":"synthetic/app:0.4.0"},"postgres":{"tag":"synthetic/postgres:16"}}}
+    def new_settings(self,release=None):
+        return installer.new_settings(release or self.release,public_ip=None,http_bind="127.0.0.1",media_bind=None,http_port=18080,media_port=None,public_url=None)
+    def test_only_current_release_and_no_call_credentials(self):
+        for version in (None,"","0.1.0","0.2.0","0.3.0","../0.4.0"):
+            with self.assertRaises(installer.InstallError):installer.validate_release_version({"version":version})
+        installer.validate_release_version(self.release)
+        self.assertEqual(installer.managed_files(self.release),installer.MANAGED+("RESTAURANT.ar.md",))
+        first,second=self.new_settings(),self.new_settings()
+        self.assertFalse(any(k in first for k in ["WACALLS_META_ENCRYPTION_KEY","WACALLS_UDP_PORT","OPENAI_API_KEY"]))
+        for key in ["WACALLS_API_KEY","POSTGRES_PASSWORD"]:self.assertNotEqual(first[key],second[key])
 
     def test_reinstall_keeps_key_and_missing_optional_key_without_generation(self):
         args = argparse.Namespace(http_port=None, media_port=None, public_ip=None,
@@ -275,12 +242,12 @@ class ReleaseSettingsTests(InstallerTestCase):
                     (payload / name).write_text("managed fixture " + name)
                 settings = self.new_settings()
                 if not include_key:
-                    del settings["WACALLS_META_ENCRYPTION_KEY"]
+                    settings["LEGACY_UNTOUCHED_SETTING"] = "preserve-this"
                 env_path = directory / ".env"
                 env_path.write_text("".join(key + "=" + value + "\n" for key, value in settings.items()))
                 env_path.chmod(0o600)
                 before = env_path.read_bytes()
-                marker = {"schema": 1, "version": "0.2.0", "project": "astracalls-test", "directory": str(directory),
+                marker = {"schema": 1, "version": "0.4.0", "project": "astracalls-test", "directory": str(directory),
                           "files": {name: installer.digest(directory / name) for name in installer.managed_files(self.release)}}
                 (directory / ".installation.json").write_text(json.dumps(marker))
                 with mock.patch.object(installer, "PAYLOAD", payload), \
@@ -302,18 +269,17 @@ class ReleaseSettingsTests(InstallerTestCase):
 class InitEnvironmentTests(unittest.TestCase):
     script = Path(__file__).resolve().parents[1] / "scripts/init-env.sh"
 
-    def test_new_private_environment_has_stable_meta_key_and_prints_no_credentials(self):
+    def test_new_private_environment_has_no_call_keys_and_prints_no_credentials(self):
         with tempfile.TemporaryDirectory(prefix="astracalls-init-env-test-") as temporary:
             path = Path(temporary) / ".env"
             first = subprocess.run(["bash", str(self.script), str(path)], check=True, capture_output=True, text=True)
             settings = installer.read_settings(path)
-            key = settings["WACALLS_META_ENCRYPTION_KEY"]
-            self.assertEqual(len(base64.b64decode(key, validate=True)), 32)
+            self.assertNotIn("WACALLS_META_ENCRYPTION_KEY", settings)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             before = path.read_bytes()
             second = subprocess.run(["bash", str(self.script), str(path)], check=True, capture_output=True, text=True)
             self.assertEqual(path.read_bytes(), before)
-            for name in ("WACALLS_API_KEY", "POSTGRES_PASSWORD", "WACALLS_META_ENCRYPTION_KEY"):
+            for name in ("WACALLS_API_KEY", "POSTGRES_PASSWORD"):
                 self.assertNotIn(settings[name], first.stdout + first.stderr + second.stdout + second.stderr)
 
     def test_existing_environment_is_not_backfilled_or_overwritten(self):

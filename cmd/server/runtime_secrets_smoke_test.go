@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"flag"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -22,7 +21,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
 // Opt-in actual-main smoke, confined to a unique database created by this test
@@ -30,7 +28,7 @@ import (
 func TestRuntimeSecretFilesActualMainServer(t *testing.T) {
 	if os.Getenv("ONLINU_RUNTIME_MAIN_HELPER") == "1" {
 		flag.CommandLine = flag.NewFlagSet("wacalls", flag.ExitOnError)
-		os.Args = []string{"wacalls", "-addr", os.Getenv("ONLINU_RUNTIME_HTTP_ADDR"), "-pg-namespace", os.Getenv("ONLINU_RUNTIME_NAMESPACE"), "-static=", "-max-calls-per-session=1"}
+		os.Args = []string{"wacalls", "-addr", os.Getenv("ONLINU_RUNTIME_HTTP_ADDR"), "-pg-namespace", os.Getenv("ONLINU_RUNTIME_NAMESPACE"), "-static="}
 		main()
 		return
 	}
@@ -123,7 +121,7 @@ func TestRuntimeSecretFilesActualMainServer(t *testing.T) {
 	life, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	command := exec.CommandContext(life, os.Args[0], "-test.run=^TestRuntimeSecretFilesActualMainServer$")
 	command.Env = append(cleanRuntimeSecretEnvironment(), "ONLINU_RUNTIME_MAIN_HELPER=1", "ONLINU_RUNTIME_HTTP_ADDR="+address, "ONLINU_RUNTIME_NAMESPACE="+namespace,
-		"WACALLS_API_KEY_FILE="+masterFile, "WACALLS_PG_URL_FILE="+pgFile, "WACALLS_RECORDING_DIR="+filepath.Join(root, "recordings"), "RESTAURANT_GEOGRAPHY_DATA_DIR=",
+		"WACALLS_API_KEY_FILE="+masterFile, "WACALLS_PG_URL_FILE="+pgFile, "WACALLS_MEDIA_DIR="+filepath.Join(root, "recordings"), "RESTAURANT_GEOGRAPHY_DATA_DIR=",
 		"WACALLS_PLATFORM_ISSUER=https://platform.example", "WACALLS_PLATFORM_TENANT_ID=restaurant-a", "WACALLS_PLATFORM_PUBLIC_KEY="+base64.StdEncoding.EncodeToString(public), "WACALLS_PUBLIC_BASE_URL=https://restaurant.example.invalid")
 	command.Stdout = logFile
 	command.Stderr = logFile
@@ -203,44 +201,6 @@ func TestRuntimeSecretFilesActualMainServer(t *testing.T) {
 	if err != nil || superuser || createRole || !createDB || replication || bypassRLS || owner != role {
 		t.Fatal("actual-main runtime did not use the restricted fixture database owner")
 	}
-	// Exercise the original per-session storage migrations directly, without
-	// creating a WhatsApp session or connecting to an external provider.
-	sessionDatabase := namespace + "_storagefixture"
-	sessionContext, sessionCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer sessionCancel()
-	err = admin.QueryRowContext(sessionContext, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname=$1)", sessionDatabase).Scan(&exists)
-	if err != nil || exists {
-		t.Fatal("session fixture database must not already exist")
-	}
-	t.Cleanup(func() {
-		if sessionDatabase != "onlinu_rt_test_"+hex.EncodeToString(unique[:])+"_storagefixture" {
-			t.Error("unsafe session fixture cleanup refused")
-			return
-		}
-		ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
-		defer stop()
-		if _, e := admin.ExecContext(ctx, "DROP DATABASE IF EXISTS "+quoteIdent(sessionDatabase)); e != nil {
-			t.Error("could not remove owned session storage fixture")
-		}
-	})
-	func() {
-		provider, e := newDBProvider(sessionContext, runtimeDSN, namespace, waLog.Noop, slog.New(slog.NewTextHandler(io.Discard, nil)))
-		if e != nil {
-			t.Fatal("restricted role could not initialize the original database provider")
-		}
-		defer provider.close()
-		container, sessionDB, e := provider.openSessionContainer(sessionContext, "storagefixture")
-		if sessionDB != nil {
-			defer sessionDB.Close()
-		}
-		if e != nil || container == nil {
-			t.Fatal("restricted role could not migrate original WhatsApp session storage")
-		}
-		var sessionOwner string
-		if e = admin.QueryRowContext(sessionContext, "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=$1", sessionDatabase).Scan(&sessionOwner); e != nil || sessionOwner != role {
-			t.Fatal("restricted runtime role does not own the session storage fixture")
-		}
-	}()
 	check := func(path, key string, want int) {
 		t.Helper()
 		req, _ := http.NewRequest("GET", origin+path, nil)

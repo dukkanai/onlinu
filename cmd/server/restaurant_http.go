@@ -559,7 +559,6 @@ func (s *server) registerRestaurantRoutes(mux *http.ServeMux) {
 	s.registerRestaurantBrandRoutes(admin)
 	s.registerRestaurantRefundRoutes(pub, admin)
 	s.registerRestaurantLocationPublicRoutes(pub)
-	s.registerConversationArchiveRoutes(admin)
 	s.registerRestaurantPaymentHandlers(pub, admin, hooks)
 	mux.Handle("/payment-hooks/", s.restaurantPaymentHookGuard(hooks))
 	s.registerRestaurantCourierRoutes(mux, func(h http.Handler) http.Handler { return guard(true, h) }, func(h http.Handler) http.Handler { return guard(false, h) })
@@ -622,7 +621,7 @@ func restaurantStatic(directory string) http.Handler {
 			return
 		}
 		switch r.URL.Path {
-		case "/", "/order", "/track", "/account", "/admin", "/admin/calls", "/courier", "/payment-return":
+		case "/", "/order", "/track", "/account", "/admin", "/courier", "/payment-return":
 			w.Header().Set("Cache-Control", "no-cache")
 			http.ServeFile(w, r, filepath.Join(directory, "index.html"))
 			return

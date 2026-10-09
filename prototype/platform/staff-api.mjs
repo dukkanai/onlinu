@@ -162,7 +162,7 @@ export function createStaffApi({directory,orderClient,body,json,uploadSlots={act
           if(req.method==='GET'&&!itemId){await directory.authorize(who.id,tenantId,'stock:read');return json(res,200,await orderClient.stock(tenantId,who.id));}
           if(req.method==='POST'&&itemId){await directory.authorize(who.id,tenantId,'stock:update');return json(res,200,await orderClient.setStock(tenantId,who.id,itemId,await authorizedBody(req,who,tenantId,'stock:update')));}
         }
-        const channelRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/channels(?:\/(web|chatgpt|whatsapp_qr|whatsapp_cloud))?$/.exec(url.pathname);
+        const channelRoute=/^\/api\/restaurants\/([a-z0-9-]{1,64})\/staff\/channels(?:\/(web|chatgpt))?$/.exec(url.pathname);
         if(channelRoute&&orderClient){
           if(url.search)throw problem(400,'invalid_request');
           const [,tenantId,channel]=channelRoute;

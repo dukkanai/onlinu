@@ -148,19 +148,18 @@ def verify_http(configuration, other_key):
     key = configuration["WACALLS_API_KEY"]
     require(request(port, "/healthz")[0] == 200, "Database-backed health check failed.")
     require(request(port, "/")[0] == 200, "Frontend failed to return HTTP 200.")
-    require(request(port, "/api/config")[0] == 401, "Anonymous API access was not rejected.")
-    require(request(port, "/api/config", other_key)[0] == 401, "Another instance's API key was accepted.")
-    require(request(port, "/api/config", AMBIENT["WACALLS_API_KEY"])[0] == 401,
+    require(request(port, "/api/restaurant/catalog")[0] == 401, "Anonymous API access was not rejected.")
+    require(request(port, "/api/restaurant/catalog", other_key)[0] == 401, "Another instance's API key was accepted.")
+    require(request(port, "/api/restaurant/catalog", AMBIENT["WACALLS_API_KEY"])[0] == 401,
             "Ambient API key was accepted.")
-    code, body = request(port, "/api/config", key)
+    code, body = request(port, "/api/restaurant/catalog", key)
     require(code == 200, "Installed API key did not authorize API access.")
-    require(json.loads(body).get("translationEnabled") is False,
-            "Translation unexpectedly enabled despite a blank installed OpenAI key.")
+    require(isinstance(json.loads(body).get("items"),list), "Catalog missing.")
 
 
 def restaurant_state(configuration):
     """Read only disposable instances; never enumerate production customer data."""
-    if configuration["ASTRACALLS_VERSION"] != "0.3.0":
+    if configuration["ASTRACALLS_VERSION"] != "0.4.0":
         return None
     port = int(configuration["WACALLS_HTTP_PORT"])
     key = configuration["WACALLS_API_KEY"]
@@ -189,7 +188,7 @@ def restaurant_state(configuration):
     code, body = request(port, "/storefront-api/account")
     require(code == 200 and json.loads(body).get("customer") is None,
             "A fresh installation unexpectedly inherited a customer session.")
-    for route in ("/admin", "/admin/calls", "/order", "/track", "/account"):
+    for route in ("/admin", "/order", "/track", "/account"):
         require(request(port, route)[0] == 200, "A restaurant frontend route did not load.")
     return {"codes": codes, "version": catalog["version"]}
 
@@ -260,11 +259,11 @@ class SmokeTest:
         require(self.query(second, "SELECT to_regclass('public.installer_smoke_marker') IS NULL;") == "t",
                 "Database data leaked to the second instance.")
         self.shell(first, 'test "$(id -u)" -ne 0; '
-                          'test "$(cat "$WACALLS_RECORDING_DIR/.installer-smoke-marker")" = persisted; '
-                          'test -w "$WACALLS_RECORDING_DIR/.installer-smoke-marker"')
+                          'test "$(cat "$WACALLS_MEDIA_DIR/.installer-smoke-marker")" = persisted; '
+                          'test -w "$WACALLS_MEDIA_DIR/.installer-smoke-marker"')
         self.shell(second, 'test "$(id -u)" -ne 0; '
-                           'test ! -e "$WACALLS_RECORDING_DIR/.installer-smoke-marker"; '
-                           'test "$(cat "$WACALLS_RECORDING_DIR/.installer-smoke-writable")" = writable')
+                           'test ! -e "$WACALLS_MEDIA_DIR/.installer-smoke-marker"; '
+                           'test "$(cat "$WACALLS_MEDIA_DIR/.installer-smoke-writable")" = writable')
 
     def execute(self):
         require(self.bundle.is_file(), "Ready installer bundle was not found.")
@@ -323,20 +322,10 @@ class SmokeTest:
         for instance, configuration in ((first, first_settings), (second, second_settings)):
             require(not (instance["directory"] / ".env").stat().st_mode & 0o077,
                     "Installed .env is accessible by another user.")
-            require(configuration["OPENAI_API_KEY"] == "", "Ambient OpenAI key contaminated installation.")
+            require("OPENAI_API_KEY" not in configuration, "Removed provider setting retained.")
             require(configuration["WACALLS_API_KEY"] != AMBIENT["WACALLS_API_KEY"],
                     "Ambient API key contaminated installation.")
-            if configuration["ASTRACALLS_VERSION"] in ("0.2.0", "0.3.0"):
-                meta_key = configuration.get("WACALLS_META_ENCRYPTION_KEY", "")
-                require(meta_key != AMBIENT["WACALLS_META_ENCRYPTION_KEY"],
-                        "Ambient Meta encryption key contaminated installation.")
-                try:
-                    valid_meta_key = len(base64.b64decode(meta_key, validate=True)) == 32
-                except ValueError:
-                    valid_meta_key = False
-                require(valid_meta_key, "Installed Meta encryption key is not a base64-encoded 32-byte value.")
-            require(configuration["WACALLS_HTTP_BIND"] == "127.0.0.1"
-                    and configuration["WACALLS_MEDIA_BIND"] == "127.0.0.1",
+            require(configuration["WACALLS_HTTP_BIND"] == "127.0.0.1",
                     "Installer did not retain localhost default bindings.")
             require(int(configuration["WACALLS_HTTP_PORT"]) > holder_port,
                     "Installer did not skip the stopped container's reserved HTTP port.")
@@ -346,12 +335,9 @@ class SmokeTest:
                 "Instances reused an API key.")
         require(first_settings["POSTGRES_PASSWORD"] != second_settings["POSTGRES_PASSWORD"],
                 "Instances reused a database password.")
-        if first_settings["ASTRACALLS_VERSION"] in ("0.2.0", "0.3.0"):
-            require(first_settings["WACALLS_META_ENCRYPTION_KEY"] != second_settings["WACALLS_META_ENCRYPTION_KEY"],
-                    "Instances reused a Meta encryption key.")
         all_ports = [int(config[key]) for config in (first_settings, second_settings)
-                     for key in ("WACALLS_HTTP_PORT", "WACALLS_UDP_PORT")]
-        require(len(set(all_ports)) == 4 and not set(all_ports) & ports_before
+                     for key in ("WACALLS_HTTP_PORT",)]
+        require(len(set(all_ports)) == 2 and not set(all_ports) & ports_before
                 and holder_port not in all_ports, "Installed instances do not have separate free ports.")
         first_volumes = set(resource_names(first["project"], "volume"))
         second_volumes = set(resource_names(second["project"], "volume"))
@@ -371,10 +357,10 @@ class SmokeTest:
             step("PASS: public demo catalogs, unique table QR codes, empty order/customer state and restaurant key isolation.")
         self.query(first, "CREATE TABLE installer_smoke_marker (value text PRIMARY KEY); "
                           "INSERT INTO installer_smoke_marker VALUES ('persisted');")
-        self.shell(first, 'test "$(id -u)" -ne 0; test "$WACALLS_RECORDING_DIR" = /data/recordings; '
-                          'printf "%s\\n" persisted > "$WACALLS_RECORDING_DIR/.installer-smoke-marker"')
-        self.shell(second, 'test "$(id -u)" -ne 0; test "$WACALLS_RECORDING_DIR" = /data/recordings; '
-                           'printf "%s\\n" writable > "$WACALLS_RECORDING_DIR/.installer-smoke-writable"')
+        self.shell(first, 'test "$(id -u)" -ne 0; test "$WACALLS_MEDIA_DIR" = /data/recordings; '
+                          'printf "%s\\n" persisted > "$WACALLS_MEDIA_DIR/.installer-smoke-marker"')
+        self.shell(second, 'test "$(id -u)" -ne 0; test "$WACALLS_MEDIA_DIR" = /data/recordings; '
+                           'printf "%s\\n" writable > "$WACALLS_MEDIA_DIR/.installer-smoke-writable"')
         self.verify_data(first, second)
         self.verify_main()
         step("PASS: automatic port selection, authentication, independent credentials/databases/recordings, non-root writes.")

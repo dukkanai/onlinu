@@ -8,7 +8,7 @@ import 'core_fakes.dart';
 
 void main() {
   test(
-      'channel-only staff use independent permission and cannot enable unimplemented adapters',
+      'channel-only staff use independent permission for the two active adapters',
       () async {
     final api = FakeCoreGateway()
       ..currentProfile = profileFixture(permissions: ['channels:manage']);
@@ -18,8 +18,8 @@ void main() {
     expect(c.section, CoreSection.channels);
     expect(api.reads, 0);
     expect(api.stockReads, 0);
-    expect(c.channels.length, 4);
-    await c.changeChannel(c.channels.last, true);
+    expect(c.channels.length, 2);
+    expect(c.channels.every((v) => v.adapterImplemented), true);
     expect(api.channelWrites, 0);
     final old = c.channels.first;
     await c.changeChannel(old, false);
@@ -66,9 +66,7 @@ void main() {
         {'expectedVersion': 1, 'newOrdersEnabled': false});
     await expectLater(api.setChannel('demo-b', channelFixture('web'), false),
         throwsA(isA<CoreException>()));
-    await expectLater(
-        api.setChannel('demo-a', channelFixture('whatsapp_qr'), true),
-        throwsA(isA<CoreException>()));
+    expect(() => channelFixture('whatsapp_qr'), throwsA(isA<CoreException>()));
     expect(session.transport.calls.length, 1);
   });
   testWidgets(
@@ -82,7 +80,7 @@ void main() {
     await tester.tap(find.text('الدخول عبر المتصفح'));
     await tester.pumpAndSettle();
     expect(find.text('مسار استقبال الطلبات لهذه القناة لم يكتمل بعد.'),
-        findsNWidgets(2));
+        findsNothing);
     expect(find.text('إيقاف الطلبات الجديدة'), findsNWidgets(2));
     await tester.tap(find.text('إيقاف الطلبات الجديدة').first);
     await tester.pumpAndSettle();

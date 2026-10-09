@@ -1,3 +1,19 @@
+# Current scope override — 2026-10-09
+
+Owner authorized a Git restore point, then removal of restaurant WhatsApp Business
+API and QR channels. Restore tag: `before-whatsapp-removal-20261009`, exact commit
+`3614be85c97744b95e25f55ac4e0e77de4b06394`; pushed and verified. Cleanup branch:
+`refactor/restaurant-chatgpt-only`. The WhatsApp collection/source/binding/dispatch
+backlog below is cancelled by this scope change, not unfinished current work.
+
+Retain the restaurant storefront, administration/delivery/payment core and
+ChatGPT/MCP signed integration. Next: finish cleanup acceptance, then validate the
+end-to-end restaurant + ChatGPT ordering/recovery/administration journey and remaining
+launch gates. No production deployment or deletion of old external data is authorized.
+The 0.4.0 runtime/offline package requires a new build; the old 0.3.0 binary is not it.
+
+## Historical implementation evidence below
+
 # Product completion ledger
 
 Owner-authorized direction, 2026-10-05: complete the existing restaurant SaaS

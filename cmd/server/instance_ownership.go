@@ -15,7 +15,7 @@ import (
 var errInstanceAlreadyRunning = errors.New("another application already owns this database namespace; use a separate namespace for an independent restaurant")
 
 // A dedicated PostgreSQL session, not a process-local mutex, owns the instance.
-// This intentionally enforces single-active operation for WhatsApp sessions;
+// This intentionally enforces single-active operation for restaurant state;
 // it is not an active-active cluster/failover implementation.
 type instanceOwnership struct {
 	conn      *sql.Conn

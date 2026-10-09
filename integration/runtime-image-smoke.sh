@@ -73,9 +73,9 @@ for attempt in $(seq 1 60); do
 done
 [[ "$(docker inspect --format '{{.State.Health.Status}}' "$postgres")" == healthy ]] || { echo 'Fixture PostgreSQL did not become healthy.' >&2; redacted_diagnostics "$postgres"; exit 1; }
 [[ "$(docker exec "$postgres" psql -U postgres -d postgres -Atc "SELECT rolsuper OR rolcreaterole OR rolreplication OR rolbypassrls OR NOT rolcreatedb OR NOT rolcanlogin FROM pg_roles WHERE rolname='onlinu_runtime'")" == f ]] || { echo 'Restricted runtime role was not bootstrapped.' >&2; redacted_diagnostics "$postgres"; exit 1; }
-# Inspect shipped codec linkage without making any call or provider request.
+# Verify the restaurant executable is present; no codec or calling runtime remains.
 docker run --rm --network none --entrypoint /bin/sh "$image" -c \
-  'test -r /usr/local/lib/libopus_mlow.so && ldd /usr/local/bin/wacalls > /tmp/linkage && ! grep "not found" /tmp/linkage'
+  'test -x /usr/local/bin/wacalls && test ! -e /usr/local/lib/libopus_mlow.so'
 docker create --name "$runtime" --network "$network" \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true \
   --tmpfs /tmp:rw,noexec,nosuid,size=128m,mode=1777 \
@@ -121,7 +121,7 @@ import json, sys
 with open(sys.argv[1], 'w', encoding='utf-8') as output:
     json.dump({'sourceCommit': sys.argv[2], 'localImageId': sys.argv[3],
                'registryPublished': False, 'productionDeployed': False,
-               'checks': ['codec-linkage', 'uid-10001', 'readonly-root', 'file-backed-secrets',
+               'checks': ['restaurant-executable', 'uid-10001', 'readonly-root', 'file-backed-secrets',
                           'health', 'no-published-runtime-ports', 'administrator-authentication', 'restricted-database-owner', 'file-backed-role-bootstrap',
                           'no-fixture-secret-in-runtime-log'],
                'notVerified': ['real-calls', 'provider-accounts', 'production-routing',

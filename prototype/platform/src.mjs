@@ -9,7 +9,6 @@ import { createMcpHandler } from './mcp.mjs';
 import { createEvents } from './events.mjs';
 import { createMoyasarTestGateway } from './moyasar.mjs';
 import { createOidcLogin } from './oidc.mjs';
-import { createChannels } from './channels.mjs';
 
 const ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const htmlEscape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -140,7 +139,6 @@ export async function createPlatform(config, { pool = new pg.Pool({connectionStr
     onRegistrationRejected:protectedStage?result=>console.info(JSON.stringify({event:'oauth_registration_rejected',...result})):undefined,
     onGrantRevoked:(principalId,transaction)=>events.revokeAll(principalId,transaction)});
   const login=protectedStage?createOidcLogin({pool,baseUrl:config.baseUrl,...config.oidc}):null;
-  const channels=createChannels({pool,tenants:config.tenants.map(tenant=>tenant.id)});
   const store = createStore({pool,baseUrl:config.baseUrl,tenantRequest,listRestaurants});
   const service = {id:'platform-service',role:'service'};
   const loadOwnedOrder = async (principal, {tenantId,orderId}) => {
@@ -153,7 +151,7 @@ export async function createPlatform(config, { pool = new pg.Pool({connectionStr
     return loadOwnedOrder(principal,args);
   };
   const events = createEvents({pool,encryptionKey:config.encryptionKey,authorizeOrder:loadOwnedOrder,webhookFetch});
-  await auth.init(); await store.init(); await events.init();await channels.init();if(login)await login.init();
+  await auth.init(); await store.init(); await events.init();if(login)await login.init();
   const gateway = config.paymentMode === 'moyasar-test' ? createMoyasarTestGateway({secretKey:config.moyasarKey}) : null;
   const uiHtml = await readFile(new URL('./public/widget.html',import.meta.url),'utf8');
   const getMenu = async args => tenantRequest(args.tenantId,'/menu');
@@ -396,11 +394,6 @@ export async function createPlatform(config, { pool = new pg.Pool({connectionStr
       if(url.pathname.startsWith('/api/merchant/')) {
         if(principal.role!=='merchant')throw problem(403,'merchant_required');
         if(url.pathname==='/api/merchant/restaurants' && req.method==='GET')return json(res,200,{restaurants:listRestaurants().filter(r=>principal.tenantIds.includes(r.id))});
-        const channelMatch=/^\/api\/merchant\/restaurants\/(demo-[ab])\/channels$/.exec(url.pathname);
-        if(channelMatch) {
-          if(req.method==='GET')return json(res,200,await channels.get(principal,channelMatch[1]));
-          if(req.method==='POST')return json(res,200,await channels.update(principal,channelMatch[1],await body(req)));
-        }
         match=/^\/api\/merchant\/restaurants\/(demo-[ab])\/orders(?:\/([a-zA-Z0-9_-]{1,128})\/status)?$/.exec(url.pathname);
         if(match) {
           if(!principal.tenantIds.includes(match[1]))throw problem(403,'tenant_forbidden');
@@ -447,7 +440,7 @@ export async function createPlatform(config, { pool = new pg.Pool({connectionStr
     }
     finally { working=false; }
   }
-  return {handle,pool,auth,store,events,channels,tenantRequest,tick,workerHealth,
+  return {handle,pool,auth,store,events,tenantRequest,tick,workerHealth,
     startWorker(){timer=setInterval(tick,1000);timer.unref();},
     async close(){clearInterval(timer);while(working)await new Promise(resolve=>setTimeout(resolve,20));await pool.end();},
   };

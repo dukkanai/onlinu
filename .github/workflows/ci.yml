@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       runtime_image:
-        description: Run separately approved codec-bearing runtime image acceptance
+        description: Run separately approved restaurant runtime image acceptance
         type: boolean
         required: false
         default: false
@@ -96,9 +96,7 @@ jobs:
     env:
       CGO_ENABLED: "0"
       TEST_RESTAURANT_PG_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_restaurant_test?sslmode=disable
-      TEST_META_PG_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_meta_test?sslmode=disable
       TENANT_TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_tenant_prototype_test?sslmode=disable
-      CHANNELS_TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_channels_prototype_test?sslmode=disable
       TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_oauth_refresh_test?sslmode=disable
       IDENTITY_TEST_DATABASE_URL: postgres://postgres:ci-only-test-password@127.0.0.1:5432/astracalls_identity_test?sslmode=disable
       TEST_CORE_ADAPTER: "1"
@@ -155,7 +153,7 @@ jobs:
         env:
           PGPASSWORD: ci-only-test-password
         run: |
-          for database in astracalls_restaurant_test astracalls_meta_test astracalls_tenant_prototype_test astracalls_channels_prototype_test astracalls_oauth_refresh_test astracalls_identity_test; do
+          for database in astracalls_restaurant_test astracalls_tenant_prototype_test astracalls_oauth_refresh_test astracalls_identity_test; do
             psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $database"
           done
 
@@ -189,11 +187,6 @@ jobs:
         env:
           CGO_ENABLED: "1"
         run: go test -race -count=1 -v ./cmd/server -run '^TestPlatformOrderNodeSignatureCompatibility$'
-
-      - name: Test private WhatsApp proposal and durable inbox boundaries
-        env:
-          CGO_ENABLED: "1"
-        run: go test -race -count=1 -v ./cmd/server -run '^TestRestaurantWhatsapp'
 
       - name: Test
         env:
@@ -399,7 +392,7 @@ jobs:
       - name: Install isolated journal fixture dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: prototype/platform
-      - name: Build the original codec-bearing runtime image
+      - name: Build the original restaurant runtime image
         timeout-minutes: 35
         run: docker build --tag "onlinu-runtime-smoke:$GITHUB_SHA" .
       - name: Exercise isolated runtime image

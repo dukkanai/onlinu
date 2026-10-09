@@ -144,7 +144,7 @@ export function createCoreAdapter({ restaurants, fetchImpl = fetch, timeoutMs = 
       route(tenantId);
       return { tenantId, source: 'existing_restaurant_core', readMenu: true, quote: true,
         quoteRequiresContact: true, cartPreviewWithoutContact: true,
-        createOrder: false, payment: false, whatsappOrderIngress: false };
+        createOrder: false, payment: false };
     },
     preview(tenantId, input) {
       route(tenantId);

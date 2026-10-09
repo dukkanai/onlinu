@@ -206,7 +206,7 @@ try {
   assert.equal((await menuPost(alice,{expectedVersion:menuBefore.data.version,priceMinor:1200})).status,409);
   assert.equal((await menuPost(alice,{expectedVersion:priceChange.data.version,priceMinor:1200})).status,200);
   const channels=await send(channelsPath,{cookie:alice.cookie});assert.equal(channels.status,200);
-  assert.equal(channels.data.channels.find(row=>row.channel==='whatsapp_qr').adapterImplemented,false);
+  assert.deepEqual(channels.data.channels.map(row=>row.channel).sort(),['chatgpt','web']);
   const setChannel=(channel,newOrdersEnabled,expectedVersion)=>send(channelsPath+'/'+channel,{method:'POST',cookie:alice.cookie,
     headers:{origin:baseUrl,'x-csrf-token':csrf},body:{newOrdersEnabled,expectedVersion}});
   assert.equal((await setChannel('chatgpt','false',1)).status,400);

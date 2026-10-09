@@ -63,8 +63,7 @@ def prepare_fixture(root, tenant, port, image, number):
     values = {'administrator': f'synthetic-compose-{number}-administrator',
               'pg_bootstrap': f'synthetic-compose-{number}-bootstrap',
               'runtime_password': f'synthetic-compose-{number}-database',
-              'runtime_pg_url': f'postgres://onlinu_runtime:synthetic-compose-{number}-database@postgres:5432/postgres?sslmode=disable',
-              'meta_key': base64.b64encode(bytes([number + 1]) * 32).decode()}
+              'runtime_pg_url': f'postgres://onlinu_runtime:synthetic-compose-{number}-database@postgres:5432/postgres?sslmode=disable'}
     if set(rendered['secrets']) != set(values):
         raise SmokeError('Unexpected fixture secret contract.')
     for name, ref in rendered['secrets'].items():

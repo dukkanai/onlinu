@@ -14,14 +14,15 @@ test('staff pages display only authorized actions and escape dynamic content',()
   assert.doesNotMatch(staffOrdersPage({tenantId:'a',membership:{permissions:['payments:collect']},orders:[{...order,paymentStatus:'paid'}],csrf:'x'}),/\/cash/);
   assert.doesNotMatch(staffHome({memberships:[{tenantId:'secret',role:'courier',permissions:['delivery:read']}]}),/secret/);
 });
-test('channel controls separate ordering capability from existing WhatsApp connectivity',()=>{
+test('channel controls expose only website and ChatGPT ordering',()=>{
   const html=staffChannelsPage({tenantId:'a',csrf:'token',channels:[
     {channel:'web',newOrdersEnabled:true,adapterImplemented:true,version:1},
-    {channel:'whatsapp_qr',newOrdersEnabled:false,adapterImplemented:false,version:1},
+    {channel:'chatgpt',newOrdersEnabled:false,adapterImplemented:true,version:1},
   ]});
   assert.match(html,/action="\/manage\/a\/channels\/web"/);
   assert.doesNotMatch(html,/action="\/manage\/a\/channels\/whatsapp_qr"/);
-  assert.match(html,/المكالمات القائمة/);
+  assert.match(html,/action="\/manage\/a\/channels\/chatgpt"/);
+  assert.doesNotMatch(html,/واتساب/);
   assert.match(staffHome({memberships:[{tenantId:'a',role:'manager',permissions:['channels:manage']}]}),/\/manage\/a\/channels/);
 });
 test('kitchen detail uses historical lines and escapes customer instructions',()=>{

@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 PAYLOAD = Path(__file__).resolve().parent
 MANAGED = ("compose.yml", "manage.sh", "release.json", "INSTALL.ar.md", "LICENSE", "LICENSE.WaCalls")
-SUPPORTED_VERSIONS = frozenset(("0.1.0", "0.2.0", "0.3.0"))
+SUPPORTED_VERSIONS = frozenset(("0.4.0",))
 ENV = {key: value for key, value in os.environ.items()
        if not key.startswith(("WACALLS_", "POSTGRES_", "ASTRACALLS_", "COMPOSE_", "OPENAI_"))}
 
@@ -196,21 +196,17 @@ def managed_files(release):
     # Keep old-release validation possible without silently changing its file
     # set. A different version is never treated as an in-place upgrade.
     validate_release_version(release)
-    additions = {"0.1.0": (), "0.2.0": ("META.ar.md",), "0.3.0": ("META.ar.md", "RESTAURANT.ar.md")}
-    return MANAGED + additions[release["version"]]
+    return MANAGED + ("RESTAURANT.ar.md",)
 
 
 def new_settings(release, *, public_ip, http_bind, media_bind, http_port, media_port, public_url):
     """Generate independent private settings; never call this for a reinstall."""
     settings = {
         "ASTRACALLS_IMAGE": release["images"]["app"]["tag"], "ASTRACALLS_VERSION": release["version"],
-        "POSTGRES_IMAGE": release["images"]["postgres"]["tag"], "OPENAI_API_KEY": "",
+        "POSTGRES_IMAGE": release["images"]["postgres"]["tag"],
         "WACALLS_API_KEY": secrets.token_hex(32), "POSTGRES_PASSWORD": secrets.token_hex(32),
-        "WACALLS_PUBLIC_IP": public_ip, "WACALLS_UDP_PORT": str(media_port), "WACALLS_MEDIA_BIND": media_bind,
         "WACALLS_PUBLIC_BASE_URL": public_url or "", "WACALLS_HTTP_BIND": http_bind, "WACALLS_HTTP_PORT": str(http_port),
     }
-    if release["version"] in ("0.2.0", "0.3.0"):
-        settings["WACALLS_META_ENCRYPTION_KEY"] = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
     return settings
 
 
@@ -266,8 +262,8 @@ def validate_existing(directory, project, release, args):
     if env_path.is_symlink() or not env_path.is_file() or env_path.stat().st_mode & 0o077:
         raise InstallError("Existing .env must be a regular private file (chmod 600).")
     settings = read_settings(env_path)
-    for option, key in (("http_port", "WACALLS_HTTP_PORT"), ("media_port", "WACALLS_UDP_PORT"), ("public_ip", "WACALLS_PUBLIC_IP"),
-                        ("http_bind", "WACALLS_HTTP_BIND"), ("media_bind", "WACALLS_MEDIA_BIND"), ("public_url", "WACALLS_PUBLIC_BASE_URL")):
+    for option, key in (("http_port", "WACALLS_HTTP_PORT"),
+                        ("http_bind", "WACALLS_HTTP_BIND"), ("public_url", "WACALLS_PUBLIC_BASE_URL")):
         requested = getattr(args, option)
         if requested is not None and str(requested) != settings.get(key):
             raise InstallError("Requested options differ from the existing configuration. Edit its .env and use manage.sh restart explicitly.")
@@ -290,6 +286,8 @@ def main():
     directory = requested_dir.resolve()
     if directory in (Path("/"), Path.home(), Path.cwd().resolve(), PAYLOAD):
         raise InstallError("Choose a dedicated installation subdirectory.")
+    if args.media_port is not None or args.media_bind is not None or args.public_ip is not None:
+        raise InstallError("Calling media options were removed; only HTTP is supported.")
     project = "astracalls-" + args.name
     preflight()
     release = json.loads((PAYLOAD / "release.json").read_text())
@@ -318,7 +316,7 @@ def main():
             media_bind = args.media_bind or ("127.0.0.1" if ipaddress.ip_address(public_ip).is_loopback else "0.0.0.0")
             reserved = reserved_ports(container_info())
             http_port = choose_port(args.http_port, 8080, 9000, http_bind, reserved)
-            media_port = choose_port(args.media_port, 50000, 60000, media_bind, reserved, media=True)
+            media_port = None
             load_images(release)
             settings = new_settings(release, public_ip=public_ip, http_bind=http_bind, media_bind=media_bind,
                                     http_port=http_port, media_port=media_port, public_url=args.public_url)
@@ -343,17 +341,10 @@ def main():
             raise InstallError("Startup did not become healthy. Configuration and any instance data were retained for a safe retry. Run " + str(directory / "manage.sh") + " status. No unrelated containers were changed.")
         print("Installation healthy: " + project)
         print("HTTP: http://" + settings["WACALLS_HTTP_BIND"] + ":" + settings["WACALLS_HTTP_PORT"])
-        print("Media TCP/UDP port: " + settings["WACALLS_UDP_PORT"])
         print("Manage: " + str(directory / "manage.sh") + " status")
         print("Private settings: " + str(directory / ".env") + " (keys are not printed)")
-        if release["version"] == "0.3.0":
-            print("Restaurant: / | Restaurant administration: /admin | WhatsApp calls: /admin/calls")
-            print("Next: replace the labelled demo menu in /admin and configure HTTPS before receiving customer orders.")
-            print("Optional calls: set your OpenAI key for translation and choose QR or official Meta account setup.")
-        elif release["version"] == "0.2.0":
-            print("Next: configure HTTPS/network access, set your OpenAI key, and choose QR or official Meta account setup.")
-        else:
-            print("Next: configure HTTPS/network access, set your OpenAI key, and pair a fresh WhatsApp account.")
+        print("Restaurant: / | Restaurant administration: /admin")
+        print("Configure HTTPS and replace the demo menu before accepting orders.")
 
 
 if __name__ == "__main__":

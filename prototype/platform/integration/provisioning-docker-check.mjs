@@ -174,8 +174,7 @@ export async function runSmoke(image, env = process.env) {
           // unchanged. These public synthetic values never represent real keys.
           const values = { administrator: `public-ci-admin-${nonce}-${number}`, pg_bootstrap: `public-ci-bootstrap-${nonce}-${number}`,
             runtime_password: `public-ci-database-${nonce}-${number}`,
-            runtime_pg_url: `postgres://onlinu_runtime:public-ci-database-${nonce}-${number}@postgres:5432/postgres?sslmode=disable`,
-            meta_key: Buffer.alloc(32, number + 1).toString('base64') };
+            runtime_pg_url: `postgres://onlinu_runtime:public-ci-database-${nonce}-${number}@postgres:5432/postgres?sslmode=disable` };
           f.key = values.administrator;
           if (Object.keys(f.spec.secrets).sort().join(',') !== Object.keys(values).sort().join(',')) throw new Error('fixture_secret_contract');
           for (const [name, entry] of Object.entries(f.spec.secrets)) {

@@ -11,7 +11,7 @@ import (
 
 const runtimeSecretFileLimit = 64 * 1024
 
-var runtimeSecretNames = []string{"WACALLS_API_KEY", "WACALLS_PG_URL", "WACALLS_META_ENCRYPTION_KEY", "WACALLS_WIDGET_KEY", "OPENAI_API_KEY"}
+var runtimeSecretNames = []string{"WACALLS_API_KEY", "WACALLS_PG_URL"}
 
 type runtimeFileSecrets struct{ values map[string]string }
 

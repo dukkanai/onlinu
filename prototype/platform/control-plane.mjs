@@ -634,7 +634,7 @@ export async function createControlPlane({ pool, baseUrl, oidc, csrfKey, restaur
           return redirect(res,`/manage/${tenantId}/stock`,303);
         }
       }
-      const managementChannels=/^\/manage\/([a-z0-9-]{1,64})\/channels(?:\/(web|chatgpt|whatsapp_qr|whatsapp_cloud))?$/.exec(url.pathname);
+      const managementChannels=/^\/manage\/([a-z0-9-]{1,64})\/channels(?:\/(web|chatgpt))?$/.exec(url.pathname);
       if(managementChannels&&orderClient){
         const [,tenantId,channel]=managementChannels;
         if(req.method==='GET'&&!await auth.authenticate(req,{cookieOnly:true}))return redirect(res,'/auth/login?returnTo='+encodeURIComponent(`/manage/${tenantId}/channels`));

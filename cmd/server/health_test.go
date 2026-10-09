@@ -38,9 +38,7 @@ func (healthTestConn) Begin() (driver.Tx, error) { return nil, errors.New("not s
 func TestHealthMissingDependencies(t *testing.T) {
 	for name, srv := range map[string]*server{
 		"server":   nil,
-		"sessions": {},
-		"store":    {sessions: &SessionManager{}},
-		"database": {sessions: &SessionManager{store: &sessionStore{}}},
+		"database": {},
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -73,7 +71,7 @@ func TestHealthDatabaseReadiness(t *testing.T) {
 				return tc.err
 			}})
 			t.Cleanup(func() { _ = db.Close() })
-			srv := &server{sessions: &SessionManager{store: &sessionStore{db: db}}}
+			srv := &server{db: db}
 			w := httptest.NewRecorder()
 			srv.handleHealth(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 			if !pinged || w.Code != tc.code || w.Body.String() != tc.body {
@@ -92,7 +90,7 @@ func TestHealthRespectsRequestCancellation(t *testing.T) {
 		return ctx.Err()
 	}})
 	t.Cleanup(func() { _ = db.Close() })
-	srv := &server{sessions: &SessionManager{store: &sessionStore{db: db}}}
+	srv := &server{db: db}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 	w := httptest.NewRecorder()

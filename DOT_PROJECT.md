@@ -1,3 +1,17 @@
+# Current scope — 9 October 2026
+
+Owner-approved removal of all restaurant WhatsApp channels is in progress on
+`refactor/restaurant-chatgpt-only`. Restore tag `before-whatsapp-removal-20261009`
+is verified on origin at `3614be85c97744b95e25f55ac4e0e77de4b06394`.
+Current runtime: Go restaurant core + React storefront/admin + signed ChatGPT/MCP
+platform. No WhatsApp/Meta/QR pairing, calling, translation or conversation archive.
+No codec, native calling binaries or per-session database provider.
+Only web/chatgpt order channels remain. Personal Baileys is outside this repository.
+
+Read README.md for current instructions. The section below is dated historical
+context, not active scope. Do not restore removed WhatsApp features from these notes.
+The direct dot-only coding agreement and production/security boundaries still apply.
+
 # onlinu — project reference
 
 Updated: 2026-10-08 UTC. Initial inspected upstream: `main` at

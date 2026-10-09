@@ -16,8 +16,8 @@ if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
         'Usage: bash scripts/build-installer.sh [image_archive.tar.gz] [output.run]' \
         '' \
         'Builds an offline Linux/AMD64 installer from an explicit clean file list.' \
-        'Defaults: ../artifacts/astracalls-installer-images-0.3.0-linux-amd64.tar.gz' \
-        '          ../artifacts/astracalls-installer-0.3.0-linux-amd64.run' \
+        'Defaults: ../artifacts/astracalls-installer-images-0.4.0-linux-amd64.tar.gz' \
+        '          ../artifacts/astracalls-installer-0.4.0-linux-amd64.run' \
         'The output must not already exist. No Docker or network access is used.'
     exit 0
 fi
@@ -29,8 +29,8 @@ done
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 artifacts_dir="$(cd -- "$project_dir/.." && pwd -P)/artifacts"
-image_archive="${1:-$artifacts_dir/astracalls-installer-images-0.3.0-linux-amd64.tar.gz}"
-output="${2:-$artifacts_dir/astracalls-installer-0.3.0-linux-amd64.run}"
+image_archive="${1:-$artifacts_dir/astracalls-installer-images-0.4.0-linux-amd64.tar.gz}"
+output="${2:-$artifacts_dir/astracalls-installer-0.4.0-linux-amd64.run}"
 [[ -f "$image_archive" && -r "$image_archive" ]] || fail 'Image archive must be a readable regular file.'
 [[ ! -e "$output" && ! -L "$output" ]] || fail 'Output already exists; choose a new versioned filename.'
 
@@ -42,8 +42,8 @@ import json
 from pathlib import Path
 import sys
 release = json.loads(Path(sys.argv[1]).read_text())
-if release.get('version') != '0.3.0' or release.get('platform') != 'linux/amd64':
-    raise SystemExit('ERROR: Builder requires the finalized 0.3.0 Linux/AMD64 manifest.')
+if release.get('version') != '0.4.0' or release.get('platform') != 'linux/amd64':
+    raise SystemExit('ERROR: Builder requires the finalized 0.4.0 Linux/AMD64 manifest.')
 digest = hashlib.sha256()
 with Path(sys.argv[2]).open('rb') as stream:
     for chunk in iter(lambda: stream.read(1024 * 1024), b''):
@@ -61,7 +61,6 @@ source_files=(
     deploy/manage.sh
     deploy/INSTALL.ar.md
     deploy/release.json
-    META.ar.md
     RESTAURANT.ar.md
     .env.example
     LICENSE
@@ -74,7 +73,6 @@ payload_files=(
     manage.sh
     INSTALL.ar.md
     release.json
-    META.ar.md
     RESTAURANT.ar.md
     .env.example
     LICENSE
@@ -197,7 +195,7 @@ actual_hash="${actual_hash%% *}"
 # Verify the exact member list before extracting, including order. The verified
 # payload was built exclusively from regular files with these fixed names.
 expected_members="$(printf '%s\n' \
-    install.sh install.py compose.yml manage.sh INSTALL.ar.md release.json META.ar.md RESTAURANT.ar.md .env.example \
+    install.sh install.py compose.yml manage.sh INSTALL.ar.md release.json RESTAURANT.ar.md .env.example \
     LICENSE LICENSE.WaCalls images.tar.gz SHA256SUMS)"
 actual_members="$(tar --list --file="$run_tmp/payload.tar")"
 [[ "$actual_members" == "$expected_members" ]] || fail 'Unexpected installer payload members.'

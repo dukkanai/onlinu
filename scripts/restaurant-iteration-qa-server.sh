@@ -18,15 +18,13 @@ case "${1:-build}" in
       --mount type=bind,source="$task_root",target=/src \
       --mount type=volume,source=astracalls-build-gomod,target=/go/pkg/mod \
       --mount type=volume,source=astracalls-build-gocache,target=/root/.cache/go-build \
-      -w /src -e CGO_ENABLED=1 -e 'CGO_LDFLAGS=-L/src/native -Wl,-rpath,/src/native' \
-      golang:1.26.4 go build -buildvcs=false -tags mlow -o /src/bin/iteration-audit-server ./cmd/server
+      golang:1.26.4 go build -buildvcs=false -o /src/bin/iteration-audit-server ./cmd/server
     ;;
   start)
     docker run -d --name "$task_app" --pull never \
       --label astracalls.purpose=iteration-isolated-audit --network host \
       --mount type=bind,source="$task_root",target=/src,readonly \
       --tmpfs /audit-data:rw,nosuid,nodev,size=128m \
-      -e LD_LIBRARY_PATH=/src/native \
       -e 'WACALLS_PG_URL=postgres://astracalls_test:completion-test-only@127.0.0.1:15433/astracalls_restaurant_test?sslmode=disable' \
       -e WACALLS_PG_NAMESPACE=iterationaudit \
       -e WACALLS_API_KEY=restaurant-browser-test-key \

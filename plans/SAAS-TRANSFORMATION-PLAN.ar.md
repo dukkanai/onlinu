@@ -1,3 +1,9 @@
+> Scope override, 2026-10-09: the owner removed all restaurant WhatsApp Business/QR,
+> calling, translation and related conversation-archive requirements. Only restaurant
+> and ChatGPT ordering remain active. Any older WhatsApp requirement below is historical
+> and cancelled; other safety, commerce and launch requirements remain. Restore tag:
+> before-whatsapp-removal-20261009. See README.md for the current runtime.
+
 # مواصفات منصة المطاعم وخطة التحول إلى ChatGPT وFlutter
 
 تاريخ التحديث: 30 سبتمبر 2026. الحالة: مواصفات وقرارات معتمدة من المالك، ونموذج اصطناعي محلي منفذ ومختبر، وبيئة اختبار محمية منشورة فعليًا على `https://almujeeb.info`، مع شروط إطلاق خارجية غير مغلقة؛ ليست إعلان اكتمال التحول أو قبول إنتاجي. الأدلة التفصيلية في [نتيجة النموذج](../prototype/README.ar.md) و[سجل بيئة الاختبار المنشورة](../prototype/staging/README.ar.md).

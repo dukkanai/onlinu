@@ -49,7 +49,7 @@ test('quote uses authoritative core fees/tax/options and has no order side effec
   assert.deepEqual(JSON.parse(seen.options.body), input);
   assert.equal(seen.options.method, 'POST');
   assert.equal(adapter.capabilities('b').createOrder, false);
-  assert.equal(adapter.capabilities('b').whatsappOrderIngress, false);
+  assert.equal('whatsappOrderIngress' in adapter.capabilities('b'), false);
 });
 
 test('unrecognized tenant/input URLs and forged prices are rejected before network', async () => {

@@ -1,3 +1,9 @@
+> Scope override, 2026-10-09: the owner removed all restaurant WhatsApp Business/QR,
+> calling, translation and related conversation-archive requirements. Only restaurant
+> and ChatGPT ordering remain active. Any older WhatsApp requirement below is historical
+> and cancelled; other safety, commerce and launch requirements remain. Restore tag:
+> before-whatsapp-removal-20261009. See README.md for the current runtime.
+
 # سجل شروط إطلاق منصة المطاعم والتحقق الخارجي
 
 تاريخ المراجعة: 30 سبتمبر 2026. يكمل هذا السجل [مواصفات وخطة التحول](SAAS-TRANSFORMATION-PLAN.ar.md) بعد اعتماد حفظ جميع الوظائف والتراخيص وواتساب QR/Cloud API وإدارة الويب، وإضافة ChatGPT وFlutter. دليل النموذج المحلي الأول مسجل منفصلًا؛ أصبح نشر بيئة الاختبار المحمية على أصل النطاق ودخول المختبرين مثبتين، دون اعتماد ChatGPT أو Events أو الإنتاج. الجمهور هو مالك المشروع وفريق التنفيذ، ونجاح النموذج لا يغلق شروط التشغيل.

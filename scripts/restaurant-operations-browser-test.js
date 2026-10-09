@@ -74,10 +74,7 @@ async (page) => {
     await noOverflow('Gateway configuration');
     await p.screenshot({ path: '/home/chatbot/wa/AstraCalls/prints/operations-gateways-mobile.png', fullPage: true });
 
-    await p.getByRole('button', { name: 'WhatsApp connection', exact: true }).click();
-    await p.getByText('No WhatsApp connections have been added.', { exact: true }).waitFor();
-    await noOverflow('WhatsApp administration');
-    verify(true, 'WhatsApp management page loads without initiating a session');
+    verify(await p.getByRole('button', { name: 'WhatsApp connection', exact: true }).count() === 0, 'Retired WhatsApp panel is absent');
 
     await p.getByRole('button', { name: 'Restaurant appearance', exact: true }).click();
     await p.getByText('Appearance drafts stay private. Save a draft, review it, then publish it to customers.', { exact: true }).waitFor();

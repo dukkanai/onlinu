@@ -200,8 +200,6 @@ int? stockQuantity(String raw) {
 const channelLabels = {
   'web': 'الموقع',
   'chatgpt': 'ChatGPT',
-  'whatsapp_qr': 'واتساب QR',
-  'whatsapp_cloud': 'واتساب Cloud API'
 };
 
 class CoreChannel {

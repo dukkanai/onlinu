@@ -6,7 +6,6 @@ import type { Catalog } from './types';
 
 const Storefront = lazy(() => import('./Storefront').then(m => ({ default: m.Storefront })));
 const AdminRestaurant = lazy(() => import('./AdminRestaurant').then(m => ({ default: m.AdminRestaurant })));
-const Calls = lazy(() => import('../AuthGate').then(m => ({ default: m.AuthGate })));
 const CourierDashboard = lazy(() => import('./CourierDashboard').then(m => ({ default: m.CourierDashboard })));
 const PaymentReturn = lazy(() => import('./PaymentReturn').then(m => ({ default: m.PaymentReturn })));
 
@@ -57,10 +56,7 @@ function EntryRoutes() {
   const { t } = useLocale();
   const path = window.location.pathname;
   return <Suspense fallback={<p role="status" className="p-8 text-center">{t('common.loading')}</p>}>
-    {path === '/courier' ? <CourierDashboard /> : path === '/payment-return' ? <PaymentReturn /> : path === '/admin' ? <RestaurantAuth><AdminRestaurant /></RestaurantAuth> : path === '/admin/calls' ? <>
-      <nav className="border-b bg-white px-5 py-2 text-sm text-teal-800"><a href="/admin">{t('admin.title')}</a></nav>
-      <div dir="ltr"><Calls /></div>
-    </> : <Storefront />}
+    {path === '/courier' ? <CourierDashboard /> : path === '/payment-return' ? <PaymentReturn /> : path === '/admin' ? <RestaurantAuth><AdminRestaurant /></RestaurantAuth> : <Storefront />}
   </Suspense>;
 }
 

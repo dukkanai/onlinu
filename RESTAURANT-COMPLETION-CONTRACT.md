@@ -1,3 +1,9 @@
+> Scope override, 2026-10-09: the owner removed all restaurant WhatsApp Business/QR,
+> calling, translation and related conversation-archive requirements. Only restaurant
+> and ChatGPT ordering remain active. Any older WhatsApp requirement below is historical
+> and cancelled; other safety, commerce and launch requirements remain. Restore tag:
+> before-whatsapp-removal-20261009. See README.md for the current runtime.
+
 # Restaurant completion round — 2026-09-27 (development, not portable release)
 
 > Supersession note — 2026-09-30: this document preserves the historical contract, not the current language scope. The user has approved Arabic (`ar`) and English (`en`) only for the restaurant interface; any thirteen-language requirement below is superseded. All five language-independent visual templates remain. Merchant-entered content and WhatsApp call-translation languages are not removed or automatically translated. See [the current iteration audit](RESTAURANT-ITERATION-AUDIT.ar.md) for implementation and verification status; historical results below are not new acceptance evidence.

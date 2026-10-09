@@ -40,7 +40,7 @@ test("Arabic and English are the only restaurant dictionaries and cover every fi
 
 test("operation extensions are complete translations rather than English fallbacks", () => {
   const keys = Object.keys(extensionEnglish).sort() as ExtensionKey[];
-  assert.ok(keys.length > 150, "include all operation labels and error messages");
+  assert.ok(keys.length > 100, "include all operation labels and error messages");
   for (const key of keys) assert.ok(!Object.hasOwn(baseEnglish, key), `${key}: operation key overwrites an existing label`);
   for (const locale of LOCALES) {
     const extension = extensions[locale];
@@ -100,7 +100,7 @@ test("all literal restaurant UI labels and backend error codes have translations
 
 test("completion dictionaries independently cover Arabic, English and safety wording", () => {
   const keys = Object.keys(completionEnglish).sort() as (keyof typeof completionEnglish)[];
-  assert.ok(keys.length >= 225);
+  assert.ok(keys.length >= 170); // Conversation archive labels were removed with WhatsApp.
   for (const key of keys) assert.ok(!Object.hasOwn(baseEnglish, key) && !Object.hasOwn(extensionEnglish, key), `${key}: completion overwrites an existing label`);
   for (const locale of LOCALES) {
     assert.deepEqual(Object.keys(completions[locale]).sort(), keys, `${locale}: incomplete completion dictionary`);

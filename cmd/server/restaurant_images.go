@@ -19,7 +19,9 @@ var restaurantImageSlots = make(chan struct{}, 2)
 
 const restaurantImageLimit = 5 << 20
 
-func restaurantMediaDir() string { return filepath.Join(recordingDir(), "restaurant-images") }
+func restaurantMediaDir() string {
+	return filepath.Join(envStr("WACALLS_MEDIA_DIR", envStr("WACALLS_RECORDING_DIR", "recordings")), "restaurant-images")
+}
 
 func (s *server) handleRestaurantImageUpload(w http.ResponseWriter, r *http.Request) {
 	select {

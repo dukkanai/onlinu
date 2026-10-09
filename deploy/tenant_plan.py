@@ -81,7 +81,6 @@ def plan_tenant(config):
     secrets = {name: resource + "-" + suffix for name, suffix in (
         ("WACALLS_API_KEY_FILE", "admin-key"),
         ("WACALLS_PG_URL_FILE", "runtime-pg-url"),
-        ("WACALLS_META_ENCRYPTION_KEY_FILE", "meta-key"),
     )}
     plan = {
         "schemaVersion": 1,
@@ -157,15 +156,13 @@ def compose_tenant(config, expected_digest, secret_root):
     refs = {
         'administrator': references['WACALLS_API_KEY_FILE'],
         'runtime_pg_url': references['WACALLS_PG_URL_FILE'],
-        'meta_key': references['WACALLS_META_ENCRYPTION_KEY_FILE'],
         'pg_bootstrap': postgres['bootstrapSecretReference'],
         'runtime_password': postgres['runtimePasswordSecretReference'],
     }
     labels = {'org.onlinu.tenant': plan['tenantId'], 'org.onlinu.plan-digest': plan['planDigest']}
     environment = dict(runtime['environment'],
                        WACALLS_API_KEY_FILE='/run/secrets/administrator',
-                       WACALLS_PG_URL_FILE='/run/secrets/runtime_pg_url',
-                       WACALLS_META_ENCRYPTION_KEY_FILE='/run/secrets/meta_key')
+                       WACALLS_PG_URL_FILE='/run/secrets/runtime_pg_url')
     return {
         'name': plan['projectName'],
         'x-onlinu': {'planDigest': plan['planDigest'], 'deployed': False,
@@ -189,7 +186,7 @@ def compose_tenant(config, expected_digest, secret_root):
             'restaurant': {
                 'image': runtime['image'], 'user': '10001:10001', 'init': True,
                 'environment': environment,
-                'secrets': ['administrator', 'runtime_pg_url', 'meta_key'],
+                'secrets': ['administrator', 'runtime_pg_url'],
                 'volumes': [{'type': 'volume', 'source': 'media', 'target': '/data/recordings'}],
                 'networks': ['database', 'egress'],
                 'ports': [{'target': 8080, 'published': str(runtime['httpBinding']['port']),

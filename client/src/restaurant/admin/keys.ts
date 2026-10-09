@@ -1,6 +1,6 @@
 export const adminEnglish = {
   "admin.title": "Restaurant dashboard", "admin.orders": "Orders", "admin.menu": "Menu",
-  "admin.tables": "Tables & QR codes", "admin.settings": "Restaurant settings", "admin.calls": "Calls dashboard",
+  "admin.tables": "Tables & QR codes", "admin.settings": "Restaurant settings",
   "admin.storefront": "Open restaurant", "admin.subtitle": "Your menu, tables and orders in one place.",
   "admin.allStatuses": "All statuses", "admin.searchOrders": "Search order number, name or phone",
   "admin.noOrders": "No orders match your filters.", "admin.selectOrder": "Select an order to see its details.",

@@ -198,31 +198,8 @@ async function runLive() {
       }
     }
 
-    stage = 'versioned_channel_configuration_and_restore';
-    const initial = await api(merchantA, '/api/merchant/restaurants/demo-a/channels');
-    exact(initial.status, 200, 'owner_channel_read');
-    check(initial.value.scope === 'synthetic_configuration_only' && initial.value.whatsapp.configured === false && initial.value.whatsapp.operational === false, 'channel_status_must_not_claim_live_whatsapp');
-    exact((await api(merchantB, '/api/merchant/restaurants/demo-a/channels')).status, 403, 'cross_tenant_channel_read_forbidden');
-    denied((await api(alice, '/api/merchant/restaurants/demo-a/channels')).status, 'customer_channel_read_forbidden');
-    const payload = { enabled: !initial.value.whatsapp.enabled, connectionMode: initial.value.whatsapp.connectionMode === 'qr' ? 'cloud_api' : 'qr', expectedVersion: initial.value.version };
-    exact((await api(merchantB, '/api/merchant/restaurants/demo-a/channels', payload)).status, 403, 'cross_tenant_channel_write_forbidden');
-    const changed = await api(merchantA, '/api/merchant/restaurants/demo-a/channels', payload);
-    check(changed.status === 200 && changed.value.version === initial.value.version + 1 && changed.value.whatsapp.enabled === payload.enabled && changed.value.whatsapp.connectionMode === payload.connectionMode, 'owner_versioned_channel_update');
-    let restored = false;
-    const restore = async () => {
-      if (restored) return;
-      const current = await api(merchantA, '/api/merchant/restaurants/demo-a/channels');
-      check(current.status === 200 && current.value.version === changed.value.version && current.value.whatsapp.enabled === payload.enabled && current.value.whatsapp.connectionMode === payload.connectionMode, 'channel_restore_conflict_requires_review');
-      const result = await api(merchantA, '/api/merchant/restaurants/demo-a/channels', { enabled: initial.value.whatsapp.enabled, connectionMode: initial.value.whatsapp.connectionMode, expectedVersion: current.value.version });
-      check(result.status === 200 && result.value.whatsapp.enabled === initial.value.whatsapp.enabled && result.value.whatsapp.connectionMode === initial.value.whatsapp.connectionMode, 'restore_original_synthetic_channel_values');
-      restored = true; channelRestored = true;
-    };
-    cleanup.push(restore);
-    exact((await api(merchantA, '/api/merchant/restaurants/demo-a/channels', payload)).status, 409, 'stale_channel_version_must_conflict');
-    await restore();
-    await merchantA.page.locator('#home').click();
-    await merchantA.page.locator('[data-channels="demo-a"]').waitFor();
-    check((await merchantA.page.locator('[data-channels="demo-a"]').textContent()).includes('الربط بخدمة واتساب الأصلية لم يُفعّل'), 'public_ui_retains_honest_channel_warning');
+    stage = 'retired_channels';
+    exact((await api(merchantA,'/api/merchant/restaurants/demo-a/channels')).status,404,'retired_channel_absent');
 
     stage = 'logout_and_server_side_revocation';
     for (const actor of sessions.values()) {

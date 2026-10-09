@@ -113,12 +113,8 @@ test('protected staging HTTP authorization and tenant isolation', { skip: !proce
       assert.equal((await request(target, { method: 'POST', token: merchant, origin: baseUrl, body, headers: { 'X-CSRF-Token': otherCsrf } })).status, 403);
       assert.equal((await request(target, { method: 'POST', token: merchant, body, headers: { 'X-CSRF-Token': csrf } })).status, 403);
       assert.equal((await request(target, { method: 'POST', token: merchant, origin: 'https://evil.example', body, headers: { 'X-CSRF-Token': csrf } })).status, 403);
-      const untouched = await request(target, { token: merchant });
-      assert.equal(untouched.json.version, 1); assert.equal(untouched.json.whatsapp.enabled, false);
-      const changed = await request(target, { method: 'POST', token: merchant, origin: baseUrl, body, headers: { 'X-CSRF-Token': csrf } });
-      assert.equal(changed.status, 200); assert.equal(changed.json.version, 2);
-      assert.equal(changed.json.whatsapp.enabled, true);
-      assert.equal(changed.json.whatsapp.operational, false); // Configuration only; no external channel activation.
+      assert.equal((await request(target,{token:merchant})).status,404);
+      assert.equal((await request(target,{method:'POST',token:merchant,origin:baseUrl,body,headers:{'X-CSRF-Token':csrf}})).status,404);
     });
 
     let authorization;
@@ -211,21 +207,9 @@ test('protected staging HTTP authorization and tenant isolation', { skip: !proce
       assert.equal(deniedTarget.searchParams.has('code'), false);
     });
 
-    await t.test('merchant channels are isolated and customers cannot read or modify them', async () => {
-      const channelsA = '/api/merchant/restaurants/demo-a/channels';
-      const channelsB = '/api/merchant/restaurants/demo-b/channels';
-      assert.equal((await request(channelsA, { token: tokenOf('merchant-a') })).status, 200);
-      assert.equal((await request(channelsB, { token: tokenOf('merchant-a') })).status, 403);
-      assert.equal((await request(channelsA, { token: tokenOf('merchant-b') })).status, 403);
-      assert.equal((await request(channelsA, { token: tokenOf('customer-alice') })).status, 403);
-      const body = { enabled: true, connectionMode: 'qr', expectedVersion: 1 };
-      assert.equal((await request(channelsB, { method: 'POST', token: tokenOf('merchant-a'), origin: baseUrl,
-        headers: { 'X-CSRF-Token': await csrfFor('merchant-a') }, body })).status, 403);
-      assert.equal((await request(channelsA, { method: 'POST', token: tokenOf('customer-alice'), origin: baseUrl,
-        headers: { 'X-CSRF-Token': await csrfFor('customer-alice') }, body })).status, 403);
-      const untouched = await request(channelsB, { token: tokenOf('merchant-b') });
-      assert.equal(untouched.json.version, 1); assert.equal(untouched.json.whatsapp.enabled, false);
-      assert.equal((await request(`/oauth/authorize?${new URLSearchParams(authorization)}`, { token: tokenOf('merchant-a') })).status, 403);
+    await t.test('retired channel settings endpoints are absent', async () => {
+      for (const id of ['demo-a','demo-b']) assert.equal((await request(`/api/merchant/restaurants/${id}/channels`,{token:tokenOf('merchant-a')})).status,404);
+      assert.equal((await request(`/oauth/authorize?${new URLSearchParams(authorization)}`,{token:tokenOf('merchant-a')})).status,403);
     });
 
     await t.test('disabled identities lose existing browser access and logout requires its own CSRF', async () => {

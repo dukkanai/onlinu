@@ -242,77 +242,21 @@
     }, isCurrent);
   }
 
-  function channelsCard(restaurant, initial, isCurrent) {
-    let configuration = initial;
-    let fresh = true;
-    let busy = false;
-    const card = text('section', '', 'card stage-channels'); card.dataset.channels = restaurant.id;
-    card.append(text('span', 'إعدادات قناة المطعم', 'stage-tag'), text('h3', 'واتساب'), text('p', 'إعداد تجريبي محفوظ؛ الربط بخدمة واتساب الأصلية لم يُفعّل', 'stage-channel-warning'));
-    const fields = document.createElement('fieldset');
-    const row = text('div', '', 'stage-channel-fields');
-    const enabledLabel = text('label', 'تفعيل الإعداد التجريبي ');
-    const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.name = 'enabled'; enabledLabel.prepend(enabled);
-    const modeLabel = text('label', 'طريقة الربط المخططة ');
-    const mode = document.createElement('select'); mode.name = 'connectionMode';
-    for (const [value, label] of [['qr', 'رمز QR'], ['cloud_api', 'Cloud API']]) { const option = text('option', label); option.value = value; mode.append(option); }
-    modeLabel.append(mode); row.append(enabledLabel, modeLabel); fields.append(row);
-    const details = text('p', '', 'stage-channel-state');
-    const status = text('p', '', 'stage-channel-message'); status.setAttribute('role', 'status');
-    function apply(value) {
-      if (value.tenantId !== restaurant.id || value.scope !== 'synthetic_configuration_only' || typeof value.version !== 'number' || !value.whatsapp || !['qr', 'cloud_api'].includes(value.whatsapp.connectionMode)) throw new RequestError(0, 'invalid_response');
-      configuration = value; enabled.checked = value.whatsapp.enabled === true; mode.value = value.whatsapp.connectionMode;
-      details.textContent = `الإصدار ${value.version} · الاتصال الأصلي غير مفعّل`;
-      fresh = true;
-    }
-    const save = button('حفظ الإعداد التجريبي', async () => {
-      if (!fresh) return;
-      const payload = Object.freeze({ enabled: enabled.checked, connectionMode: mode.value, expectedVersion: configuration.version });
-      busy = true;
-      fields.disabled = true;
-      refresh.disabled = true;
-      try {
-        const result = await api(`/api/merchant/restaurants/${encodeURIComponent(restaurant.id)}/channels`, { body: payload });
-        if (!isCurrent()) return;
-        apply(result); status.textContent = 'حُفظ الإعداد التجريبي. لم يُنشأ رمز QR ولم يُفعّل اتصال واتساب.';
-      } catch (error) {
-        fresh = false;
-        if (isCurrent()) { status.textContent = 'حدّث الإعدادات قبل محاولة حفظ جديدة.'; message.textContent = error.message; }
-        return { keepDisabled: true };
-      } finally { busy = false; if (isCurrent()) { fields.disabled = false; refresh.disabled = false; } }
-    }, () => isCurrent() && fresh && !busy);
-    save.dataset.action = 'save-channels';
-    const refresh = button('تحديث الإعدادات', async () => {
-      busy = true;
-      fields.disabled = true;
-      save.disabled = true;
-      try {
-        const result = await api(`/api/merchant/restaurants/${encodeURIComponent(restaurant.id)}/channels`);
-        if (isCurrent()) { apply(result); save.disabled = false; status.textContent = 'تم تحميل أحدث نسخة.'; }
-      } catch (error) { fresh = false; throw error; }
-      finally { busy = false; if (isCurrent()) fields.disabled = false; }
-    }, () => isCurrent() && !busy, 'secondary');
-    refresh.dataset.action = 'refresh-channels';
-    const actions = text('div', '', 'actions'); actions.append(save, refresh);
-    card.append(fields, details, actions, status);
-    apply(initial);
-    return card;
-  }
-
   function merchantView() {
     const isCurrent = beginView();
     return run(null, async () => {
       const { restaurants } = await api('/api/merchant/restaurants');
       if (!isCurrent()) return;
       const groups = await Promise.all(restaurants.map(async restaurant => {
-        const [orders, channels] = await Promise.all([api(`/api/merchant/restaurants/${encodeURIComponent(restaurant.id)}/orders`), api(`/api/merchant/restaurants/${encodeURIComponent(restaurant.id)}/channels`)]);
-        return { restaurant, orders: orders.orders, channels };
+        const orders = await api(`/api/merchant/restaurants/${encodeURIComponent(restaurant.id)}/orders`);
+        return { restaurant, orders: orders.orders };
       }));
       if (!isCurrent()) return;
       const heading = text('div', '', 'topline'); heading.append(text('h2', 'مساحة إدارة المطعم'), button('تحديث', merchantView, isCurrent, 'secondary'));
       content.replaceChildren(heading, text('p', 'إدارة اختبار محدودة؛ لا تستبدل لوحة المطعم أو تطبيق الإدارة الكامل.', 'stage-subtitle'));
-      for (const { restaurant, orders, channels } of groups) {
+      for (const { restaurant, orders } of groups) {
         const group = text('section', '', 'stage-section'); group.dataset.tenant = restaurant.id;
-        group.append(text('h2', restaurant.name), channelsCard(restaurant, channels, isCurrent), text('h3', 'الطلبات الاصطناعية'));
+        group.append(text('h2', restaurant.name), text('h3', 'الطلبات الاصطناعية'));
         const grid = text('div', '', 'grid stage-order-grid');
         for (const order of orders) {
           const card = text('article', '', 'card');

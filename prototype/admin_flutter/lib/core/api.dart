@@ -809,10 +809,10 @@ class CoreApi implements CoreGateway {
     final data = await _request(
         'GET', '/native/api/restaurants/${tenantKey(tenant)}/staff/channels');
     _tenant(data, tenant);
-    final rows = array(data['channels'], max: 4)
+    final rows = array(data['channels'], max: 2)
         .map((v) => CoreChannel(object(v), tenantId: tenant))
         .toList(growable: false);
-    if (rows.length != 4 || rows.map((v) => v.channel).toSet().length != 4)
+    if (rows.length != 2 || rows.map((v) => v.channel).toSet().length != 2)
       invalidResponse();
     return List.unmodifiable(rows);
   }

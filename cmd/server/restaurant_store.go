@@ -15,7 +15,7 @@ import (
 	"unicode/utf8"
 )
 
-// Catalog and orders deliberately do not share WhatsApp account tables. One
+// Catalog and orders use dedicated restaurant tables. One
 // restaurant is configured per deployment; customer-visible prices are always
 // read from this versioned, server-authoritative document.
 type restaurantStore struct{ db *sql.DB }

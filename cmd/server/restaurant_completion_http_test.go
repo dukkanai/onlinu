@@ -23,8 +23,8 @@ func TestRestaurantCompletionHTTPPrivateBoundaries(t *testing.T) {
 	}
 	for _, headers := range []map[string]string{nil, {"X-API-Key": "restaurant-test-widget"}} {
 		w := restaurantHTTPRequest(t, h, http.MethodGet, "/recordings/example.mp3", nil, headers, nil)
-		if w.Code != 401 {
-			t.Fatalf("legacy recording capability still public: %d", w.Code)
+		if w.Code != 404 {
+			t.Fatalf("removed recording route unexpectedly available: %d", w.Code)
 		}
 		if w.Header().Get("Access-Control-Allow-Origin") != "" {
 			t.Fatal("recording allowed wildcard cross-origin access")

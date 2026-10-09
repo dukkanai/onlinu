@@ -1,3 +1,9 @@
+> Scope override, 2026-10-09: the owner removed all restaurant WhatsApp Business/QR,
+> calling, translation and related conversation-archive requirements. Only restaurant
+> and ChatGPT ordering remain active. Any older WhatsApp requirement below is historical
+> and cancelled; other safety, commerce and launch requirements remain. Restore tag:
+> before-whatsapp-removal-20261009. See README.md for the current runtime.
+
 # Synthetic two restaurant prototype contract
 
 This directory is an isolated proof of capability, not a replacement for the existing restaurant domain or a production release. Do not connect existing databases, volumes, credentials, or WhatsApp services. All fixtures and identities are synthetic. No real payment is authorized.

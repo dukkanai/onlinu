@@ -361,8 +361,8 @@ void main() {
     expect(recounted.held, stock.held);
     expect(recounted.version > stock.version, true);
     final channels = await api.channels('restaurant-a');
-    expect(channels.length, 4);
-    expect(channels.any((v) => !v.adapterImplemented), true);
+    expect(channels.length, 2);
+    expect(channels.every((v) => v.adapterImplemented), true);
     final enabled = channels.firstWhere((v) => v.adapterImplemented);
     final changedChannel = await api.setChannel(
         'restaurant-a', enabled, !enabled.newOrdersEnabled);

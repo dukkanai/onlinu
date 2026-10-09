@@ -20,7 +20,6 @@ const checkoutId = '11111111-2222-4333-8444-555555555555';
 const orderId = '11112222333344445555666677778888';
 const initialOrder = { id: orderId, tenantId: tenant, status: 'accepted', paymentStatus: 'paid', version: 2, currency: 'SAR', totalMinor: 2400 };
 const restaurants = [{ id: tenant, name: 'مطعم التجربة المحمية', cuisine: 'منيو اصطناعي', template: 'classic' }];
-const configuration = version => ({ tenantId: tenant, version, scope: 'synthetic_configuration_only', whatsapp: { enabled: version > 1, connectionMode: version > 1 ? 'cloud_api' : 'qr', configured: false, operational: false } });
 
 async function createPage({ role = 'customer', override = async () => false } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 960 }, locale: 'ar-SA' });
@@ -28,7 +27,6 @@ async function createPage({ role = 'customer', override = async () => false } = 
   const requests = [];
   const errors = [];
   let authenticated = role !== null;
-  let channelVersion = 1;
   page.on('pageerror', error => errors.push(error.message));
   await context.route('**/*', async route => {
     const request = route.request();
@@ -55,10 +53,6 @@ async function createPage({ role = 'customer', override = async () => false } = 
     if (url.pathname === `/api/checkouts/${checkoutId}/confirm`) return json({ order: { ...initialOrder, status: 'pending_payment', paymentStatus: 'pending', version: 1 }, simulationUrl: `/api/restaurants/${tenant}/orders/${orderId}/simulate-payment` });
     if (url.pathname.endsWith('/simulate-payment')) return json(initialOrder);
     if (url.pathname === `/api/merchant/restaurants/${tenant}/orders`) return json({ orders: [initialOrder] });
-    if (url.pathname.endsWith('/channels')) {
-      if (request.method() === 'POST') channelVersion++;
-      return json(configuration(channelVersion));
-    }
     return json({ error: 'missing_mock_route' }, 404);
   });
   return { page, context, requests, errors };
@@ -137,34 +131,13 @@ try {
   check(await expired.page.locator('input[data-item]').count() === 0, 'Expired session cannot retain editable private cart');
   await expired.context.close();
 
-  let saves = 0;
-  const merchant = await createPage({ role: 'merchant', override: async ({ url, request, json }) => {
-    if (url.pathname.endsWith('/channels') && request.method() === 'POST' && ++saves === 2) { await json({ error: 'conflict' }, 409); return true; }
-    return false;
-  } });
+  const merchant = await createPage({role:'merchant'});
   await merchant.page.goto(base);
-  const channelCard = merchant.page.locator(`[data-channels="${tenant}"]`);
-  await channelCard.waitFor();
-  check((await channelCard.textContent()).includes('إعداد تجريبي محفوظ؛ الربط بخدمة واتساب الأصلية لم يُفعّل'), 'Channel configuration never claims original WhatsApp is connected');
-  check(await channelCard.locator('img,canvas').count() === 0, 'No fake QR is generated');
-  await channelCard.locator('input[name="enabled"]').check();
-  await channelCard.locator('select').selectOption('cloud_api');
-  await channelCard.locator('[data-action="save-channels"]').click();
-  await channelCard.getByText('حُفظ الإعداد التجريبي.', { exact: false }).waitFor();
-  const saved = merchant.requests.find(request => request.path.endsWith('/channels') && request.method === 'POST');
-  assert.deepEqual(saved.body, { enabled: true, connectionMode: 'cloud_api', expectedVersion: 1 }); assertions++;
-  check(saved.headers['x-csrf-token'] === 'synthetic-csrf' && !saved.headers.authorization, 'Channel save is CSRF protected cookie auth');
-  await channelCard.locator('select').selectOption('qr');
-  await channelCard.locator('[data-action="save-channels"]').click();
-  await merchant.page.waitForFunction(() => document.querySelector('[data-action="save-channels"]').disabled && document.querySelector('#message').textContent.includes('تغيرت البيانات'));
-  check(await channelCard.locator('[data-action="save-channels"]').isDisabled(), 'Conflict blocks another settings write');
-  await channelCard.locator('[data-action="refresh-channels"]').click();
-  await merchant.page.waitForFunction(() => !document.querySelector('[data-action="save-channels"]').disabled);
-  check(await channelCard.locator('select').inputValue() === 'cloud_api', 'Refresh recovers authoritative saved configuration after conflict');
-  check((await channelCard.textContent()).includes('الإصدار 2'), 'Server version is shown after save and recovery');
+  await merchant.page.locator(`[data-tenant="${tenant}"]`).waitFor();
+  check(await merchant.page.locator('[data-channels]').count()===0,'Retired WhatsApp configuration is absent');
   check(merchant.requests.every(request => !request.path.startsWith('/dev/')), 'Merchant uses no fixture-selection endpoint');
   check(merchant.errors.length === 0, `No merchant JS errors: ${merchant.errors.join(', ')}`);
-  await merchant.page.screenshot({ path: `${artifactDir}/mocked-owner-channels.png`, fullPage: true });
+  await merchant.page.screenshot({ path: `${artifactDir}/mocked-owner-orders.png`, fullPage: true });
   await merchant.page.setViewportSize({ width: 390, height: 844 });
   check(await merchant.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Arabic merchant layout fits narrow viewport');
   await merchant.context.close();

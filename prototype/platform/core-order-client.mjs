@@ -37,7 +37,7 @@ const safeCodes = new Set(['brand_changed','brand_invalid','brand_contrast','bra
   'item_unavailable','out_of_stock','payment_required','payment_unavailable','price_changed','conflict',
   'invalid_order_access','platform_unauthorized','not_found','order_not_found','invalid_status','invalid_payment_method',
   'channel_ordering_disabled','channel_ordering_unavailable','invalid_order_channel','catalog_changed','quote_changed','image_invalid','image_too_large','body_too_large']);
-const channelId=z.enum(['web','chatgpt','whatsapp_qr','whatsapp_cloud']);
+const channelId=z.enum(['web','chatgpt']);
 const channelPolicy=z.object({channel:channelId,newOrdersEnabled:z.boolean(),adapterImplemented:z.boolean(),
   version:z.number().int().positive(),updatedAt:z.string().datetime({offset:true})});
 const stockItem=z.object({itemId:z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),name:z.string().max(4096).optional(),tracked:z.boolean(),available:z.number().int().nonnegative(),
@@ -291,7 +291,7 @@ export function createCoreOrderClient({ issuer, privateKey, restaurants, fetchIm
       return request(tenantId,subject,'POST',`/platform-api/staff/stock/${itemId}`,parsed.data,'','staff:stock:update',stockItem);
     },
     channels(tenantId,subject){
-      return request(tenantId,subject,'GET','/platform-api/staff/channels',undefined,'','staff:channels:manage',z.object({channels:z.array(channelPolicy).length(4)}));
+      return request(tenantId,subject,'GET','/platform-api/staff/channels',undefined,'','staff:channels:manage',z.object({channels:z.array(channelPolicy).length(2)}));
     },
     setChannel(tenantId,subject,channel,input){
       const target=channelId.safeParse(channel),change=z.object({newOrdersEnabled:z.boolean(),expectedVersion:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1)}).strict().safeParse(input);

@@ -9,7 +9,6 @@ import (
 	"flag"
 	"io"
 	"log/slog"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -115,7 +114,7 @@ func TestRuntimeSecretFilesPreserveSpacesAndValidateAllBeforeUse(t *testing.T) {
 	}
 }
 func TestDBProviderMalformedURLDoesNotExposeCredential(t *testing.T) {
-	_, err := newDBProvider(context.Background(), "postgres://user:SYNTHETIC_PRIVATE%zz@localhost/postgres", "test", nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	_, err := newDBProvider(context.Background(), "postgres://user:SYNTHETIC_PRIVATE%zz@localhost/postgres", "test", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err == nil || strings.Contains(err.Error(), "SYNTHETIC_PRIVATE") || strings.Contains(err.Error(), "postgres://") {
 		t.Fatal("database parse error leaked DSN", err)
 	}
@@ -193,18 +192,6 @@ func TestRuntimeSecretFilesFeedAuthConsumersWithoutExport(t *testing.T) {
 		if os.Getenv("WACALLS_API_KEY") != "" || os.Getenv("OPENAI_API_KEY") != "" {
 			t.Fatal("exported file values")
 		}
-		if !translationEnabled() {
-			t.Fatal("translation guard ignored file configuration")
-		}
-		req := httptest.NewRequest("GET", "/api/archive", nil)
-		req.Header.Set("X-API-Key", "synthetic-file-master")
-		if !archiveMasterAuthorized(req) {
-			t.Fatal("archive ignored file master key")
-		}
-		req.Header.Set("X-API-Key", "wrong")
-		if archiveMasterAuthorized(req) {
-			t.Fatal("wrong master accepted")
-		}
 		digest := sha256.Sum256([]byte("restaurant-cookie-namespace\x00synthetic-file-master"))
 		if restaurantSessionCookieName() != restaurantCookieName+"_"+hex.EncodeToString(digest[:8]) {
 			t.Fatal("cookie isolation ignored file master")
@@ -212,7 +199,7 @@ func TestRuntimeSecretFilesFeedAuthConsumersWithoutExport(t *testing.T) {
 		t.Setenv("WACALLS_PLATFORM_ISSUER", "https://platform.example")
 		t.Setenv("WACALLS_PLATFORM_TENANT_ID", "synthetic-file-tenant")
 		t.Setenv("WACALLS_PLATFORM_PUBLIC_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
-		_, startupErr := newServer(context.Background(), "", "synthetic", "", 1, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		_, startupErr := newServer(context.Background(), "", "synthetic", "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 		if startupErr == nil || errors.Is(startupErr, errPlatformAdminAuthenticationRequired) || !strings.Contains(startupErr.Error(), "WACALLS_PG_URL") {
 			t.Fatal("SaaS startup ignored the file-backed master key")
 		}
@@ -241,19 +228,19 @@ func TestPlatformRuntimeRequiresOriginalAdministratorAuthentication(t *testing.T
 	t.Setenv("WACALLS_PLATFORM_PUBLIC_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
 	t.Setenv("WACALLS_API_KEY", "")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	_, err := newServer(context.Background(), "", "synthetic", "", 1, log)
+	_, err := newServer(context.Background(), "", "synthetic", "", log)
 	if !errors.Is(err, errPlatformAdminAuthenticationRequired) {
 		t.Fatal("SaaS startup did not fail before database initialization")
 	}
 	t.Setenv("WACALLS_API_KEY", "synthetic-master-only")
-	_, err = newServer(context.Background(), "", "synthetic", "", 1, log)
+	_, err = newServer(context.Background(), "", "synthetic", "", log)
 	if err == nil || errors.Is(err, errPlatformAdminAuthenticationRequired) || !strings.Contains(err.Error(), "WACALLS_PG_URL") {
 		t.Fatal("configured authentication did not pass the startup guard")
 	}
 	for _, name := range []string{"WACALLS_PLATFORM_ISSUER", "WACALLS_PLATFORM_TENANT_ID", "WACALLS_PLATFORM_PUBLIC_KEY", "WACALLS_API_KEY"} {
 		t.Setenv(name, "")
 	}
-	_, err = newServer(context.Background(), "", "synthetic", "", 1, log)
+	_, err = newServer(context.Background(), "", "synthetic", "", log)
 	if err == nil || errors.Is(err, errPlatformAdminAuthenticationRequired) || !strings.Contains(err.Error(), "WACALLS_PG_URL") {
 		t.Fatal("changed legacy non-platform startup contract")
 	}

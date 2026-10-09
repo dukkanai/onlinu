@@ -1,6 +1,5 @@
 import { adminCompletionEnglish, adminCompletionArabic } from "../admin/completion-keys";
 import { customerCompletionEnglish, customerCompletionArabic } from "../customer/completionKeys";
-import { archiveEnglish, archiveArabic } from "../admin/archive-keys";
 
 export const brandEnglish = {
   "brand.draftHint": "Appearance drafts stay private. Save a draft, review it, then publish it to customers.",
@@ -44,10 +43,10 @@ export const brandArabic: Record<keyof typeof brandEnglish, string> = {
   "errors.brand_invalid": "راجع ألوان المظهر والصور والنصوص.", "errors.brand_contrast": "ارفع تباين النصوص مع الخلفيات قبل الحفظ.",
   "errors.brand_changed": "عدّل مسؤول آخر المظهر. أعد تحميله وراجعه قبل الحفظ.", "errors.brand_no_draft": "لا يوجد مظهر محفوظ لتنفيذ هذا الإجراء.",
 };
-export const completionEnglish = { ...brandEnglish, ...adminCompletionEnglish, ...customerCompletionEnglish, ...archiveEnglish,
+export const completionEnglish = { ...brandEnglish, ...adminCompletionEnglish, ...customerCompletionEnglish,
   "errors.version_conflict": "The information changed. Reload and review it before trying again.",
 } as const;
 export type CompletionDictionary = Record<keyof typeof completionEnglish, string>;
-export const completionArabic: CompletionDictionary = { ...brandArabic, ...adminCompletionArabic, ...customerCompletionArabic, ...archiveArabic,
+export const completionArabic: CompletionDictionary = { ...brandArabic, ...adminCompletionArabic, ...customerCompletionArabic,
   "errors.version_conflict": "تغيرت البيانات. أعد تحميلها وراجعها قبل المحاولة مجددًا.",
 };

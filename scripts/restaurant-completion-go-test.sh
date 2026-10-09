@@ -15,8 +15,6 @@ exec docker run --rm --network host \
   --mount type=bind,source="$task_root",target=/src \
   --mount type=volume,source=astracalls-build-gomod,target=/go/pkg/mod \
   --mount type=volume,source=astracalls-build-gocache,target=/root/.cache/go-build \
-  -w /src -e CGO_ENABLED=1 \
-  -e 'CGO_LDFLAGS=-L/src/native -Wl,-rpath,/src/native' \
-  -e LD_LIBRARY_PATH=/src/native \
+  -w /src -e CGO_ENABLED=0 \
   -e 'TEST_RESTAURANT_PG_URL=postgres://astracalls_test:completion-test-only@127.0.0.1:15433/astracalls_restaurant_test?sslmode=disable' \
-  golang:1.26.4 go test -race -tags mlow "$@"
+  golang:1.26.4 go test -race "$@"

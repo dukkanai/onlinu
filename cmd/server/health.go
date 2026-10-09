@@ -11,7 +11,7 @@ import (
 func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	if s == nil || s.sessions == nil || s.sessions.store == nil || s.sessions.store.db == nil {
+	if s == nil || s.db == nil {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -21,7 +21,7 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	if err := s.sessions.store.db.PingContext(ctx); err != nil {
+	if err := s.db.PingContext(ctx); err != nil {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}

@@ -6,7 +6,7 @@ import { lstat, realpath } from 'node:fs/promises';
 import { isAbsolute, resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { problem } from './auth.mjs';
-const suffixes = { administrator: 'admin-key', runtime_pg_url: 'runtime-pg-url', meta_key: 'meta-key',
+const suffixes = { administrator: 'admin-key', runtime_pg_url: 'runtime-pg-url',
   pg_bootstrap: 'pg-bootstrap', runtime_password: 'runtime-db-password' };
 const names = Object.keys(suffixes);
 const fail = () => { throw problem(409, 'provisioning_secret_preflight_rejected'); };

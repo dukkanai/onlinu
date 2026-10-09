@@ -36,11 +36,10 @@ func TestRestaurantOrderChannelDisablePreservesAcceptedWork(t *testing.T) {
 	}
 	restaurantAssertStock(t, orders, 2, 2)
 	for _, source := range []string{"whatsapp_qr", "whatsapp_cloud"} {
-		if _, err = orders.SetOrderChannel(ctx, source, "owner-test", true, 1); err != nil {
-			t.Fatal(err)
-		}
+		_, err = orders.SetOrderChannel(ctx, source, "owner-test", true, 1)
+		restaurantOrdersRequireError(t, err, "invalid_request")
 		_, err = orders.Create(context.WithValue(ctx, restaurantOrderChannelKey{}, source), input, "", uuid.NewString())
-		restaurantOrdersRequireError(t, err, "channel_ordering_unavailable")
+		restaurantOrdersRequireError(t, err, "invalid_order_channel")
 	}
 	_, err = orders.SetOrderChannel(ctx, "chatgpt", "owner-test", true, 1)
 	restaurantOrdersRequireError(t, err, "conflict")

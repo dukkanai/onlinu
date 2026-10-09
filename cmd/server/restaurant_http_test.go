@@ -346,7 +346,7 @@ func TestRestaurantHTTPImagesAndStaticRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	static := restaurantStatic(dir)
-	for _, path := range []string{"/", "/order", "/track", "/account", "/admin", "/admin/calls"} {
+	for _, path := range []string{"/", "/order", "/track", "/account", "/admin"} {
 		w := httptest.NewRecorder()
 		static.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 200 || !strings.Contains(w.Body.String(), "restaurant-spa") {

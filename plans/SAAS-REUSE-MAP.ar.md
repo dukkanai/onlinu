@@ -1,3 +1,9 @@
+> Scope override, 2026-10-09: the owner removed all restaurant WhatsApp Business/QR,
+> calling, translation and related conversation-archive requirements. Only restaurant
+> and ChatGPT ordering remain active. Any older WhatsApp requirement below is historical
+> and cancelled; other safety, commerce and launch requirements remain. Restore tag:
+> before-whatsapp-removal-20261009. See README.md for the current runtime.
+
 # خريطة إعادة استخدام النظام الحالي وإضافة قنوات SaaS
 
 تاريخ الفحص: 2026-09-30. هذه خريطة مبنية على قراءة المصدر الحالي في `cmd/server` و`client/src/restaurant`؛ لا تثبت إعداد حساب خارجي أو نجاح تشغيله في الإنتاج. لم تُقرأ قواعد بيانات حقيقية أو أسرار، ولم تُنشأ نسخ احتياطية أو تُغيّر خدمات الإنتاج في هذا الفحص.

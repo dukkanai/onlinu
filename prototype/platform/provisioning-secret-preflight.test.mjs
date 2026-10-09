@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,rm,chmod,unlink,symlink,link,mkdir}from'node:fs/promises';
 import {tmpdir}from'node:os';import{join}from'node:path';import{createHash}from'node:crypto';
 import{createProvisioningSecretPreflight}from'./provisioning-secret-preflight.mjs';
-const suffixes={administrator:'admin-key',runtime_pg_url:'runtime-pg-url',meta_key:'meta-key',pg_bootstrap:'pg-bootstrap',runtime_password:'runtime-db-password'};
+const suffixes={administrator:'admin-key',runtime_pg_url:'runtime-pg-url',pg_bootstrap:'pg-bootstrap',runtime_password:'runtime-db-password'};
 const rejected=e=>e.code==='provisioning_secret_preflight_rejected'&&!JSON.stringify(e).includes('PRIVATE_VALUE');
 async function fixture(t){
  const root=await mkdtemp(join(tmpdir(),'onlinu-secret-metadata-'));t.after(()=>rm(root,{recursive:true,force:true}));
@@ -15,7 +15,7 @@ async function fixture(t){
 test('metadata-only secret preflight is read-only and returns no bytes or host paths',async t=>{
  const f=await fixture(t),before=await readFile(f.refs.administrator);
  const result=await f.check({tenantId:f.tenantId,refs:f.refs});
- assert.ok(Object.isFrozen(result)&&Object.isFrozen(result.checkedReferences));assert.equal(result.checkedReferences.length,5);
+ assert.ok(Object.isFrozen(result)&&Object.isFrozen(result.checkedReferences));assert.equal(result.checkedReferences.length,4);
  assert.ok(!JSON.stringify(result).includes('PRIVATE_VALUE'));assert.ok(!JSON.stringify(result).includes(f.root));
  assert.deepEqual(await readFile(f.refs.administrator),before);
 });
@@ -38,7 +38,7 @@ test('secret preflight rejects symlinks hardlinks and directories without openin
  for(const kind of ['symlink','hardlink','directory']){
   const f=await fixture(t),path=f.refs.administrator;
   if(kind==='hardlink')await link(path,join(f.root,'alias'));
-  else{await unlink(path);if(kind==='symlink')await symlink(f.refs.meta_key,path);else await mkdir(path);}
+  else{await unlink(path);if(kind==='symlink')await symlink(f.refs.runtime_pg_url,path);else await mkdir(path);}
   await assert.rejects(f.check({tenantId:f.tenantId,refs:f.refs}),rejected);
  }
 });
