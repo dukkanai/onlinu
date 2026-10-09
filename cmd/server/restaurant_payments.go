@@ -33,6 +33,7 @@ type restaurantPaymentDefinition struct {
 
 var restaurantPaymentDefinitions = []restaurantPaymentDefinition{
 	{"stripe", "Stripe", []restaurantPaymentField{{"secretKey", "Secret API key", true, true}}},
+	{"paylink", "Paylink", []restaurantPaymentField{{"apiId", "API ID", true, true}, {"secretKey", "Secret key", true, true}}},
 	{"moyasar", "Moyasar", []restaurantPaymentField{{"secretKey", "Secret API key", true, true}}},
 	{"tap", "Tap", []restaurantPaymentField{{"secretKey", "Secret API key", true, true}}},
 	{"hyperpay", "HyperPay", []restaurantPaymentField{{"entityId", "Entity ID", false, true}, {"accessToken", "Access token", true, true}}},
@@ -198,7 +199,7 @@ func (p *restaurantPayments) config(ctx context.Context, id string) (restaurantP
 }
 func restaurantPaymentConfigured(c restaurantPaymentConfig) bool {
 	d, ok := restaurantPaymentDefinitionByID(c.ID)
-	if !ok || c.Mode != "test" && c.Mode != "live" {
+	if !ok || c.Mode != "test" && c.Mode != "live" || c.ID == "paylink" && c.Mode != "test" {
 		return false
 	}
 	for _, f := range d.Fields {
@@ -222,6 +223,8 @@ func restaurantPaymentSanitize(c restaurantPaymentConfig) restaurantPaymentPubli
 		}
 	}
 	switch c.ID {
+	case "paylink":
+		out.Limitation = "paylink_sandbox_only"
 	case "hyperpay":
 		out.Limitation = "hyperpay_test_only"
 	case "paytabs", "geidea":
@@ -253,7 +256,7 @@ func (p *restaurantPayments) Configure(ctx context.Context, id string, in restau
 	if !ok {
 		return restaurantPaymentPublicConfig{}, restaurantFail(404, "invalid_request")
 	}
-	if in.Mode != "test" && in.Mode != "live" {
+	if in.Mode != "test" && in.Mode != "live" || id == "paylink" && in.Mode != "test" {
 		return restaurantPaymentPublicConfig{}, restaurantFail(400, "invalid_request")
 	}
 	// Serialize edits across processes so omitted secrets cannot restore stale credentials.
@@ -441,6 +444,17 @@ func (p *restaurantPayments) Start(ctx context.Context, number, token, customerI
 	}
 	if o.Payment.Status != "unpaid" {
 		return restaurantPaymentView{}, restaurantFail(409, "invalid_status")
+	}
+	if provider == "paylink" {
+		if strings.TrimSpace(o.CustomerName) == "" {
+			return restaurantPaymentView{}, restaurantFail(400, "invalid_request")
+		}
+		if o.TotalMinor < 500 || o.Currency != "SAR" {
+			return restaurantPaymentView{}, restaurantFail(409, "payment_unavailable")
+		}
+		if !restaurantOrderPhone(o.Phone) {
+			return restaurantPaymentView{}, restaurantFail(400, "phone_required")
+		}
 	}
 	if provider == "geidea" {
 		if _, _, err := restaurantPaymentPhone(o.Phone); err != nil {
@@ -669,6 +683,11 @@ func (p *restaurantPayments) refreshAttemptAfter(ctx context.Context, a restaura
 	return complete(v, e)
 }
 func (p *restaurantPayments) Hook(ctx context.Context, provider, id string) error {
+	// Paylink account-level webhooks need a separate authenticated routing design.
+	// This sandbox increment supports only persisted-attempt query/return flows.
+	if provider == "paylink" {
+		return restaurantFail(404, "invalid_request")
+	}
 	if _, err := uuid.Parse(id); err != nil {
 		return restaurantFail(404, "invalid_request")
 	}

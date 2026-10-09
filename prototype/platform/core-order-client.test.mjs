@@ -288,3 +288,9 @@ test('opening schedule signs validated replacement and never replays uncertainty
  assert.throws(()=>client.patchOpeningSchedule('restaurant-a',subject,{...input,reviewed:false}),{code:'invalid_request'});assert.equal(calls,2);
  bad=true;await assert.rejects(client.patchOpeningSchedule('restaurant-a',subject,input),{code:'order_outcome_unknown'});assert.equal(calls,3);
 });
+
+test('Paylink core checkout is bound to the documented pilot invoice URL',()=>{
+  const pilot='https://paymentpilot.paylink.sa/pay/info/030631666083046';
+  assert.equal(allowedPaymentURL('paylink',pilot),true);
+  for(const value of [pilot.replace('paymentpilot','payment'),pilot+'?return=https://evil.test',pilot+'#paid',pilot+'\n',pilot+'/',pilot.replace('.sa/','.sa:443/'),pilot.replace('.sa/','.sa.evil.test/'),pilot.replace('/pay/info/','/redirect/'),pilot.replace('https:','http:'),'https://paymentpilot.paylink.sa@evil.test/pay/info/123'])assert.equal(allowedPaymentURL('paylink',value),false,value);
+});

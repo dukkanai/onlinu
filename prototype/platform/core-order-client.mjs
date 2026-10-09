@@ -19,11 +19,12 @@ export const coreOrderView = z.object({ number: z.string().regex(/^R[0-9]{8,20}$
 const coreOrderDetails=coreOrderView.extend({items:coreQuoteSchema.shape.items,tax:coreQuoteSchema.shape.tax,
   subtotalMinor:coreQuoteSchema.shape.subtotalMinor,deliveryFeeMinor:coreQuoteSchema.shape.deliveryFeeMinor,
   tableName:coreQuoteSchema.shape.tableName,demo:z.boolean(),createdAt:z.string().datetime({offset:true})});
-const paymentHosts={stripe:['checkout.stripe.com'],moyasar:['checkout.moyasar.com'],tap:['checkout.tap.company','payment.tap.company','tap.company'],
+const paymentHosts={paylink:['paymentpilot.paylink.sa'],stripe:['checkout.stripe.com'],moyasar:['checkout.moyasar.com'],tap:['checkout.tap.company','payment.tap.company','tap.company'],
     paytabs:['secure.paytabs.sa'],geidea:['www.ksamerchant.geidea.net','ksamerchant.geidea.net','merchant.geidea.net'],
     myfatoorah:['sa.myfatoorah.com','demo.myfatoorah.com','portal.myfatoorah.com']};
 export const paymentFormSources=Object.values(paymentHosts).flat().map(host=>'https://'+host).join(' ');
 export function allowedPaymentURL(provider, raw) {
+  if(provider==='paylink')return typeof raw==='string'&&/^https:\/\/paymentpilot\.paylink\.sa\/pay\/info\/[0-9]{1,40}$/.test(raw)&&!/\s/.test(raw);
   if(typeof raw!=='string'||!raw.startsWith('https://'))return false;
   try {const url=new URL(raw),authority=raw.slice(8).split(/[/?#]/)[0];return !url.username&&!url.password&&!authority.includes(':')&&!!paymentHosts[provider]?.includes(url.hostname);}
   catch{return false;}

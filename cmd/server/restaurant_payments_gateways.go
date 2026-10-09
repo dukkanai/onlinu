@@ -78,12 +78,15 @@ func restaurantPaymentAPIURL(raw string) bool {
 		return false
 	}
 	switch u.Hostname() {
-	case "api.stripe.com", "api.moyasar.com", "api.tap.company", "eu-test.oppwa.com", "eu-prod.oppwa.com", "secure.paytabs.sa", "api.ksamerchant.geidea.net", "apitest.myfatoorah.com", "api-sa.myfatoorah.com":
+	case "restpilot.paylink.sa", "api.stripe.com", "api.moyasar.com", "api.tap.company", "eu-test.oppwa.com", "eu-prod.oppwa.com", "secure.paytabs.sa", "api.ksamerchant.geidea.net", "apitest.myfatoorah.com", "api-sa.myfatoorah.com":
 		return true
 	}
 	return false
 }
 func restaurantPaymentURL(provider, raw string) bool {
+	if provider == "paylink" {
+		return restaurantPaylinkCheckout.MatchString(raw)
+	}
 	u, e := url.Parse(raw)
 	if e != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" {
 		return false
@@ -154,6 +157,9 @@ var restaurantPaymentID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$
 var restaurantPaymentNumericID = regexp.MustCompile(`^[1-9][0-9]{0,19}$`)
 
 func restaurantPaymentValidateConfig(c restaurantPaymentConfig) error {
+	if c.ID == "paylink" && c.Mode != "test" {
+		return restaurantFail(400, "invalid_request")
+	}
 	if c.ID == "stripe" || c.ID == "moyasar" || c.ID == "tap" {
 		key := c.Secrets["secretKey"]
 		if key != "" && !strings.HasPrefix(key, "sk_"+c.Mode+"_") {
@@ -174,6 +180,8 @@ func (g *restaurantPaymentGateways) Create(ctx context.Context, c restaurantPaym
 	switch c.ID {
 	case "stripe":
 		return g.createStripe(ctx, c, r)
+	case "paylink":
+		return g.createPaylink(ctx, c, r)
 	case "moyasar":
 		return g.createMoyasar(ctx, c, r)
 	case "tap":
@@ -191,6 +199,8 @@ func (g *restaurantPaymentGateways) Fetch(ctx context.Context, c restaurantPayme
 	switch c.ID {
 	case "stripe":
 		return g.fetchStripe(ctx, c, id)
+	case "paylink":
+		return g.fetchPaylink(ctx, c, id, attempt)
 	case "moyasar":
 		return g.fetchMoyasar(ctx, c, id)
 	case "tap":

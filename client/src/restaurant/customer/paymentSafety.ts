@@ -34,6 +34,9 @@ const allowedHosts: Record<string, string[]> = {
   ],
 };
 export function safePaymentURL(provider: string, value: string): string | null {
+  if (provider === "paylink") {
+    return /^https:\/\/paymentpilot\.paylink\.sa\/pay\/info\/[0-9]{1,40}$/.test(value) && !/\s/.test(value) ? value : null;
+  }
   try {
     const url = new URL(value);
     return url.protocol === "https:" &&

@@ -216,3 +216,11 @@ test("payment return needs a matching retained private receipt, never a success 
     else Reflect.deleteProperty(globalThis, "sessionStorage");
   }
 });
+
+test("Paylink checkout allows only the documented sandbox host and exact invoice path", () => {
+  const pilot = "https://paymentpilot.paylink.sa/pay/info/030631666083046";
+  assert.equal(safePaymentURL("paylink", pilot), pilot);
+  for (const value of [pilot.replace("paymentpilot", "payment"), pilot + "?return=https://evil.test", pilot + "#paid", pilot + "\n", pilot + "/", pilot.replace(".sa/", ".sa:443/"), pilot.replace(".sa/", ".sa.evil.test/"), pilot.replace("/pay/info/", "/redirect/"), pilot.replace("https:", "http:"), "https://paymentpilot.paylink.sa@evil.test/pay/info/123"]) {
+    assert.equal(safePaymentURL("paylink", value), null, value);
+  }
+});

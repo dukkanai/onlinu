@@ -1280,6 +1280,7 @@ function CheckoutPage({
                 <Field label={t("order.name")}>
                   <input
                     autoComplete="name"
+                    required={paymentMethod === "card" && paymentProvider === "paylink"}
                     maxLength={100}
                     value={name}
                     onChange={(event) => setName(event.target.value)}
@@ -1293,7 +1294,7 @@ function CheckoutPage({
                     maxLength={30}
                     required={
                       mode !== "table" ||
-                      (paymentMethod === "card" && paymentProvider === "geidea")
+                      (paymentMethod === "card" && ["geidea", "paylink"].includes(paymentProvider))
                     }
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}

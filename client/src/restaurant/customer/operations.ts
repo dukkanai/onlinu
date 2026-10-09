@@ -3,6 +3,7 @@ export { brandVariables, contrastText } from "../brand";
 
 export const paymentProviderIds = [
   "stripe",
+  "paylink",
   "moyasar",
   "tap",
   "hyperpay",

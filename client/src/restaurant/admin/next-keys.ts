@@ -1,5 +1,6 @@
 // Locale-extension source for the Arabic and English restaurant interface.
 export const adminNextEnglish = {
+  "payments.field.apiId": "API ID",
   "payments.field.secretKey": "Secret key", "payments.field.entityId": "Entity ID", "payments.field.accessToken": "Access token",
   "payments.field.profileId": "Profile ID", "payments.field.serverKey": "Server key", "payments.field.merchantPublicKey": "Merchant public key",
   "payments.field.apiPassword": "API password", "payments.field.apiToken": "API token", "payments.field.paymentMethodId": "Payment method ID",
@@ -23,6 +24,7 @@ export const adminNextEnglish = {
   "adminNext.sarOnly": "These payment integrations currently support SAR transactions only.",
   "adminNext.demoModeRule": "Demo restaurants use test payment gateways only. Restaurants with demo mode turned off use live gateways only.",
   "adminNext.providerLimit.merchant_sar_currency": "MyFatoorah requires a merchant account whose base currency is SAR. Demo accounts with KWD as their base currency cannot be used.",
+  "adminNext.providerLimit.paylink_sandbox_only": "Experimental Paylink sandbox only, minimum SAR 5. Live payments, account webhooks and automatic refunds are unavailable. Sandbox account acceptance and external-key security checks are still required.",
   "adminNext.providerLimit.hyperpay_test_only": "HyperPay currently supports test mode only. Live checkout is unavailable.",
   "adminNext.providerLimit.merchant_mode_credentials": "Test mode requires your provider's test merchant credentials. Selecting test mode cannot turn live merchant credentials into a sandbox account.",
   "adminNext.metaWebhook": "Meta webhook URL", "adminNext.metaSecretHint": "Credentials are kept on the server. Leave saved secret fields blank to keep their existing values.",
@@ -39,6 +41,7 @@ export const adminNextEnglish = {
 } as const;
 
 export const adminNextArabic: Record<keyof typeof adminNextEnglish, string> = {
+  "payments.field.apiId": "معرّف الواجهة",
   "payments.field.secretKey": "المفتاح السري", "payments.field.entityId": "معرّف الكيان", "payments.field.accessToken": "رمز الوصول",
   "payments.field.profileId": "معرّف الملف", "payments.field.serverKey": "مفتاح الخادم", "payments.field.merchantPublicKey": "المفتاح العام للتاجر",
   "payments.field.apiPassword": "كلمة مرور الواجهة", "payments.field.apiToken": "رمز الواجهة", "payments.field.paymentMethodId": "معرّف طريقة الدفع",
@@ -62,6 +65,7 @@ export const adminNextArabic: Record<keyof typeof adminNextEnglish, string> = {
   "adminNext.sarOnly": "تكاملات الدفع الحالية تدعم عمليات الريال السعودي فقط.",
   "adminNext.demoModeRule": "المطاعم التجريبية تستخدم بوابات الاختبار فقط. عند إيقاف وضع المطعم التجريبي، تُستخدم البوابات الفعلية فقط.",
   "adminNext.providerLimit.merchant_sar_currency": "يتطلب MyFatoorah حساب تاجر عملته الأساسية الريال السعودي. لا يمكن استخدام الحسابات التجريبية التي عملتها الأساسية الدينار الكويتي.",
+  "adminNext.providerLimit.paylink_sandbox_only": "Paylink تجريبي فقط، والحد الأدنى 5 ريالات. الدفع الفعلي وإشعارات الحساب والاسترداد الآلي غير متاحة. ما زال اختبار الحساب التجريبي والتحقق من حماية المفاتيح الخارجية مطلوبين.",
   "adminNext.providerLimit.hyperpay_test_only": "يدعم HyperPay وضع الاختبار فقط حاليًا. تأكيد الدفع الفعلي غير متاح.",
   "adminNext.providerLimit.merchant_mode_credentials": "وضع الاختبار يتطلب بيانات اعتماد حساب تجريبي من المزوّد. اختيار وضع الاختبار لا يحوّل بيانات اعتماد التاجر الفعلية إلى حساب تجريبي.",
   "adminNext.metaWebhook": "رابط Webhook لـMeta", "adminNext.metaSecretHint": "تُحفظ بيانات الاعتماد على الخادم. اترك الحقول السرية المحفوظة فارغة للاحتفاظ بقيمها الحالية.",

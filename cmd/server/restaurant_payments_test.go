@@ -302,7 +302,7 @@ func TestRestaurantPaymentsIntegrationEncryptionAndConfiguration(t *testing.T) {
 	p, _ := restaurantPaymentFixture(t)
 	ctx := context.Background()
 	configs, err := p.Admin(ctx)
-	if err != nil || len(configs) != 7 {
+	if err != nil || len(configs) != 8 {
 		t.Fatal("configuration list")
 	}
 	raw, _ := json.Marshal(configs)

@@ -3,7 +3,7 @@ import type { Brand } from "./brand";
 export type Locale = "ar" | "en";
 export type Mode = "delivery" | "pickup" | "table";
 export type PaymentMethod = "cash_before" | "cash_after" | "cash_on_delivery" | "card";
-export type PaymentProviderID = "stripe" | "moyasar" | "tap" | "hyperpay" | "paytabs" | "geidea" | "myfatoorah";
+export type PaymentProviderID = "stripe" | "paylink" | "moyasar" | "tap" | "hyperpay" | "paytabs" | "geidea" | "myfatoorah";
 export interface TaxSummary { enabled: boolean; rateBps: number; number: string; netMinor: number; taxMinor: number; grossMinor: number }
 export interface OrderPayment { method: PaymentMethod | ""; provider: string; status: string; paidAt?: string; amountMinor: number }
 export interface Courier { id: string; username: string; name: string; phone: string; active: boolean; availability: "available" | "busy" | "offline"; createdAt: string; updatedAt: string }

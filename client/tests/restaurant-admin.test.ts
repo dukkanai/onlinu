@@ -179,3 +179,14 @@ test("brand, inclusive tax and per-mode payment policy drafts reject unsafe sett
   catalog.settings.paymentMethods.pickup = ["cash_after"];
   assert.equal(validCatalog(catalog), false);
 });
+
+test("Paylink settings expose only a disabled live option and masked credential controls", () => {
+  const config: PaymentProviderConfig = { id: "paylink", name: "Paylink", enabled: false, mode: "test", configured: false, limitation: "paylink_sandbox_only", fields: [{ key: "apiId", label: "API ID", secret: true, required: true }, { key: "secretKey", label: "Secret key", secret: true, required: true }], values: { apiId: "MUST-NOT-RENDER", secretKey: "MUST-NOT-RENDER" }, secretSet: { apiId: false, secretKey: false } };
+  const html = renderToStaticMarkup(createElement(LocaleProvider, { defaultLocale: "en", children: createElement(PaymentProviderEditor, { config, country: "SA", onSaved: () => {} }) }));
+  assert.match(html, /Experimental Paylink sandbox only/);
+  assert.match(html, /minimum SAR 5/);
+  assert.match(html, /<option value="live" disabled="">/);
+  assert.equal((html.match(/type="password"/g) ?? []).length, 2);
+  assert.doesNotMatch(html, /MUST-NOT-RENDER/);
+  assert.match(html, /API ID/);
+});

@@ -8,7 +8,7 @@ export interface PaymentProviderConfig {
   id: string; name: string; enabled: boolean; mode: "test" | "live"; configured: boolean;
   fields: { key: string; label: string; secret: boolean; required: boolean }[];
   values: Record<string, string>; secretSet: Record<string, boolean>; webhookUrl?: string;
-  limitation?: "hyperpay_test_only" | "merchant_mode_credentials" | "stripe_merchant_eligibility" | "merchant_sar_currency";
+  limitation?: "paylink_sandbox_only" | "hyperpay_test_only" | "merchant_mode_credentials" | "stripe_merchant_eligibility" | "merchant_sar_currency";
 }
 
 export function paymentConfigPayload(config: PaymentProviderConfig, enabled: boolean, mode: "test" | "live", values: Record<string, string>, secrets: Record<string, string>, clear: string[]) {
@@ -47,7 +47,7 @@ export function PaymentProviderEditor({ config, onSaved, country }: { config: Pa
     {error && <p className="ra-alert" role="alert">{t(`errors.${error}`)}</p>}{notice && <p className="ra-notice" role="status">{t("adminNext.gatewaySaved")}</p>}
     <fieldset disabled={busy} className="ra-editor-fields">
       <Check label={t("adminNext.gatewayEnabled")} checked={enabled} onChange={setEnabled} />
-      <Field label={t("adminNext.mode")}><select value={mode} onChange={event => setMode(event.target.value as "test" | "live")}><option value="test">{t("adminNext.testMode")}</option><option value="live" disabled={config.limitation === "hyperpay_test_only"}>{t("adminNext.liveMode")}</option></select></Field>
+      <Field label={t("adminNext.mode")}><select value={mode} onChange={event => setMode(event.target.value as "test" | "live")}><option value="test">{t("adminNext.testMode")}</option><option value="live" disabled={config.limitation === "hyperpay_test_only" || config.limitation === "paylink_sandbox_only"}>{t("adminNext.liveMode")}</option></select></Field>
       {config.limitation && config.limitation !== "stripe_merchant_eligibility" && <p className="ra-warning ra-spaced">{t(`adminNext.providerLimit.${config.limitation}`)}</p>}
       {config.fields.map(field => {
         const stored = Boolean(config.secretSet?.[field.key]) && !clear.includes(field.key);

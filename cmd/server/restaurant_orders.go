@@ -1022,6 +1022,17 @@ func (s *restaurantOrders) availableCartQuote(ctx context.Context, quote restaur
 			return restaurantQuote{}, restaurantFail(400, "phone_required")
 		}
 	}
+	if input.PaymentMethod == "card" && input.PaymentProvider == "paylink" {
+		if strings.TrimSpace(input.CustomerName) == "" {
+			return restaurantQuote{}, restaurantFail(400, "invalid_request")
+		}
+		if quote.Currency != "SAR" || quote.TotalMinor < 500 {
+			return restaurantQuote{}, restaurantFail(409, "payment_unavailable")
+		}
+		if !restaurantOrderPhone(input.Phone) {
+			return restaurantQuote{}, restaurantFail(400, "phone_required")
+		}
+	}
 	methods := []string{}
 	selected := input.PaymentMethod == ""
 	for _, method := range quote.PaymentMethods {
