@@ -49,9 +49,12 @@ production deployment, external account revocation or data purge was performed.
 Local frontend build and 71 frontend tests pass. Deployment unit tests pass (86).
 Full isolated PostgreSQL Go race suite, actual-main startup, Node/core signed
 HTTP parity, tenant Go tests, platform tests with database coverage, go vet and
-go build pass locally. Hosted acceptance is pending. Browser execution on the local
-sandbox is blocked by Unix socket restrictions; hosted CI must establish browser
-and native-client acceptance. Do not represent local browser checks as passed.
+go build pass locally. Hosted acceptance passed for code commit `8a4e82cc180fe45e6d23adce03f4ed98e509190b`
+in [CI 37870435256](https://github.com/dukkanai/onlinu/actions/runs/37870435256):
+server (including browser/core integration), client, control-image and native-windows.
+Optional runtime-image, Android and iOS jobs were not run. Browser execution on the local
+sandbox is blocked by Unix socket restrictions; hosted CI established browser and Windows native-client acceptance. Local browser
+checks remain environment-blocked, not locally passed.
 
 The old offline 0.3.0 image/archive is not the cleaned application. The 0.4.0 manifest
 is deliberately `unbuilt`, with no fabricated digest. Building and accepting a new

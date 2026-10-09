@@ -1,5 +1,11 @@
 # Current scope override — 2026-10-09
 
+Cleanup accepted: code `8a4e82c`, CI `37870435256` passed server, client, control-image
+and native-windows. Optional runtime-image, Android and iOS acceptance was not run.
+No main merge or production deployment. Local results: 210 Go top-level tests
+(470 including subtests), 419 platform tests with PostgreSQL, 71 client tests,
+86 deployment unit tests, tenant Go, vet and builds passed.
+
 Owner authorized a Git restore point, then removal of restaurant WhatsApp Business
 API and QR channels. Restore tag: `before-whatsapp-removal-20261009`, exact commit
 `3614be85c97744b95e25f55ac4e0e77de4b06394`; pushed and verified. Cleanup branch:
@@ -7,7 +13,7 @@ API and QR channels. Restore tag: `before-whatsapp-removal-20261009`, exact comm
 backlog below is cancelled by this scope change, not unfinished current work.
 
 Retain the restaurant storefront, administration/delivery/payment core and
-ChatGPT/MCP signed integration. Next: finish cleanup acceptance, then validate the
+ChatGPT/MCP signed integration. Next: validate the
 end-to-end restaurant + ChatGPT ordering/recovery/administration journey and remaining
 launch gates. No production deployment or deletion of old external data is authorized.
 The 0.4.0 runtime/offline package requires a new build; the old 0.3.0 binary is not it.
