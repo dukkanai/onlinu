@@ -24,7 +24,7 @@ The test checks authoritative quote totals and zero new orders/customers. Option
 an operator-specified path with exclusive creation; it never overwrites a file.
 Never use production credentials or copy private order data into this experiment.
 
-## Phase 2: actual ChatGPT rendering (pending access)
+## Phase 2: actual ChatGPT rendering (verified 2026-10-09)
 
 Use the owner's authorized existing ChatGPT account, Chat tab and available GPT-6.
 If sign-in is needed, use secure sign-in. Do not change account plans/settings,
@@ -51,5 +51,19 @@ verify that menu/quote changes fetch current server results. Keep the owned webs
 checkout and human confirmation for real order placement. Preserve the text-only
 MCP fallback and existing authorization/idempotency boundaries.
 
-No production deployment, real order, real payment, or client-account linking has
-been performed by adding this test. Native Intelligent UI access remains pending.
+Actual owner-authorized Chat-tab test completed on 2026-10-09 at approximately
+03:41 UTC. The first answer contained text labels that looked like buttons but
+had no interactive behavior. One clarification produced an embedded interactive
+menu with quantity controls, rice checkboxes, budget status and reset.
+
+Observed results matched all four reference totals (70, 80, 96, 58 SAR). The 96
+case showed 16 over budget; the 58 case showed 22 remaining. Repeated clicks and
+reset behaved correctly; decrement at zero did not produce negative quantities.
+No explicit underlying model name was visible in the Chat UI, so none is asserted.
+
+The result verifies in-conversation interactive presentation with static synthetic
+data. It does not verify that generated controls invoke MCP tools or fetch fresh
+server quotes. No real order/payment, production deployment, or new restaurant
+plugin connection was performed. Connected read-only testing requires its own
+explicit connection approval. The test conversation and screenshot remain private
+with the owner rather than being published in this repository.
