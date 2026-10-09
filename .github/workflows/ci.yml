@@ -106,6 +106,7 @@ jobs:
       CORE_PROVISIONING_SCREENSHOT: ${{ github.workspace }}/artifacts/provisioning/browser.png
       CORE_OPENING_SCREENSHOT: ${{ github.workspace }}/artifacts/opening-schedule/browser.png
       CORE_PAYMENT_METHODS_SCREENSHOT: ${{ github.workspace }}/artifacts/payment-methods/browser.png
+      CORE_MENU_SCREENSHOT: ${{ github.workspace }}/artifacts/menu-preview/browser.png
     steps:
       - uses: actions/checkout@v4
 
@@ -202,6 +203,15 @@ jobs:
       - name: Test platform with PostgreSQL
         run: npm test
         working-directory: prototype/platform
+
+      - name: Preserve real-core MCP menu preview rendering
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlinu-core-menu-preview-${{ github.sha }}
+          path: artifacts/menu-preview/
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Test installer and source packaging
         run: python3 -m unittest discover -s deploy -p 'test_*.py'

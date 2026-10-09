@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
 import { createMcpHandler, MCP_PROTOCOL_VERSION, PROTOCOL_STATUS, UI_RESOURCE_URI } from './mcp.mjs';
+import { CORE_MENU_UI_HTML, CORE_MENU_UI_RESOURCE_URI } from './core-menu-ui.mjs';
 
 const alice = { id: 'customer-alice', role: 'customer', tenantIds: [], scopes: ['orders:read', 'orders:write', 'events:read'] };
 const bob = { ...alice, id: 'customer-bob' };
@@ -111,6 +112,66 @@ test('UI resource uses MCP Apps MIME and deny-by-default external CSP', async t 
   assert.equal(resource.mimeType, 'text/html;profile=mcp-app');
   assert.match(resource.text, /Synthetic fixture/);
   assert.deepEqual(resource._meta.ui.csp, { connectDomains: [], resourceDomains: [] });
+});
+
+test('real core exposes a versioned, read-only menu UI without rendering each quote or enabling checkout from the app', async t => {
+  const coreAdapter = { listRestaurants: async () => [], getMenu: async () => { throw Error('unused'); }, preview: async () => { throw Error('unused'); } };
+  const fixture = await setup(t, { coreAdapter, coreCheckouts: { prepare() { throw Error('unused'); }, status() { throw Error('unused'); } } });
+  for (const legacy of [false, true]) {
+    const send = (method, params = {}) => fixture.send(legacy ? { jsonrpc: '2.0', id: 1, method, params } : envelope(method, params), { legacy });
+    const tools = (await send('tools/list')).body.result.tools;
+    const menu = tools.find(tool => tool.name === 'get_restaurant_menu');
+    assert.equal(menu._meta.ui.resourceUri, CORE_MENU_UI_RESOURCE_URI);
+    assert.equal(menu._meta['openai/outputTemplate'], CORE_MENU_UI_RESOURCE_URI);
+    assert.equal(menu._meta['openai/widgetAccessible'], true);
+    assert.deepEqual(menu._meta.ui.visibility, ['model', 'app']);
+    assert.deepEqual(menu.securitySchemes, [{ type: 'noauth' }]);
+    assert.equal(menu.annotations.readOnlyHint, true);
+    const quote = tools.find(tool => tool.name === 'quote_cart');
+    assert.equal(quote._meta.ui.resourceUri, undefined, 'Repricing must not instantiate another widget');
+    assert.equal(quote._meta['openai/widgetAccessible'], true);
+    assert.deepEqual(quote._meta.ui.visibility, ['model', 'app']);
+    assert.equal(quote.annotations.readOnlyHint, true);
+    for (const name of ['prepare_checkout', 'get_order_status', 'search_restaurants']) {
+      const tool = tools.find(row => row.name === name);
+      assert.deepEqual(tool._meta.ui.visibility, ['model']);
+      assert.equal(tool._meta['openai/widgetAccessible'], false);
+      assert.equal(tool._meta.ui.resourceUri, undefined);
+    }
+    const resources = (await send('resources/list')).body.result.resources;
+    assert.deepEqual(resources.map(row => row.uri), [CORE_MENU_UI_RESOURCE_URI]);
+    const resource = (await send('resources/read', { uri: CORE_MENU_UI_RESOURCE_URI })).body.result.contents[0];
+    assert.equal(resource.text, CORE_MENU_UI_HTML);
+    assert.equal(resource.mimeType, 'text/html;profile=mcp-app');
+    assert.deepEqual(resource._meta.ui.csp, { connectDomains: [], resourceDomains: [] });
+    assert.match(resource.text, /ui\/initialize/);
+    assert.match(resource.text, /tools\/call/);
+    assert.match(resource.text, /dir="rtl"/);
+    assert.doesNotMatch(resource.text, /prepare_checkout|create_order|requestCheckout|https?:\/\/|fetch\(|XMLHttpRequest|localStorage/);
+  }
+  assert.equal(fixture.calls.length, 0, 'Reading static UI never reads private data or performs a backend action');
+});
+
+test('adding the real core UI does not bypass private catalog OAuth or widen its scope', async t => {
+  let reads = 0;
+  const coreAdapter = { listRestaurants: async () => [], getMenu: async () => { reads++; throw Error('unused'); }, preview: async () => { reads++; throw Error('unused'); } };
+  const fixture = await setup(t, { coreAdapter, requireCatalogAuth: true });
+  const tools = (await fixture.send(envelope('tools/list'))).body.result.tools;
+  for (const name of ['get_restaurant_menu', 'quote_cart']) {
+    const tool = tools.find(row => row.name === name);
+    assert.deepEqual(tool.securitySchemes, [{ type: 'oauth2', scopes: ['orders:read'] }]);
+    assert.deepEqual(tool._meta.securitySchemes, tool.securitySchemes);
+    const args = name === 'get_restaurant_menu' ? { tenantId: 'demo-a' } : { ...cart, mode: 'pickup' };
+    for (const token of [undefined, 'no-scope', 'merchant']) {
+      const result = (await fixture.call(name, args, { token })).body.result;
+      assert.equal(result.isError, true);
+      assert.match(result._meta['mcp/www_authenticate'][0], /scope="orders:read"/);
+    }
+  }
+  assert.equal(reads, 0);
+  const resource = await fixture.send(envelope('resources/read', { uri: CORE_MENU_UI_RESOURCE_URI }));
+  assert.equal(resource.body.result.contents[0].text, CORE_MENU_UI_HTML);
+  assert.equal(reads, 0);
 });
 
 test('public catalog/menu/quote work without authentication and do not leak extra output', async t => {

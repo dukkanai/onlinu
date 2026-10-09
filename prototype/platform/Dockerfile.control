@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
-COPY auth.mjs native-client-policy.mjs oidc.mjs identity-directory.mjs control-plane.mjs control-server.mjs core-adapter.mjs core-checkouts.mjs core-order-client.mjs core-events.mjs events.mjs mcp.mjs staff-pages.mjs opening-pages.mjs opening-schedule.mjs open-restaurant-search.mjs quote-binding.mjs checkout-pages.mjs core-media.mjs staff-api.mjs courier-service.mjs native-staff.mjs request-limits.mjs provisioning-journal.mjs provisioning-pages.mjs ./
+COPY auth.mjs native-client-policy.mjs oidc.mjs identity-directory.mjs control-plane.mjs control-server.mjs core-adapter.mjs core-checkouts.mjs core-order-client.mjs core-events.mjs events.mjs mcp.mjs core-menu-ui.mjs staff-pages.mjs opening-pages.mjs opening-schedule.mjs open-restaurant-search.mjs quote-binding.mjs checkout-pages.mjs core-media.mjs staff-api.mjs courier-service.mjs native-staff.mjs request-limits.mjs provisioning-journal.mjs provisioning-pages.mjs ./
 USER node
 ENV PORT=18789 BIND_ADDRESS=0.0.0.0
 EXPOSE 18789

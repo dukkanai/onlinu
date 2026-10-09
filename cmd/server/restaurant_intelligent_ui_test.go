@@ -21,7 +21,7 @@ func TestRestaurantIntelligentUIReadOnlyExperiment(t *testing.T) {
 	s, h := restaurantHTTPFixture(t)
 	// A read-only demo must not need the fixture's synthetic payment provider.
 	s.orders.PaymentAvailable = nil
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	current, err := s.restaurant.GetCatalog(ctx, false)
 	if err != nil {

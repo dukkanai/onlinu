@@ -4,6 +4,7 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 import { z } from 'zod';
 import { coreCatalogSchema, coreQuoteSchema, corePreviewInput, coreOpeningStatusSchema } from './core-adapter.mjs';
 import { coreOrderView } from './core-order-client.mjs';
+import { CORE_MENU_UI_HTML, CORE_MENU_UI_RESOURCE_URI } from './core-menu-ui.mjs';
 
 export const MCP_PROTOCOL_VERSION = '2026-07-28';
 export const UI_RESOURCE_URI = 'ui://restaurant-prototype/directory.html';
@@ -132,7 +133,7 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
     });
     const toolDescriptors = [];
 
-    const register = (name, title, description, inputSchema, outputSchema, callback, { scope, write = false, ui = false } = {}) => {
+    const register = (name, title, description, inputSchema, outputSchema, callback, { scope, write = false, ui = false, appAccessible = false } = {}) => {
       const securitySchemes = scope ? [{ type: 'oauth2', scopes: [scope] }] : [{ type: 'noauth' }];
       const config = {
         title,
@@ -142,7 +143,11 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
         annotations: { readOnlyHint: !write, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         _meta: {
           securitySchemes,
-          ...(ui ? { ui: { resourceUri: UI_RESOURCE_URI }, 'openai/ui': { entrypoints: [{ type: 'global' }, { type: 'thread' }] } } : {}),
+          ...(coreAdapter ? {
+            ui: { visibility: appAccessible ? ['model', 'app'] : ['model'], ...(ui ? { resourceUri: CORE_MENU_UI_RESOURCE_URI } : {}) },
+            'openai/widgetAccessible': appAccessible,
+            ...(ui ? { 'openai/outputTemplate': CORE_MENU_UI_RESOURCE_URI } : {}),
+          } : ui ? { ui: { resourceUri: UI_RESOURCE_URI }, 'openai/ui': { entrypoints: [{ type: 'global' }, { type: 'thread' }] } } : {}),
         },
       };
       server.registerTool(name, config, async args => {
@@ -181,12 +186,12 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
         openSearchInput,openSearchOutput,args=>coreAdapter.searchOpenRestaurants(args),{scope:catalogScope});
       if(typeof coreAdapter.openingStatus==='function')register('get_restaurant_opening_status','Read current restaurant acceptance','Read a fresh server-evaluated Saudi opening-schedule and manual intake snapshot for a published restaurant. Disabled schedule means opening hours are not configured; acceptingOrders is not proof of stock, delivery coverage or payment availability. Checkout remains authoritative.',
         z.object({tenantId:identifier}).strict(),coreOpeningStatusSchema.safeExtend({tenantId:identifier}),args=>coreAdapter.openingStatus(args.tenantId),{scope:catalogScope});
-      register('get_restaurant_menu', 'Read the restaurant menu', 'Read original menu categories, available items/options, prices and published appearance. Availability is not a stock reservation.',
+      register('get_restaurant_menu', 'Show the restaurant menu', 'Read original menu categories, available items/options, prices and published appearance. Opens the interactive pickup-only menu and server-priced cart preview when supported by the host. The preview does not create orders or take payments. Availability is not a stock reservation.',
         z.object({ tenantId: identifier }).strict(), coreCatalogSchema.extend({ tenantId: identifier }),
-        args => coreAdapter.getMenu(args.tenantId), { scope: catalogScope });
+        args => coreAdapter.getMenu(args.tenantId), { scope: catalogScope, ui: true, appAccessible: true });
       register('quote_cart', 'Preview cart price', 'Authoritative original restaurant pricing, delivery coverage, options and tax. No contact details, order, payment or stock reservation. An empty paymentMethods list means pricing is available but checkout currently has no available payment method. For delivery, supply the requested area; ask consent before using location.',
         corePreviewInput.extend({ tenantId: identifier }).strict(), coreQuoteSchema.extend({ tenantId: identifier }),
-        ({ tenantId, ...input }) => coreAdapter.preview(tenantId, input), { scope: catalogScope });
+        ({ tenantId, ...input }) => coreAdapter.preview(tenantId, input), { scope: catalogScope, appAccessible: true });
       if (coreCheckouts) {
         register('prepare_checkout', 'Prepare owned checkout', 'Create a private website link for the connected customer to enter contact details and explicitly confirm. No order, stock reservation or payment occurs here. Reuse the same idempotencyKey for the same cart.',
           corePreviewInput.extend({ tenantId: identifier, expectedTotalMinor: minor, idempotencyKey: identifier.min(8).max(100) }).strict(),
@@ -213,6 +218,17 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
         mimeType: 'text/html;profile=mcp-app',
         text: uiHtml,
         _meta: { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } },
+      }],
+    }));
+    if (coreAdapter) server.registerResource('onlinu-core-menu', CORE_MENU_UI_RESOURCE_URI, { title: 'Onlinu menu and read-only cart preview', mimeType: 'text/html;profile=mcp-app' }, async () => ({
+      contents: [{
+        uri: CORE_MENU_UI_RESOURCE_URI,
+        mimeType: 'text/html;profile=mcp-app',
+        text: CORE_MENU_UI_HTML,
+        _meta: {
+          ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } },
+          'openai/widgetDescription': 'Interactive Arabic restaurant menu with read-only pickup cart prices from the restaurant server. No ordering or payment controls.',
+        },
       }],
     }));
 

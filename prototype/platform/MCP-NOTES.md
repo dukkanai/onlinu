@@ -70,6 +70,12 @@ The chosen staging deployment uses the origin-only URL `https://almujeeb.info`, 
 
 ### UI bridge boundary
 
+The real-core menu now has its own standard MCP Apps component and versioned
+resource, distinct from the older synthetic directory described below. Its
+read-only price-preview boundary and current verification are documented in
+[CORE-MENU-UI.md](CORE-MENU-UI.md). Only `get_restaurant_menu` opens that component;
+subsequent `quote_cart` results update it without a new UI resource attachment.
+
 OpenAI documents `window.openai.callTool(name, args)` as a ChatGPT compatibility alias for the shared MCP Apps `tools/call` bridge. A self-contained prototype UI may feature-detect that alias; if absent it must explain that the host integration is unavailable rather than silently granting direct network access. Such a UI is ChatGPT-specific and must not be described as portable across MCP Apps hosts. The standard `ui/initialize`, tool input/result notifications, and shared bridge are the preferred foundation for the eventual UI. Neither the existence of the JavaScript alias nor correct server metadata is proof that the user's actual ChatGPT account has successfully rendered the sidebar/thread panel.
 
 ## Not claimed by a passing local test

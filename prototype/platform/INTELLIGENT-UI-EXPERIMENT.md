@@ -46,6 +46,11 @@ Inspect actual rendered output and test:
 
 ## Phase 3: connected flow (separate evidence)
 
+The existing remote server now has a read-only core MCP Apps implementation; see
+[live core menu UI](CORE-MENU-UI.md) for its protocol, tests and separate actual-host
+acceptance checklist. This is not a generated static visualization and does not
+change the historical Phase 2 evidence below.
+
 A successful static rendering test does not prove its controls can call our MCP
 server. Only after documented/supported linking and any required owner approval,
 verify that menu/quote changes fetch current server results. Keep the owned website
