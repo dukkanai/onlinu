@@ -19,7 +19,8 @@ Synthetic pickup menu, SAR inclusive of 15% test VAT:
 - Three chicken meals: 96, over the 80 budget.
 - Chicken + vegetable: 58.
 
-The test checks authoritative quote totals and zero new orders/customers. Optional
+The test deliberately has no available payment provider. It checks authoritative
+quote totals, an empty payment-method list and zero new orders/customers. Optional
 `INTELLIGENT_UI_EVIDENCE_FILE` writes a new, bounded, public-only JSON snapshot to
 an operator-specified path with exclusive creation; it never overwrites a file.
 Never use production credentials or copy private order data into this experiment.

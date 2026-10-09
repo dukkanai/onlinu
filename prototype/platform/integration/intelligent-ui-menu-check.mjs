@@ -39,6 +39,7 @@ try {
   const result=await rpc('tools/call',{name:'quote_cart',arguments:{tenantId,mode:'pickup',items:scenario.items}});
   assert.ok(!result.isError);assert.equal(result.structuredContent.totalMinor,scenario.expectedTotalMinor);
   assert.equal(result.structuredContent.currency,'SAR');
+  assert.deepEqual(result.structuredContent.paymentMethods,[], 'Price previews do not promise checkout readiness');
   quotes.push({scenario:scenario.id,input:{mode:'pickup',items:scenario.items},quote:result.structuredContent});
  }
  const denied=await rpc('tools/call',{name:'quote_cart',arguments:{tenantId,mode:'pickup',items:[{itemId:'unavailable',quantity:1}]}});

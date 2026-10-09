@@ -19,6 +19,8 @@ func TestRestaurantIntelligentUIReadOnlyExperiment(t *testing.T) {
 		t.Skip("set TEST_CORE_ADAPTER=1 for real-core MCP experiment")
 	}
 	s, h := restaurantHTTPFixture(t)
+	// A read-only demo must not need the fixture's synthetic payment provider.
+	s.orders.PaymentAvailable = nil
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	current, err := s.restaurant.GetCatalog(ctx, false)

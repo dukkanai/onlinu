@@ -16,6 +16,10 @@ This stage uses the original Go/PostgreSQL application, not the simplified
   accepts no name, phone, street address or payment data. Full order creation
   retains its existing contact/address validation. Preview does not reserve
   inventory, create orders, store contacts or charge anything.
+  Preview returns an empty `paymentMethods` array when no payment method is
+  available for the requested mode; it does not invent payment readiness or
+  block read-only pricing. Eligible cash methods remain available without a gateway.
+  Full `/storefront-api/quote` and order creation still reject unavailable payment.
 - MCP core mode exposes three read-only tools: search, menu and cart preview.
   It does not expose synthetic checkout, order-status, Events or a misleading
   synthetic widget alongside actual core data.

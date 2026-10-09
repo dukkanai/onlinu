@@ -130,7 +130,8 @@ func (s *restaurantOrders) Quote(ctx context.Context, input restaurantOrderInput
 }
 
 // Preview prices a cart without collecting checkout contact/address details.
-// Coverage, tax, payment availability and stock checks stay authoritative.
+// Coverage, tax and stock checks stay authoritative. Payment methods are filtered
+// for current availability, but an empty list does not prevent a price preview.
 // It does not create an order or reserve stock; Create still validates checkout.
 func (s *restaurantOrders) Preview(ctx context.Context, input restaurantPreviewInput) (restaurantQuote, error) {
 	return s.quote(ctx, input.orderInput(), true)
@@ -165,7 +166,7 @@ func (s *restaurantOrders) quote(ctx context.Context, input restaurantOrderInput
 	if err = tx.Commit(); err != nil {
 		return restaurantQuote{}, err
 	}
-	return s.availableQuote(ctx, quote, input)
+	return s.availableCartQuote(ctx, quote, input, !preview)
 }
 
 func (s *restaurantOrders) Create(ctx context.Context, input restaurantOrderInput, customerID, idempotencyKey string) (restaurantReceipt, error) {
@@ -1007,6 +1008,12 @@ func restaurantPaymentMethodsForMode(settings restaurantSettings, mode string) [
 }
 
 func (s *restaurantOrders) availableQuote(ctx context.Context, quote restaurantQuote, input restaurantOrderInput) (restaurantQuote, error) {
+	return s.availableCartQuote(ctx, quote, input, true)
+}
+
+// Only read-only Preview may price a cart with no available payment method.
+// Quote and Create always require one, including validation of a selected method.
+func (s *restaurantOrders) availableCartQuote(ctx context.Context, quote restaurantQuote, input restaurantOrderInput, requirePayment bool) (restaurantQuote, error) {
 	// Geidea requires a routable country code and subscriber number. Validate
 	// before the immutable order is created, not only when checkout starts;
 	// the generic contact validator intentionally also accepts local numbers.
@@ -1041,7 +1048,7 @@ func (s *restaurantOrders) availableQuote(ctx context.Context, quote restaurantQ
 			selected = true
 		}
 	}
-	if len(methods) == 0 || !selected {
+	if requirePayment && (len(methods) == 0 || !selected) {
 		return restaurantQuote{}, restaurantFail(409, "payment_unavailable")
 	}
 	quote.PaymentMethods = methods

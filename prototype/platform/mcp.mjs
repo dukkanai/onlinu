@@ -184,7 +184,7 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
       register('get_restaurant_menu', 'Read the restaurant menu', 'Read original menu categories, available items/options, prices and published appearance. Availability is not a stock reservation.',
         z.object({ tenantId: identifier }).strict(), coreCatalogSchema.extend({ tenantId: identifier }),
         args => coreAdapter.getMenu(args.tenantId), { scope: catalogScope });
-      register('quote_cart', 'Preview cart price', 'Authoritative original restaurant pricing, delivery coverage, options and tax. No contact details, order, payment or stock reservation. For delivery, supply the requested area; ask consent before using location.',
+      register('quote_cart', 'Preview cart price', 'Authoritative original restaurant pricing, delivery coverage, options and tax. No contact details, order, payment or stock reservation. An empty paymentMethods list means pricing is available but checkout currently has no available payment method. For delivery, supply the requested area; ask consent before using location.',
         corePreviewInput.extend({ tenantId: identifier }).strict(), coreQuoteSchema.extend({ tenantId: identifier }),
         ({ tenantId, ...input }) => coreAdapter.preview(tenantId, input), { scope: catalogScope });
       if (coreCheckouts) {
