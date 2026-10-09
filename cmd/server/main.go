@@ -33,6 +33,7 @@ func main() {
 	pgURL := flag.String("pg-url", "", "Postgres maintenance URL (defaults to configured runtime secret)")
 	pgNS := flag.String("pg-namespace", envStr("WACALLS_PG_NAMESPACE", "wacalls"), "namespace for the restaurant database")
 	staticDir := flag.String("static", "client/dist", "static client directory (optional)")
+	cryptoCommand := flag.String("crypto-command", "", "offline restaurant key maintenance: init, migrate, rotate, or verify")
 	debug := flag.Bool("debug", false, "verbose logging")
 	flag.Parse()
 	pgURLExplicit := false
@@ -54,6 +55,15 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if *cryptoCommand != "" {
+		if err := restaurantRunKeyMaintenance(ctx, *pgURL, *pgNS, *cryptoCommand); err != nil {
+			log.Error("restaurant crypto maintenance failed", "err", err)
+			os.Exit(1)
+		}
+		log.Info("restaurant crypto maintenance completed")
+		return
+	}
 
 	srv, err := newServer(ctx, *pgURL, *pgNS, *staticDir, log)
 	if err != nil {

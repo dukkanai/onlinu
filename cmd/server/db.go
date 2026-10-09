@@ -10,7 +10,8 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib" // driver "pgx"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib" // also registers driver "pgx"
 )
 
 // dbProvider retains the existing restaurant database namespace without session storage.
@@ -124,4 +125,68 @@ func (p *dbProvider) close() {
 	if p.admin != nil {
 		_ = p.admin.Close()
 	}
+}
+
+// restaurantExistingDatabaseConfig never opens a connection. Constrain the
+// namespace before libpq can truncate it and pin the schema instead of trusting
+// a caller-supplied search_path, options, database override, or PGOPTIONS.
+func restaurantExistingDatabaseConfig(rawURL, namespace string) (*pgx.ConnConfig, error) {
+	if namespace == "" {
+		namespace = "wacalls"
+	}
+	if len(namespace) > 58 {
+		return nil, errRestaurantCryptoDatabase
+	}
+	for i := 0; i < len(namespace); i++ {
+		c := namespace[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || i > 0 && c >= '0' && c <= '9' {
+			continue
+		}
+		return nil, errRestaurantCryptoDatabase
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme != "postgres" && u.Scheme != "postgresql" || u.Fragment != "" || u.Opaque != "" {
+		return nil, errRestaurantCryptoDatabase
+	}
+	query, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return nil, errRestaurantCryptoDatabase
+	}
+	for name, values := range query {
+		if strings.EqualFold(name, "options") || strings.EqualFold(name, "dbname") || strings.EqualFold(name, "database") {
+			return nil, errRestaurantCryptoDatabase
+		}
+		if strings.EqualFold(name, "search_path") && (name != "search_path" || len(values) != 1 || values[0] != "public") {
+			return nil, errRestaurantCryptoDatabase
+		}
+	}
+	query.Set("search_path", "public")
+	u.RawQuery = query.Encode()
+	u.Path, u.RawPath = "/"+namespace+"_main", ""
+	config, err := pgx.ParseConfig(u.String())
+	if err != nil || config.Database != namespace+"_main" {
+		return nil, errRestaurantCryptoDatabase
+	}
+	for name, value := range config.RuntimeParams {
+		if strings.EqualFold(name, "options") || strings.EqualFold(name, "search_path") && (name != "search_path" || value != "public") {
+			return nil, errRestaurantCryptoDatabase
+		}
+	}
+	return config, nil
+}
+
+// Unlike newDBProvider, this connects straight to the existing target database.
+// It cannot create or repair a missing database and never visits a maintenance DB.
+func openExistingRestaurantDatabase(ctx context.Context, rawURL, namespace string) (*sql.DB, error) {
+	config, err := restaurantExistingDatabaseConfig(rawURL, namespace)
+	if err != nil {
+		return nil, err
+	}
+	db := stdlib.OpenDB(*config)
+	var database, schema, searchPath string
+	if err := db.QueryRowContext(ctx, `SELECT current_database(), current_schema(), current_setting('search_path')`).Scan(&database, &schema, &searchPath); err != nil || database != config.Database || schema != "public" || searchPath != "public" {
+		_ = db.Close()
+		return nil, errRestaurantCryptoDatabase
+	}
+	return db, nil
 }

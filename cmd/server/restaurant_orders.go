@@ -50,12 +50,20 @@ type restaurantOrderStored struct {
 	sealedSecrets []byte
 }
 
-func newRestaurantOrders(ctx context.Context, store *restaurantStore) (*restaurantOrders, error) {
-	_, err := store.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS restaurant_order_secret (
+func newRestaurantOrders(ctx context.Context, store *restaurantStore, supplied ...cipher.AEAD) (*restaurantOrders, error) {
+	seal, external, err := restaurantCipherOverride(supplied)
+	if err != nil {
+		return nil, err
+	}
+	// An external-mode constructor must never recreate or consult legacy keys.
+	legacySchema := ""
+	if !external {
+		legacySchema = `CREATE TABLE IF NOT EXISTS restaurant_order_secret (
 			id integer PRIMARY KEY CHECK (id = 1),
 			secret bytea NOT NULL CHECK (octet_length(secret) = 32)
-		);
+		);`
+	}
+	_, err = store.db.ExecContext(ctx, legacySchema+`
 		CREATE SEQUENCE IF NOT EXISTS restaurant_order_number_seq;
 		CREATE TABLE IF NOT EXISTS restaurant_orders (
 			number text PRIMARY KEY,
@@ -100,6 +108,9 @@ func newRestaurantOrders(ctx context.Context, store *restaurantStore) (*restaura
 	if err = restaurantInitRefundSchema(ctx, store.db); err != nil {
 		return nil, err
 	}
+	if external {
+		return &restaurantOrders{store: store, seal: seal}, nil
+	}
 	key := make([]byte, 32)
 	if _, err = rand.Read(key); err != nil {
 		return nil, err
@@ -118,7 +129,7 @@ func newRestaurantOrders(ctx context.Context, store *restaurantStore) (*restaura
 	if err != nil {
 		return nil, err
 	}
-	seal, err := cipher.NewGCM(block)
+	seal, err = cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
 	}

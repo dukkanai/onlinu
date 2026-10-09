@@ -1,9 +1,8 @@
 package main
 
-// Payment credentials and attempt snapshots are encrypted with a dedicated
-// database singleton key. Back up the entire database. This prevents accidental
-// disclosure through ordinary configuration/attempt reads; it is not protection
-// against a complete database compromise. No credential is returned by HTTP.
+// Payment credentials and attempt snapshots use a dedicated data cipher.
+// External mode supplies a cipher before schema setup; legacy fixtures retain
+// their database singleton key. No credential is returned by HTTP.
 import (
 	"context"
 	"crypto/aes"
@@ -113,13 +112,20 @@ type restaurantPayments struct {
 	settlementPolicy restaurantPaymentSettlementPolicy
 }
 
-func newRestaurantPayments(ctx context.Context, db *sql.DB, orders *restaurantOrders, publicBaseURL string) (*restaurantPayments, error) {
+func newRestaurantPayments(ctx context.Context, db *sql.DB, orders *restaurantOrders, publicBaseURL string, supplied ...cipher.AEAD) (*restaurantPayments, error) {
+	seal, external, err := restaurantCipherOverride(supplied)
+	if err != nil {
+		return nil, err
+	}
 	policy, err := restaurantPaymentSettlementPolicyFromEnv()
 	if err != nil {
 		return nil, err
 	}
-	_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS restaurant_payment_secret (id integer PRIMARY KEY CHECK(id=1),secret bytea NOT NULL CHECK(octet_length(secret)=32));
- CREATE TABLE IF NOT EXISTS restaurant_payment_configs (provider text PRIMARY KEY, sealed bytea NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
+	legacySchema := ""
+	if !external {
+		legacySchema = `CREATE TABLE IF NOT EXISTS restaurant_payment_secret (id integer PRIMARY KEY CHECK(id=1),secret bytea NOT NULL CHECK(octet_length(secret)=32));`
+	}
+	_, err = db.ExecContext(ctx, legacySchema+`CREATE TABLE IF NOT EXISTS restaurant_payment_configs (provider text PRIMARY KEY, sealed bytea NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
 	CREATE TABLE IF NOT EXISTS restaurant_payment_attempts (id text PRIMARY KEY,order_number text NOT NULL UNIQUE REFERENCES restaurant_orders(number),provider text NOT NULL, mode text NOT NULL,status text NOT NULL,remote_id text NOT NULL DEFAULT '',url text NOT NULL DEFAULT '',widget jsonb, sealed_config bytea NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),checked_at timestamptz);
 	ALTER TABLE restaurant_payment_attempts ADD COLUMN IF NOT EXISTS needs_refresh boolean NOT NULL DEFAULT false;
 	ALTER TABLE restaurant_payment_attempts ADD COLUMN IF NOT EXISTS refresh_version bigint NOT NULL DEFAULT 0;
@@ -133,23 +139,25 @@ func newRestaurantPayments(ctx context.Context, db *sql.DB, orders *restaurantOr
 	if err = restaurantInitRefundSchema(ctx, db); err != nil {
 		return nil, err
 	}
-	key := make([]byte, 32)
-	if _, err = rand.Read(key); err != nil {
-		return nil, err
-	}
-	if _, err = db.ExecContext(ctx, `INSERT INTO restaurant_payment_secret(id,secret) VALUES(1,$1) ON CONFLICT(id) DO NOTHING`, key); err != nil {
-		return nil, err
-	}
-	if err = db.QueryRowContext(ctx, `SELECT secret FROM restaurant_payment_secret WHERE id=1`).Scan(&key); err != nil {
-		return nil, err
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	seal, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
+	if !external {
+		key := make([]byte, 32)
+		if _, err = rand.Read(key); err != nil {
+			return nil, err
+		}
+		if _, err = db.ExecContext(ctx, `INSERT INTO restaurant_payment_secret(id,secret) VALUES(1,$1) ON CONFLICT(id) DO NOTHING`, key); err != nil {
+			return nil, err
+		}
+		if err = db.QueryRowContext(ctx, `SELECT secret FROM restaurant_payment_secret WHERE id=1`).Scan(&key); err != nil {
+			return nil, err
+		}
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			return nil, err
+		}
+		seal, err = cipher.NewGCM(block)
+		if err != nil {
+			return nil, err
+		}
 	}
 	p := &restaurantPayments{db: db, orders: orders, seal: seal, baseURL: strings.TrimRight(publicBaseURL, "/"), settlementPolicy: policy, adapter: &restaurantPaymentGateways{client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}}
 	return p, nil

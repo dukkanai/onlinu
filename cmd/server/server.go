@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/cipher"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -25,6 +26,10 @@ var errPlatformAdminAuthenticationRequired = errors.New("platform restaurant run
 
 // newServer opens the restaurant database and initializes commerce services.
 func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, log *slog.Logger) (*server, error) {
+	ring, err := restaurantCryptoRingFromEnv(os.Getenv)
+	if err != nil {
+		return nil, err
+	}
 	platformAuth, err := platformAuthFromEnv()
 	if err != nil {
 		return nil, err
@@ -35,17 +40,26 @@ func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, log *s
 		return nil, errPlatformAdminAuthenticationRequired
 	}
 
-	provider, err := newDBProvider(ctx, pgURL, pgNamespace, log)
+	if pgNamespace == "" {
+		pgNamespace = "wacalls"
+	}
+	database := pgNamespace + "_main"
+	var mainDB *sql.DB
+	if ring != nil {
+		// External mode never creates a database or repairs missing key state.
+		mainDB, err = openExistingRestaurantDatabase(ctx, pgURL, pgNamespace)
+	} else {
+		var provider *dbProvider
+		provider, err = newDBProvider(ctx, pgURL, pgNamespace, log)
+		if err == nil {
+			defer provider.close()
+			mainDB, err = provider.openMainDB(ctx)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-
-	defer provider.close()
-	mainDB, err := provider.openMainDB(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ownership, err := acquireInstanceOwnership(ctx, mainDB, provider.mainDBName())
+	ownership, err := acquireInstanceOwnership(ctx, mainDB, database)
 	if err != nil {
 		_ = mainDB.Close()
 		return nil, err
@@ -57,6 +71,21 @@ func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, log *s
 			_ = mainDB.Close()
 		}
 	}()
+	var orderCiphers, paymentCiphers []cipher.AEAD
+	if ring != nil {
+		ciphers, err := restaurantLoadExternalKeys(ctx, ownership, database, "public", ring)
+		if err != nil {
+			return nil, err
+		}
+		if ciphers == nil || ciphers.orders == nil || ciphers.payments == nil {
+			return nil, errRestaurantDataCipher
+		}
+		orderCiphers = []cipher.AEAD{ciphers.orders}
+		paymentCiphers = []cipher.AEAD{ciphers.payments}
+	} else if err := restaurantRefuseExternalDatabase(ctx, ownership, database, "public"); err != nil {
+		// Refuse a downgrade before even unrelated schema initializers run.
+		return nil, err
+	}
 	restaurant, err := newRestaurantStore(ctx, mainDB)
 	if err != nil {
 		return nil, err
@@ -65,11 +94,11 @@ func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, log *s
 	if err != nil {
 		return nil, err
 	}
-	orders, err := newRestaurantOrders(ctx, restaurant)
+	orders, err := newRestaurantOrders(ctx, restaurant, orderCiphers...)
 	if err != nil {
 		return nil, err
 	}
-	payments, err := newRestaurantPayments(ctx, mainDB, orders, os.Getenv("WACALLS_PUBLIC_BASE_URL"))
+	payments, err := newRestaurantPayments(ctx, mainDB, orders, os.Getenv("WACALLS_PUBLIC_BASE_URL"), paymentCiphers...)
 	if err != nil {
 		return nil, err
 	}

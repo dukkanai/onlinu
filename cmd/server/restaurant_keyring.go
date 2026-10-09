@@ -1,7 +1,7 @@
 package main
 
-// Inactive foundation only: no startup path calls this loader. Activating it
-// requires the separately reviewed offline migration and legacy-writer fence.
+// Loaded by the explicit external-v1 mode before any database connection.
+// Existing deployment defaults remain legacy until separately approved activation.
 import (
 	"bytes"
 	"crypto/aes"

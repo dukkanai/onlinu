@@ -1,27 +1,26 @@
-# External restaurant encryption keys: inactive foundation
+# External restaurant encryption keys: foundation and opt-in integration
 
 ## Status and scope — 9 October 2026
 
-This increment is code and isolated synthetic tests only. No production path
-calls the new loader or envelope helpers. The current runtime **still stores its
-order and payment data-encryption keys in PostgreSQL**, as described in
-`restaurant_orders.go` and `restaurant_payments.go`. External key separation,
-migration, rotation operations and production acceptance remain open.
+The foundation now has an explicit opt-in runtime and offline maintenance path,
+described in `EXTERNAL-KEY-OPERATIONS.md`. This remains code and isolated synthetic
+test work, not production activation. Existing deployment defaults still use
+legacy database-resident DEKs. Merely setting a keyring without the exact
+external mode is rejected, not silently ignored.
 
-New files implement a bounded keyring parser/reader and authenticated wrapping
-of existing 32-byte data-encryption keys (DEKs). They do not change startup,
-schemas, constructors, payment workers, HTTP routes, deployment configuration,
-provider settings or the independently blocked courier-session work. No key
-provisioning, external service, KMS dependency, backup, database operation or
-production activation is included.
+The helpers below implement bounded keyring loading and authenticated wrapping
+of existing 32-byte DEKs. The opt-in integration adds startup validation,
+owned migration/init/rotation/verification and legacy-writer fencing. No real key
+provisioning, migration, provider operation, deployment change, backup/snapshot,
+KMS dependency or courier-session work is authorized by these files.
 
-## Phase 1: implemented interface, not enabled configuration
+## Phase 1: keyring and envelope interface
 
 `readRestaurantKeyring(getenv, expectedStoreID)` is an explicitly invoked helper.
-Its proposed settings are `WACALLS_CRYPTO_KEYRING` and
-`WACALLS_CRYPTO_KEYRING_FILE`. These are **not registered with runtime startup**;
-setting them on the current application does not enable external encryption.
-Prefer an operator-owned read-only secret file for the later integration.
+Its settings are `WACALLS_CRYPTO_KEYRING` and
+`WACALLS_CRYPTO_KEYRING_FILE`. They are used only with the explicit `external-v1` mode. Prefer an
+operator-owned read-only secret file; see the operations document for the
+required mode/store settings and separate activation gate.
 
 The reader follows the existing `runtime_secrets.go` safety contract without
 changing that loader or its supported settings:
@@ -75,7 +74,8 @@ keys and ciphers necessarily remain available to the running process.
 
 ## Phase 2: separately reviewed offline migration and runtime integration
 
-The following is required design work, not code supplied by this increment:
+The following requirements are implemented by the opt-in integration and must
+be established by its isolated tests and exact published CI before acceptance:
 
 1. Stop the HTTP application and payment worker; acquire the existing database
    namespace ownership lock. Refuse migration while another process owns it.
@@ -105,7 +105,7 @@ contracts, privacy-safe diagnostics, actual startup tests and runtime-image
 acceptance belongs to that reviewed integration. No actual migration follows
 from implementing its code; execution remains separately authorized.
 
-## Phase 3: rotation, recovery and activation acceptance
+## Phase 3: rotation code, recovery and activation acceptance
 
 Routine master-key rotation retains the old key ID/material, introduces a new
 ID, and atomically rewraps both unchanged DEKs under the new active key during
@@ -153,6 +153,7 @@ e47ff94 codecs also pins their existing payload and associated-data formats; it
 is not evidence from a production database.
 
 Run `go test -race -count=1 ./cmd/server -run '^TestRestaurantKey'`.
+See the operations document for the integration and actual-main test gates.
 These focused checks do not substitute for the phase-2 migration/startup tests,
 full database/browser/image regression gates, independent review, or the exact
 published commit's CI. There is no deployment or production-security acceptance.

@@ -184,6 +184,25 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Build pinned historical restaurant binary for downgrade fencing
+        # Source-only checkout of the reviewed pre-integration release. Never
+        # execute it against anything except the tests' owned loopback fixture.
+        run: |
+          legacy_sha=3147a444e88be3f2dbe315a8fb1470bee8f23877
+          legacy_source="$RUNNER_TEMP/onlinu-legacy-crypto-source"
+          legacy_binary="$RUNNER_TEMP/onlinu-legacy-crypto-runtime"
+          git -c core.hooksPath=/dev/null fetch --no-tags --depth=1 origin "$legacy_sha"
+          test "$(git rev-parse FETCH_HEAD)" = "$legacy_sha"
+          mkdir "$legacy_source"
+          git archive "$legacy_sha" | tar -x -C "$legacy_source"
+          (cd "$legacy_source" && go build -buildvcs=false -trimpath -o "$legacy_binary" ./cmd/server)
+          echo "ONLINU_LEGACY_CRYPTO_BINARY=$legacy_binary" >> "$GITHUB_ENV"
+
+      - name: Test isolated external-key maintenance and actual startup
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=1 -v ./cmd/server -run '^TestRestaurant(Key|CryptoActualMainRuntime)'
+
       - name: Test core checkout browser flow
         env:
           CGO_ENABLED: "1"
