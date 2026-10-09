@@ -179,7 +179,8 @@ void main() {
     await tap(find.text('تأكيد'));
     expect(api.channelWrites, 1);
     expect(controller.channels.first.newOrdersEnabled, false);
-    expect(controller.channels.last.adapterImplemented, false);
+    expect(controller.channels.length, 2);
+    expect(controller.channels.every((v) => v.adapterImplemented), true);
     await capture(tester, boundary, 'windows-channels.png');
     await tap(find.text('تسجيل الخروج'));
     expect(controller.menu, isNull);
