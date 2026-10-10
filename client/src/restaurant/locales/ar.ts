@@ -94,6 +94,7 @@ export const ar = {
   "admin.statusSuccess": "تم تحديث حالة الطلب.", "admin.copyError": "تعذر نسخ الرابط. حدده وانسخه من الحقل.",
   "admin.cancelOrderConfirm": "هل تريد إلغاء هذا الطلب؟", "admin.orderMode": "طريقة الطلب", "admin.enabled": "مفعّل",
   "errors.invalid_request": "تحقق من البيانات التي أدخلتها وحاول مجددًا.",
+  "errors.method_not_allowed": "طريقة إرسال هذا الطلب غير مسموح بها.",
   "errors.unauthorized": "سجّل الدخول للمتابعة.", "errors.forbidden": "ليس لديك صلاحية لتنفيذ هذا الإجراء.",
   "errors.not_found": "لم يتم العثور على المعلومات المطلوبة.", "errors.server_error": "الخدمة غير متاحة مؤقتًا. حاول مجددًا.",
   "errors.rate_limited": "محاولات كثيرة. انتظر قليلًا قبل المحاولة مجددًا.",

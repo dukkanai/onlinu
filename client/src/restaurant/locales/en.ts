@@ -11,6 +11,7 @@ export const english = {
   "admin.logout": "Sign out of administration",
   "admin.loginFailed": "The administrator key is invalid or the server is unavailable.",
   "errors.invalid_request": "Check the information you entered and try again.",
+  "errors.method_not_allowed": "This request method is not allowed.",
   "errors.unauthorized": "Sign in to continue.",
   "errors.forbidden": "You do not have permission to do this.",
   "errors.not_found": "The requested information was not found.",

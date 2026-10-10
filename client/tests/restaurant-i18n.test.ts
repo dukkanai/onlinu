@@ -116,6 +116,11 @@ test("completion dictionaries independently cover Arabic, English and safety wor
   }
 });
 
+test("rejected HTTP methods have explicit Arabic and English errors", () => {
+  assert.equal(translate("en", "errors.method_not_allowed"), "This request method is not allowed.");
+  assert.equal(translate("ar", "errors.method_not_allowed"), "طريقة إرسال هذا الطلب غير مسموح بها.");
+});
+
 test("interpolation inserts literal values without translating menu content", () => {
   for (const locale of LOCALES) {
     const table = "طاولة خاصة <script> & {amount}";
