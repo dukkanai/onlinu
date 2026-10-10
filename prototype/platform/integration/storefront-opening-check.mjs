@@ -7,6 +7,7 @@ import {resolve,sep,extname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright-core';
 import {effectiveBrand} from '../../../client/src/restaurant/brand.ts';
+import {checkStorefrontRecovery} from './storefront-recovery-check.mjs';
 const root=fileURLToPath(new URL('../../../client/dist/',import.meta.url));
 const evidence=fileURLToPath(new URL('../../../artifacts/storefront-opening/',import.meta.url));
 const settings={name:'Synthetic hours restaurant',description:'',address:'',phone:'',logoUrl:'',coverUrl:'',currency:'SAR',country:'SA',defaultLanguage:'en',menuLanguage:'en',demo:true,acceptingOrders:true,deliveryEnabled:true,pickupEnabled:true,tableEnabled:true,deliveryPricingMode:'flat',deliveryZones:[],deliveryFeeMinor:0,deliveryMinimumMinor:0,deliveryAreas:[],deliveryRadiusKm:0,latitude:null,longitude:null,requireDeliveryLocation:false,pickupInstructions:'',paymentInstructions:'',openingHours:'Informational text only',taxEnabled:false,taxRateBps:0,taxNumber:'',paymentMethods:{table:['cash_after'],delivery:['cash_on_delivery'],pickup:['card']}};
@@ -74,6 +75,7 @@ try{
  assert.ok(publicReads>15);assert.deepEqual(unexpected,[]);
  console.log('Verified five compiled React templates: scheduled closure, unknown read, explicit retry, live closing, Arabic RTL, no writes or external requests.');
  await context.close();
+ await checkStorefrontRecovery({browser,root,evidence});
 }finally{
  await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
 }
