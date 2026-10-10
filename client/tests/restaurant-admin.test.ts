@@ -190,3 +190,24 @@ test("Paylink settings expose only a disabled live option and masked credential 
   assert.doesNotMatch(html, /MUST-NOT-RENDER/);
   assert.match(html, /API ID/);
 });
+
+
+test("Stripe sandbox settings disable live mode and keep both credentials masked", () => {
+  const fields = [
+    { key: "secretKey", label: "Secret API key", secret: true, required: true },
+    { key: "webhookSecret", label: "Webhook signing secret", secret: true, required: true },
+    ...["sandboxPilot", "accountID", "country", "apiVersion"].map(key => ({ key, label: key, secret: false, required: true })),
+  ];
+  const values = { sandboxPilot: "true", accountID: "acct_synthetic", country: "US", apiVersion: "2026-09-30.endive", sandboxGeneration: "SERVER-ONLY", secretKey: "MUST-NOT-RENDER", webhookSecret: "MUST-NOT-RENDER" };
+  const config: PaymentProviderConfig = { id: "stripe", name: "Stripe", enabled: false, mode: "test", configured: true, limitation: "stripe_sandbox_checkout_only", fields, values, secretSet: { secretKey: true, webhookSecret: true } };
+  for (const locale of ["en", "ar"] as const) {
+    const html = renderToStaticMarkup(createElement(LocaleProvider, { defaultLocale: locale, children: createElement(PaymentProviderEditor, { config, country: "SA", onSaved: () => {} }) }));
+    assert.match(html, /<option value="live" disabled="">/);
+    assert.equal((html.match(/type="password"/g) ?? []).length, 2);
+    assert.doesNotMatch(html, /MUST-NOT-RENDER|SERVER-ONLY|payments\.field\.|adminNext\.providerLimit\./);
+    assert.match(html, /2026-09-30.endive/);
+  }
+  const payload = paymentConfigPayload(config, true, "test", values, {}, []);
+  assert.deepEqual(payload.values, { sandboxPilot: "true", accountID: "acct_synthetic", country: "US", apiVersion: "2026-09-30.endive" });
+  assert.deepEqual(payload.secrets, {});
+});

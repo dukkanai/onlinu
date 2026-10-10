@@ -31,7 +31,7 @@ type restaurantPaymentDefinition struct {
 }
 
 var restaurantPaymentDefinitions = []restaurantPaymentDefinition{
-	{"stripe", "Stripe", []restaurantPaymentField{{"secretKey", "Secret API key", true, true}}},
+	{"stripe", "Stripe", []restaurantPaymentField{{"secretKey", "Sandbox secret API key", true, true}, {"webhookSecret", "Sandbox endpoint signing secret", true, true}, {"sandboxPilot", "Explicit sandbox pilot (true)", false, true}, {"accountID", "Sandbox account ID", false, true}, {"country", "Account country (US)", false, true}, {"apiVersion", "Pinned API version", false, true}}},
 	{"paylink", "Paylink", []restaurantPaymentField{{"apiId", "API ID", true, true}, {"secretKey", "Secret key", true, true}}},
 	{"moyasar", "Moyasar", []restaurantPaymentField{{"secretKey", "Secret API key", true, true}}},
 	{"tap", "Tap", []restaurantPaymentField{{"secretKey", "Secret API key", true, true}}},
@@ -86,6 +86,7 @@ type restaurantPaymentRequest struct {
 	AttemptID, OrderNumber, Currency, CustomerName, Phone, ReturnURL, HookURL string
 	AmountMinor                                                               int64
 	CreatedAt                                                                 time.Time
+	StripeIntegrationIdentifier                                               string
 }
 type restaurantPaymentRemote struct {
 	ID, URL, Status, Currency, Reference string
@@ -93,6 +94,7 @@ type restaurantPaymentRemote struct {
 	Widget                               *restaurantPaymentWidget
 	RefundStateKnown                     bool
 	RefundedMinor                        int64
+	StripeIntentID, StripeChargeID       string
 }
 type restaurantPaymentAdapter interface {
 	Create(context.Context, restaurantPaymentConfig, restaurantPaymentRequest) (restaurantPaymentRemote, error)
@@ -103,6 +105,7 @@ type restaurantPaymentAttempt struct {
 	Widget                                            *restaurantPaymentWidget
 	Config                                            restaurantPaymentConfig
 	CreatedAt                                         time.Time
+	StripeIntegrationIdentifier                       string
 }
 type restaurantPayments struct {
 	db               *sql.DB
@@ -135,6 +138,9 @@ func newRestaurantPayments(ctx context.Context, db *sql.DB, orders *restaurantOr
 	ALTER TABLE restaurant_payment_attempts ADD COLUMN IF NOT EXISTS settlement_watch_started_at timestamptz;
  CREATE INDEX IF NOT EXISTS restaurant_payment_attempt_status_idx ON restaurant_payment_attempts(status,updated_at);`)
 	if err != nil {
+		return nil, err
+	}
+	if err = restaurantInitStripeWebhookSchema(ctx, db); err != nil {
 		return nil, err
 	}
 	if err = restaurantInitRefundSchema(ctx, db); err != nil {
@@ -207,6 +213,9 @@ func (p *restaurantPayments) config(ctx context.Context, id string) (restaurantP
 	return p.decrypt("config:"+id, b)
 }
 func restaurantPaymentConfigured(c restaurantPaymentConfig) bool {
+	if c.ID == "stripe" {
+		return restaurantStripeSandboxReady(c) == nil
+	}
 	d, ok := restaurantPaymentDefinitionByID(c.ID)
 	if !ok || c.Mode != "test" && c.Mode != "live" || c.ID == "paylink" && c.Mode != "test" {
 		return false
@@ -239,7 +248,14 @@ func restaurantPaymentSanitize(c restaurantPaymentConfig) restaurantPaymentPubli
 	case "paytabs", "geidea":
 		out.Limitation = "merchant_mode_credentials"
 	case "stripe":
-		out.Limitation = "stripe_merchant_eligibility"
+		out.Limitation = "stripe_sandbox_checkout_only"
+		// Internal generations are server-created, not editable form values.
+		out.Values = map[string]string{}
+		for _, field := range d.Fields {
+			if !field.Secret {
+				out.Values[field.Key] = c.Values[field.Key]
+			}
+		}
 	case "myfatoorah":
 		out.Limitation = "merchant_sar_currency"
 	}
@@ -265,7 +281,7 @@ func (p *restaurantPayments) Configure(ctx context.Context, id string, in restau
 	if !ok {
 		return restaurantPaymentPublicConfig{}, restaurantFail(404, "invalid_request")
 	}
-	if in.Mode != "test" && in.Mode != "live" || id == "paylink" && in.Mode != "test" {
+	if in.Mode != "test" && in.Mode != "live" || (id == "paylink" || id == "stripe") && in.Mode != "test" {
 		return restaurantPaymentPublicConfig{}, restaurantFail(400, "invalid_request")
 	}
 	// Serialize edits across processes so omitted secrets cannot restore stale credentials.
@@ -285,6 +301,17 @@ func (p *restaurantPayments) Configure(ctx context.Context, id string, in restau
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return restaurantPaymentPublicConfig{}, err
+	}
+	// Keep account and endpoint identity fixed once receipts can refer to it.
+	// API-key rotation is allowed; existing attempts keep their sealed snapshots.
+	frozenGeneration := c.Values["sandboxGeneration"]
+	frozenAccount, frozenCountry, frozenVersion := c.Values["accountID"], c.Values["country"], c.Values["apiVersion"]
+	frozenSigningSecret := c.Secrets["webhookSecret"]
+	if c.Values == nil {
+		c.Values = map[string]string{}
+	}
+	if c.Secrets == nil {
+		c.Secrets = map[string]string{}
 	}
 	c.Enabled, c.Mode = in.Enabled, in.Mode
 	fields := map[string]restaurantPaymentField{}
@@ -316,6 +343,14 @@ func (p *restaurantPayments) Configure(ctx context.Context, id string, in restau
 	}
 	if err = restaurantPaymentValidateConfig(c); err != nil {
 		return restaurantPaymentPublicConfig{}, err
+	}
+	if id == "stripe" {
+		if frozenGeneration != "" && (c.Values["accountID"] != frozenAccount || c.Values["country"] != frozenCountry || c.Values["apiVersion"] != frozenVersion || c.Secrets["webhookSecret"] != frozenSigningSecret) {
+			return restaurantPaymentPublicConfig{}, restaurantFail(400, "invalid_request")
+		}
+		if frozenGeneration == "" && restaurantStripeSandboxComplete(c) {
+			c.Values["sandboxGeneration"] = uuid.NewString()
+		}
 	}
 	if c.Enabled && !restaurantPaymentConfigured(c) {
 		return restaurantPaymentPublicConfig{}, restaurantFail(400, "invalid_request")
@@ -384,12 +419,12 @@ func (p *restaurantPayments) Public(ctx context.Context, currency string) ([]map
 	return out, nil
 }
 
-const restaurantPaymentAttemptSelect = `SELECT id,order_number,provider,mode,status,remote_id,url,widget,sealed_config,created_at FROM restaurant_payment_attempts`
+const restaurantPaymentAttemptSelect = `SELECT id,order_number,provider,mode,status,remote_id,url,widget,sealed_config,created_at,stripe_integration_identifier FROM restaurant_payment_attempts`
 
 func (p *restaurantPayments) readAttempt(row interface{ Scan(...any) error }) (restaurantPaymentAttempt, error) {
 	var a restaurantPaymentAttempt
 	var b, w []byte
-	if err := row.Scan(&a.ID, &a.Number, &a.Provider, &a.Mode, &a.Status, &a.RemoteID, &a.URL, &w, &b, &a.CreatedAt); err != nil {
+	if err := row.Scan(&a.ID, &a.Number, &a.Provider, &a.Mode, &a.Status, &a.RemoteID, &a.URL, &w, &b, &a.CreatedAt, &a.StripeIntegrationIdentifier); err != nil {
 		return a, err
 	}
 	var err error
@@ -485,13 +520,19 @@ func (p *restaurantPayments) Start(ctx context.Context, number, token, customerI
 		return restaurantPaymentView{}, restaurantFail(409, "payment_unavailable")
 	}
 	a = restaurantPaymentAttempt{ID: uuid.NewString(), Number: number, Provider: provider, Mode: cfg.Mode, Status: "creating", Config: cfg, CreatedAt: time.Now().UTC()}
+	if provider == "stripe" {
+		a.StripeIntegrationIdentifier, err = restaurantStripeNewIntegrationIdentifier()
+		if err != nil {
+			return restaurantPaymentView{}, err
+		}
+	}
 	sealed, err := p.encrypt("attempt:"+a.ID, cfg)
 	if err != nil {
 		return restaurantPaymentView{}, err
 	}
 	// Persist the exact timestamp used by provider request parameters. Database
 	// now() is transaction-start time and can be stale after an order-lock wait.
-	if err = tx.QueryRowContext(ctx, `INSERT INTO restaurant_payment_attempts(id,order_number,provider,mode,status,sealed_config,created_at) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp()) RETURNING created_at`, a.ID, a.Number, a.Provider, a.Mode, a.Status, sealed).Scan(&a.CreatedAt); err != nil {
+	if err = tx.QueryRowContext(ctx, `INSERT INTO restaurant_payment_attempts(id,order_number,provider,mode,status,sealed_config,created_at,stripe_integration_identifier) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp(),$7) RETURNING created_at`, a.ID, a.Number, a.Provider, a.Mode, a.Status, sealed, a.StripeIntegrationIdentifier).Scan(&a.CreatedAt); err != nil {
 		return restaurantPaymentView{}, err
 	}
 	o.Payment.Status = "pending"
@@ -501,7 +542,7 @@ func (p *restaurantPayments) Start(ctx context.Context, number, token, customerI
 	if err = tx.Commit(); err != nil {
 		return restaurantPaymentView{}, err
 	}
-	req := restaurantPaymentRequest{AttemptID: a.ID, OrderNumber: o.Number, AmountMinor: o.TotalMinor, Currency: o.Currency, CustomerName: o.CustomerName, Phone: o.Phone, CreatedAt: a.CreatedAt, ReturnURL: p.baseURL + "/payment-hooks/return/" + url.PathEscape(a.ID), HookURL: p.baseURL + "/payment-hooks/" + provider + "/" + a.ID}
+	req := restaurantPaymentRequest{AttemptID: a.ID, OrderNumber: o.Number, AmountMinor: o.TotalMinor, Currency: o.Currency, CustomerName: o.CustomerName, Phone: o.Phone, CreatedAt: a.CreatedAt, StripeIntegrationIdentifier: a.StripeIntegrationIdentifier, ReturnURL: p.baseURL + "/payment-hooks/return/" + url.PathEscape(a.ID), HookURL: p.baseURL + "/payment-hooks/" + provider + "/" + a.ID}
 	remote, createErr := p.adapter.Create(ctx, cfg, req)
 	// Persist the outcome using a fresh bounded context, even if browser canceled.
 	saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -551,6 +592,24 @@ func (p *restaurantPayments) apply(ctx context.Context, a restaurantPaymentAttem
 	a = current
 	if verified && (r.ID != a.RemoteID || r.Currency != o.Currency || r.AmountMinor != o.TotalMinor || r.Reference != a.ID || (a.Mode == "test") != o.Demo) {
 		r.Status = "review"
+	}
+	if verified && a.Provider == "stripe" && restaurantStripeSandboxReady(a.Config) == nil && r.ID == a.RemoteID && r.Currency == o.Currency && r.AmountMinor == o.TotalMinor && r.Reference == a.ID && a.Mode == "test" && o.Demo && restaurantStripeObjectIDValid("payment_intent", r.StripeIntentID) {
+		chargeID := r.StripeChargeID
+		if !restaurantStripeObjectIDValid("charge", chargeID) {
+			chargeID = ""
+		}
+		// Never remap an established intent/charge identity in this pilot.
+		// Charge-history support requires a separate reviewed migration.
+		result, updateErr := tx.ExecContext(ctx, `UPDATE restaurant_payment_attempts SET stripe_intent_id=$2,stripe_charge_id=CASE WHEN $3<>'' THEN $3 ELSE stripe_charge_id END WHERE id=$1 AND (stripe_intent_id='' OR stripe_intent_id=$2) AND ($3='' OR stripe_charge_id='' OR stripe_charge_id=$3)`, a.ID, r.StripeIntentID, chargeID)
+		if updateErr != nil {
+			return restaurantPaymentView{}, updateErr
+		}
+		if count, countErr := result.RowsAffected(); countErr != nil {
+			return restaurantPaymentView{}, countErr
+		} else if count != 1 {
+			r.Status = "review"
+			r.RefundStateKnown = false // An identity conflict cannot normalize back to paid.
+		}
 	}
 	if (r.Status == "paid" || r.Status == "refunded") && !verified {
 		r.Status = "review"
@@ -602,7 +661,7 @@ func (p *restaurantPayments) apply(ctx context.Context, a restaurantPaymentAttem
 		return a.view(), tx.Commit()
 	}
 	if a.Status == "refunded" {
-		return a.view(), nil
+		return a.view(), tx.Commit()
 	}
 	if r.Status == "paid" && (o.Status == "cancelled" || o.Payment.Status == "review") {
 		r.Status = "review"
@@ -672,6 +731,12 @@ func (p *restaurantPayments) refreshAttemptAfter(ctx context.Context, a restaura
 	if err != nil {
 		return restaurantPaymentView{}, err
 	}
+	// The generation may have been enqueued after this caller read its
+	// snapshot, including while create was binding its remote session.
+	a, err = p.readAttempt(p.db.QueryRowContext(ctx, restaurantPaymentAttemptSelect+` WHERE id=$1`, a.ID))
+	if err != nil {
+		return restaurantPaymentView{}, err
+	}
 	complete := func(v restaurantPaymentView, e error) (restaurantPaymentView, error) {
 		if e != nil {
 			return v, e
@@ -699,9 +764,9 @@ func (p *restaurantPayments) refreshAttemptAfter(ctx context.Context, a restaura
 	return complete(v, e)
 }
 func (p *restaurantPayments) Hook(ctx context.Context, provider, id string) error {
-	// Paylink account-level webhooks need a separate authenticated routing design.
-	// This sandbox increment supports only persisted-attempt query/return flows.
-	if provider == "paylink" {
+	// Stripe requires the signed account route; Paylink has no authenticated
+	// account webhook here. Neither may use an unsigned attempt notification.
+	if provider == "paylink" || provider == "stripe" {
 		return restaurantFail(404, "invalid_request")
 	}
 	if _, err := uuid.Parse(id); err != nil {

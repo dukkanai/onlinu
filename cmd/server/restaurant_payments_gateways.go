@@ -160,7 +160,10 @@ func restaurantPaymentValidateConfig(c restaurantPaymentConfig) error {
 	if c.ID == "paylink" && c.Mode != "test" {
 		return restaurantFail(400, "invalid_request")
 	}
-	if c.ID == "stripe" || c.ID == "moyasar" || c.ID == "tap" {
+	if c.ID == "stripe" {
+		return restaurantStripeSandboxFieldsValid(c)
+	}
+	if c.ID == "moyasar" || c.ID == "tap" {
 		key := c.Secrets["secretKey"]
 		if key != "" && !strings.HasPrefix(key, "sk_"+c.Mode+"_") {
 			return restaurantFail(400, "invalid_request")
@@ -213,84 +216,105 @@ func (g *restaurantPaymentGateways) Fetch(ctx context.Context, c restaurantPayme
 }
 
 type restaurantStripeSession struct {
-	ID            string          `json:"id"`
-	URL           string          `json:"url"`
-	Status        string          `json:"status"`
-	PaymentStatus string          `json:"payment_status"`
-	AmountTotal   int64           `json:"amount_total"`
-	Currency      string          `json:"currency"`
-	Reference     string          `json:"client_reference_id"`
-	LiveMode      bool            `json:"livemode"`
-	Mode          string          `json:"mode"`
-	PaymentIntent json.RawMessage `json:"payment_intent"`
+	ID                 string          `json:"id"`
+	URL                string          `json:"url"`
+	Status             string          `json:"status"`
+	PaymentStatus      string          `json:"payment_status"`
+	AmountTotal        int64           `json:"amount_total"`
+	Currency           string          `json:"currency"`
+	Reference          string          `json:"client_reference_id"`
+	LiveMode           *bool           `json:"livemode"`
+	Mode               string          `json:"mode"`
+	PaymentIntent      json.RawMessage `json:"payment_intent"`
+	PaymentMethodTypes []string        `json:"payment_method_types"`
 }
 
 func (g *restaurantPaymentGateways) createStripe(ctx context.Context, c restaurantPaymentConfig, r restaurantPaymentRequest) (restaurantPaymentRemote, error) {
-	if r.CreatedAt.IsZero() {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if !c.Enabled || restaurantStripeSandboxReady(c) != nil || r.CreatedAt.IsZero() || r.Currency != "SAR" || r.AmountMinor <= 0 || !restaurantStripeIntegrationIdentifier.MatchString(r.StripeIntegrationIdentifier) {
 		return restaurantPaymentRemote{}, restaurantPaymentProviderError()
+	}
+	if err := g.verifyStripeSandboxAccount(ctx, c); err != nil {
+		return restaurantPaymentRemote{}, err
 	}
 	// Every parameter must stay identical for the attempt's idempotency key.
 	// Use its persisted timestamp, never the current clock on a repeated call.
 	// A one-minute submission margin avoids starting exactly at Stripe's
 	// 30-minute minimum. This does not authorize retrying an uncertain create.
 	expires := r.CreatedAt.Add(31 * time.Minute).Unix()
-	v := url.Values{"mode": {"payment"}, "payment_method_types[0]": {"card"}, "success_url": {r.ReturnURL}, "cancel_url": {r.ReturnURL}, "client_reference_id": {r.AttemptID}, "metadata[restaurant_attempt]": {r.AttemptID}, "line_items[0][price_data][currency]": {strings.ToLower(r.Currency)}, "line_items[0][price_data][unit_amount]": {strconv.FormatInt(r.AmountMinor, 10)}, "line_items[0][price_data][product_data][name]": {"Order " + r.OrderNumber}, "line_items[0][quantity]": {"1"}, "expires_at": {strconv.FormatInt(expires, 10)}}
+	v := url.Values{"mode": {"payment"}, "allowed_payment_method_types[0]": {"card"}, "integration_identifier": {r.StripeIntegrationIdentifier}, "success_url": {r.ReturnURL}, "cancel_url": {r.ReturnURL}, "client_reference_id": {r.AttemptID}, "metadata[restaurant_attempt]": {r.AttemptID}, "line_items[0][price_data][currency]": {strings.ToLower(r.Currency)}, "line_items[0][price_data][unit_amount]": {strconv.FormatInt(r.AmountMinor, 10)}, "line_items[0][price_data][product_data][name]": {"Order " + r.OrderNumber}, "line_items[0][quantity]": {"1"}, "expires_at": {strconv.FormatInt(expires, 10)}}
 	v.Set("payment_intent_data[metadata][restaurant_attempt]", r.AttemptID)
 	var out restaurantStripeSession
-	err := g.form(ctx, http.MethodPost, "https://api.stripe.com/v1/checkout/sessions", "Bearer "+c.Secrets["secretKey"], v, &out, map[string]string{"Idempotency-Key": "restaurant-" + r.AttemptID})
+	err := g.form(ctx, http.MethodPost, "https://api.stripe.com/v1/checkout/sessions", "Bearer "+c.Secrets["secretKey"], v, &out, map[string]string{"Idempotency-Key": "restaurant-" + r.AttemptID, "Stripe-Version": restaurantStripeAPIVersion})
 	if err != nil {
 		return restaurantPaymentRemote{}, err
 	}
-	if out.LiveMode != (c.Mode == "live") || out.Reference != r.AttemptID || out.AmountTotal != r.AmountMinor || strings.ToUpper(out.Currency) != r.Currency {
+	if out.LiveMode == nil || *out.LiveMode || out.Mode != "payment" || len(out.PaymentMethodTypes) != 1 || out.PaymentMethodTypes[0] != "card" || !restaurantStripeObjectIDValid("checkout.session", out.ID) || !restaurantPaymentURL("stripe", out.URL) || out.Reference != r.AttemptID || out.AmountTotal != r.AmountMinor || strings.ToUpper(out.Currency) != r.Currency {
 		return restaurantPaymentRemote{}, restaurantPaymentProviderError()
 	}
 	return restaurantPaymentRemote{ID: out.ID, URL: out.URL}, nil
 }
 func (g *restaurantPaymentGateways) fetchStripe(ctx context.Context, c restaurantPaymentConfig, id string) (restaurantPaymentRemote, error) {
-	var out restaurantStripeSession
-	if err := g.json(ctx, http.MethodGet, "https://api.stripe.com/v1/checkout/sessions/"+url.PathEscape(id)+"?expand%5B%5D=payment_intent.latest_charge", "Bearer "+c.Secrets["secretKey"], nil, &out); err != nil {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if !restaurantStripeObjectIDValid("checkout.session", id) {
+		return restaurantPaymentRemote{}, restaurantPaymentProviderError()
+	}
+	if err := g.verifyStripeSandboxAccount(ctx, c); err != nil {
 		return restaurantPaymentRemote{}, err
 	}
-	if out.ID != id || out.LiveMode != (c.Mode == "live") || out.Mode != "payment" {
+	var out restaurantStripeSession
+	if err := g.request(ctx, http.MethodGet, "https://api.stripe.com/v1/checkout/sessions/"+url.PathEscape(id)+"?expand%5B%5D=payment_intent.latest_charge", "Bearer "+c.Secrets["secretKey"], "", nil, &out, map[string]string{"Stripe-Version": restaurantStripeAPIVersion}); err != nil {
+		return restaurantPaymentRemote{}, err
+	}
+	if out.ID != id || out.LiveMode == nil || *out.LiveMode || out.Mode != "payment" || len(out.PaymentMethodTypes) != 1 || out.PaymentMethodTypes[0] != "card" || strings.ToUpper(out.Currency) != "SAR" || out.AmountTotal <= 0 {
 		return restaurantPaymentRemote{}, restaurantPaymentProviderError()
+	}
+	var intent struct {
+		ID     string          `json:"id"`
+		Live   *bool           `json:"livemode"`
+		Status string          `json:"status"`
+		Charge json.RawMessage `json:"latest_charge"`
+	}
+	var charge struct {
+		ID             string `json:"id"`
+		Intent         string `json:"payment_intent"`
+		Currency       string `json:"currency"`
+		Captured       bool   `json:"captured"`
+		Paid           bool   `json:"paid"`
+		Disputed       *bool  `json:"disputed"`
+		Amount         int64  `json:"amount"`
+		CapturedAmount int64  `json:"amount_captured"`
+		RefundedAmount *int64 `json:"amount_refunded"`
+		Live           *bool  `json:"livemode"`
+	}
+	intentID, chargeID := "", ""
+	if json.Unmarshal(out.PaymentIntent, &intent) == nil && restaurantStripeObjectIDValid("payment_intent", intent.ID) && intent.Live != nil && !*intent.Live {
+		intentID = intent.ID
+		if json.Unmarshal(intent.Charge, &charge) == nil && restaurantStripeObjectIDValid("charge", charge.ID) && charge.Intent == intent.ID && charge.Live != nil && !*charge.Live && charge.Amount == out.AmountTotal && charge.Currency == out.Currency && intent.Status == "succeeded" && charge.Paid && charge.Captured && charge.CapturedAmount == out.AmountTotal {
+			chargeID = charge.ID
+		}
 	}
 	status := "pending"
 	refundKnown, refunded := false, int64(0)
 	if out.PaymentStatus == "paid" {
-		// A Checkout Session remains 'paid' after a later refund. Inspect the
-		// expanded captured charge before treating it as an outstanding payment.
-		// https://docs.stripe.com/api/charges/object and https://docs.stripe.com/expand
-		var intent struct {
-			Status string `json:"status"`
-			Charge *struct {
-				ID             string `json:"id"`
-				Currency       string `json:"currency"`
-				Captured       bool   `json:"captured"`
-				Paid           bool   `json:"paid"`
-				Disputed       bool   `json:"disputed"`
-				Amount         int64  `json:"amount"`
-				CapturedAmount int64  `json:"amount_captured"`
-				RefundedAmount int64  `json:"amount_refunded"`
-				Live           bool   `json:"livemode"`
-			} `json:"latest_charge"`
-		}
+		// Checkout remains paid after a refund. Only its coherent, explicitly
+		// test-mode captured charge can establish paid/refunded state.
 		status = "review"
-		if json.Unmarshal(out.PaymentIntent, &intent) == nil && intent.Charge != nil {
-			ch := intent.Charge
-			if intent.Status == "succeeded" && ch.ID != "" && ch.Paid && ch.Captured && ch.Amount == out.AmountTotal && ch.CapturedAmount == out.AmountTotal && ch.Currency == out.Currency && ch.Live == (c.Mode == "live") && !ch.Disputed {
-				refundKnown = ch.RefundedAmount >= 0 && ch.RefundedAmount <= out.AmountTotal
-				refunded = ch.RefundedAmount
-				if ch.RefundedAmount == 0 {
-					status = "paid"
-				} else if ch.RefundedAmount == out.AmountTotal {
-					status = "refunded"
-				}
+		if chargeID != "" && out.Status == "complete" && intent.Status == "succeeded" && charge.Paid && charge.Captured && charge.CapturedAmount == out.AmountTotal && charge.Disputed != nil && !*charge.Disputed && charge.RefundedAmount != nil {
+			refundKnown = *charge.RefundedAmount >= 0 && *charge.RefundedAmount <= out.AmountTotal
+			refunded = *charge.RefundedAmount
+			if *charge.RefundedAmount == 0 {
+				status = "paid"
+			} else if *charge.RefundedAmount == out.AmountTotal {
+				status = "refunded"
 			}
 		}
 	} else if out.Status == "expired" {
 		status = "failed"
 	}
-	return restaurantPaymentRemote{ID: out.ID, Status: status, Currency: strings.ToUpper(out.Currency), AmountMinor: out.AmountTotal, Reference: out.Reference, RefundStateKnown: refundKnown, RefundedMinor: refunded}, nil
+	return restaurantPaymentRemote{ID: out.ID, Status: status, Currency: strings.ToUpper(out.Currency), AmountMinor: out.AmountTotal, Reference: out.Reference, RefundStateKnown: refundKnown, RefundedMinor: refunded, StripeIntentID: intentID, StripeChargeID: chargeID}, nil
 }
 
 type restaurantMoyasarInvoice struct {

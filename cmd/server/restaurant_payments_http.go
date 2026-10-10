@@ -1,11 +1,9 @@
 package main
 
 import (
-	"database/sql"
-	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
+	"time"
 )
 
 // Root mounts pub/admin with the normal restaurant guards; hooks have separate
@@ -148,54 +146,23 @@ func (s *server) registerRestaurantPaymentHandlers(pub, admin, hooks *http.Serve
 		}
 		writeJSON(w, 200, map[string]bool{"received": true})
 	})
-	// Stripe configures one account webhook URL. The supplied session ID only
-	// locates an existing local attempt; no supplied event data is authoritative.
+	// Read exactly once and verify the raw bytes before any event routing. The
+	// handler acknowledges committed local inbox work; it never calls Stripe.
 	hooks.HandleFunc("POST /payment-hooks/stripe", func(w http.ResponseWriter, r *http.Request) {
 		if s.payments == nil {
 			writeRestaurantError(w, restaurantFail(503, "payment_unavailable"))
 			return
 		}
-		var event struct {
-			Type string `json:"type"`
-			Data struct {
-				Object struct {
-					ID       string            `json:"id"`
-					Metadata map[string]string `json:"metadata"`
-				} `json:"object"`
-			} `json:"data"`
-		}
-		body := http.MaxBytesReader(w, r.Body, 256*1024)
-		decoder := json.NewDecoder(body)
-		if decoder.Decode(&event) != nil || decoder.Decode(new(any)) != io.EOF {
-			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
-			return
-		}
-		var lookupField, lookupValue string
-		switch event.Type {
-		case "checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "checkout.session.expired":
-			lookupField, lookupValue = "remote_id", event.Data.Object.ID
-		case "charge.refunded", "charge.updated", "payment_intent.succeeded":
-			// Metadata is only a lookup hint; the stored Checkout Session and its
-			// expanded charge are fetched and validated before any state change.
-			lookupField, lookupValue = "id", event.Data.Object.Metadata["restaurant_attempt"]
-		default:
-			writeJSON(w, 200, map[string]bool{"received": true})
-			return
-		}
-		if !restaurantPaymentID.MatchString(lookupValue) {
-			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
-			return
-		}
-		a, err := s.payments.readAttempt(s.payments.db.QueryRowContext(r.Context(), restaurantPaymentAttemptSelect+` WHERE provider='stripe' AND `+lookupField+`=$1`, lookupValue))
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, 200, map[string]bool{"received": true})
-			return
-		}
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 256*1024))
 		if err != nil {
-			writeRestaurantError(w, err)
+			writeRestaurantError(w, restaurantFail(413, "invalid_request"))
 			return
 		}
-		if _, err = s.payments.notifyAttempt(r.Context(), a); err != nil {
+		if len(r.Header.Values("Stripe-Signature")) != 1 {
+			writeRestaurantError(w, restaurantFail(400, "invalid_request"))
+			return
+		}
+		if err = s.payments.receiveStripeWebhook(r.Context(), raw, r.Header.Get("Stripe-Signature"), time.Now()); err != nil {
 			writeRestaurantError(w, err)
 			return
 		}

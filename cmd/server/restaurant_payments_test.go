@@ -93,12 +93,15 @@ func TestRestaurantPaymentHTTPBoundaries(t *testing.T) {
 	}
 }
 func TestRestaurantPaymentStripeCreateAndRequery(t *testing.T) {
-	cfg := restaurantPaymentConfig{ID: "stripe", Mode: "test", Secrets: map[string]string{"secretKey": "sk_test_mock"}}
+	cfg := restaurantStripeTestConfig()
 	attempt := uuid.NewString()
 	calls := 0
 	g := restaurantPaymentGateways{client: &http.Client{Transport: restaurantPaymentTestTransport(func(r *http.Request) (*http.Response, error) {
 		calls++
-		if r.Header.Get("Authorization") != "Bearer sk_test_mock" {
+		if r.URL.Path == "/v1/account" {
+			return restaurantStripeTestAccountResponse(), nil
+		}
+		if r.Header.Get("Authorization") != "Bearer rk_test_synthetic" {
 			t.Fatal("missing auth")
 		}
 		if r.Method == "POST" {
@@ -112,15 +115,15 @@ func TestRestaurantPaymentStripeCreateAndRequery(t *testing.T) {
 				t.Fatal("amount/reference modified or tax added")
 			}
 		}
-		return restaurantPaymentTestResponse(`{"id":"cs_test_one","url":"https://checkout.stripe.com/c/pay/cs_test_one","mode":"payment","livemode":false,"payment_status":"paid","status":"complete","amount_total":11500,"currency":"sar","client_reference_id":"` + attempt + `","payment_intent":{"status":"succeeded","latest_charge":{"id":"ch_mock","paid":true,"captured":true,"amount":11500,"amount_captured":11500,"amount_refunded":0,"currency":"sar","livemode":false}}}`), nil
+		return restaurantPaymentTestResponse(`{"id":"cs_test_one","url":"https://checkout.stripe.com/c/pay/cs_test_one","mode":"payment","payment_method_types":["card"],"livemode":false,"payment_status":"paid","status":"complete","amount_total":11500,"currency":"sar","client_reference_id":"` + attempt + `","payment_intent":{"id":"pi_synthetic","livemode":false,"status":"succeeded","latest_charge":{"id":"ch_mock","payment_intent":"pi_synthetic","disputed":false,"paid":true,"captured":true,"amount":11500,"amount_captured":11500,"amount_refunded":0,"currency":"sar","livemode":false}}}`), nil
 	})}}
-	req := restaurantPaymentRequest{AttemptID: attempt, OrderNumber: "R1", AmountMinor: 11500, Currency: "SAR", CreatedAt: time.Now().UTC(), ReturnURL: "https://restaurant.test/payment-return?attempt=" + attempt}
+	req := restaurantPaymentRequest{AttemptID: attempt, OrderNumber: "R1", AmountMinor: 11500, Currency: "SAR", CreatedAt: time.Now().UTC(), StripeIntegrationIdentifier: "onlinu_sandbox_abcdefgh", ReturnURL: "https://restaurant.test/payment-return?attempt=" + attempt}
 	remote, err := g.Create(context.Background(), cfg, req)
 	if err != nil || remote.ID != "cs_test_one" || remote.Status == "paid" {
 		t.Fatalf("creation must not confirm payment: %v", err)
 	}
 	remote, err = g.Fetch(context.Background(), cfg, remote.ID, attempt)
-	if err != nil || remote.Status != "paid" || remote.Reference != attempt || remote.AmountMinor != 11500 || calls != 2 {
+	if err != nil || remote.Status != "paid" || remote.Reference != attempt || remote.AmountMinor != 11500 || calls != 4 {
 		t.Fatalf("query failed: %+v %v", remote, err)
 	}
 	cfg.Mode = "live"
@@ -169,15 +172,18 @@ func TestRestaurantPaymentStripeRefundAndAuthorization(t *testing.T) {
 		want     string
 	}{{"captured", true, 0, false, "paid"}, {"authorized", false, 0, false, "review"}, {"partial", true, 100, false, "review"}, {"refunded", true, 11500, false, "refunded"}, {"disputed", true, 0, true, "review"}} {
 		t.Run(tc.name, func(t *testing.T) {
-			body := map[string]any{"id": "cs_test_one", "mode": "payment", "livemode": false, "payment_status": "paid", "amount_total": 11500, "currency": "sar", "client_reference_id": "attempt", "payment_intent": map[string]any{"status": "succeeded", "latest_charge": map[string]any{"id": "ch_mock", "paid": true, "captured": tc.captured, "amount": 11500, "amount_captured": 11500, "amount_refunded": tc.refunded, "disputed": tc.disputed, "currency": "sar", "livemode": false}}}
+			body := map[string]any{"id": "cs_test_one", "mode": "payment", "payment_method_types": []string{"card"}, "livemode": false, "payment_status": "paid", "status": "complete", "amount_total": 11500, "currency": "sar", "client_reference_id": "attempt", "payment_intent": map[string]any{"id": "pi_synthetic", "livemode": false, "status": "succeeded", "latest_charge": map[string]any{"id": "ch_mock", "payment_intent": "pi_synthetic", "paid": true, "captured": tc.captured, "amount": 11500, "amount_captured": 11500, "amount_refunded": tc.refunded, "disputed": tc.disputed, "currency": "sar", "livemode": false}}}
 			raw, _ := json.Marshal(body)
 			g := restaurantPaymentGateways{client: &http.Client{Transport: restaurantPaymentTestTransport(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/v1/account" {
+					return restaurantStripeTestAccountResponse(), nil
+				}
 				if r.URL.Query().Get("expand[]") != "payment_intent.latest_charge" {
 					t.Fatal("missing expanded capture check")
 				}
 				return restaurantPaymentTestResponse(string(raw)), nil
 			})}}
-			got, err := g.Fetch(context.Background(), restaurantPaymentConfig{ID: "stripe", Mode: "test", Secrets: map[string]string{"secretKey": "sk_test_mock"}}, "cs_test_one", "attempt")
+			got, err := g.Fetch(context.Background(), restaurantStripeTestConfig(), "cs_test_one", "attempt")
 			if err != nil || got.Status != tc.want {
 				t.Fatalf("wanted %s got %v %v", tc.want, got, err)
 			}
@@ -282,17 +288,28 @@ func (f *restaurantPaymentFakeAdapter) Fetch(c context.Context, cfg restaurantPa
 }
 func restaurantPaymentFixture(t *testing.T) (*restaurantPayments, restaurantReceipt) {
 	t.Helper()
+	return restaurantPaymentFixtureProvider(t, "stripe")
+}
+
+func restaurantPaymentFixtureProvider(t *testing.T, provider string) (*restaurantPayments, restaurantReceipt) {
+	t.Helper()
 	orders, _, db := restaurantOrdersFixtureDB(t)
 	p, err := newRestaurantPayments(context.Background(), db, orders, "https://restaurant.test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = p.Configure(context.Background(), "stripe", restaurantPaymentConfigInput{Enabled: true, Mode: "test", Secrets: map[string]string{"secretKey": "sk_test_unit_only"}})
+	input := restaurantStripeTestConfigInput()
+	if provider == "tap" {
+		input = restaurantPaymentConfigInput{Enabled: true, Mode: "test", Secrets: map[string]string{"secretKey": "sk_test_synthetic"}}
+	}
+	_, err = p.Configure(context.Background(), provider, input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	orders.PaymentAvailable = p.Available
-	receipt, err := orders.Create(context.Background(), restaurantOrderFixtureInput("pickup"), "", uuid.NewString())
+	orderInput := restaurantOrderFixtureInput("pickup")
+	orderInput.PaymentProvider = provider
+	receipt, err := orders.Create(context.Background(), orderInput, "", uuid.NewString())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,11 +323,11 @@ func TestRestaurantPaymentsIntegrationEncryptionAndConfiguration(t *testing.T) {
 		t.Fatal("configuration list")
 	}
 	raw, _ := json.Marshal(configs)
-	if strings.Contains(string(raw), "sk_test_unit_only") {
+	if strings.Contains(string(raw), "rk_test_synthetic") {
 		t.Fatal("credential disclosed")
 	}
 	var sealed []byte
-	if err = p.db.QueryRowContext(ctx, `SELECT sealed FROM restaurant_payment_configs WHERE provider='stripe'`).Scan(&sealed); err != nil || strings.Contains(string(sealed), "sk_test_unit_only") {
+	if err = p.db.QueryRowContext(ctx, `SELECT sealed FROM restaurant_payment_configs WHERE provider='stripe'`).Scan(&sealed); err != nil || strings.Contains(string(sealed), "rk_test_synthetic") {
 		t.Fatal("credential unencrypted")
 	}
 	cfg, err := p.Configure(ctx, "stripe", restaurantPaymentConfigInput{Enabled: true, Mode: "test", Secrets: map[string]string{"secretKey": ""}})
@@ -357,11 +374,11 @@ func TestRestaurantPaymentsIntegrationDemoModeIsolation(t *testing.T) {
 	if _, err = p.Start(ctx, receipt.Order.Number, receipt.TrackingToken, "", "stripe"); err == nil {
 		t.Fatal("catalog mode switch ignored")
 	}
-	if _, err = p.Configure(ctx, "stripe", restaurantPaymentConfigInput{Enabled: true, Mode: "live", Secrets: map[string]string{"secretKey": "sk_live_unit_only"}}); err != nil {
-		t.Fatal(err)
+	if _, err = p.Configure(ctx, "stripe", restaurantPaymentConfigInput{Enabled: true, Mode: "live", Secrets: map[string]string{"secretKey": "sk_live_unit_only"}}); err == nil {
+		t.Fatal("live Stripe configuration accepted")
 	}
-	if ok, err := p.Available(ctx, "stripe", "SAR"); err != nil || !ok {
-		t.Fatal("proper live availability failed")
+	if ok, err := p.Available(ctx, "stripe", "SAR"); err != nil || ok {
+		t.Fatal("Stripe available for non-demo catalogue")
 	}
 	if _, err = p.Start(ctx, receipt.Order.Number, receipt.TrackingToken, "", "stripe"); err == nil {
 		t.Fatal("live charge allowed for old demo order")
@@ -374,8 +391,11 @@ func TestRestaurantPaymentsIntegrationDemoModeIsolation(t *testing.T) {
 	if _, err = p.orders.store.SaveCatalog(ctx, catalog); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = p.Configure(ctx, "stripe", restaurantPaymentConfigInput{Mode: "test"}); err != nil {
+		t.Fatal(err)
+	}
 	if ok, _ := p.Available(ctx, "stripe", "SAR"); ok {
-		t.Fatal("live gateway visible for demo catalog")
+		t.Fatal("disabled gateway visible for demo catalog")
 	}
 }
 func TestRestaurantPaymentsIntegrationConcurrentCreationAndSettlement(t *testing.T) {
@@ -420,12 +440,12 @@ func TestRestaurantPaymentsIntegrationConcurrentCreationAndSettlement(t *testing
 	}
 	// Credential rotation must not change the account used by an in-flight
 	// payment. Its encrypted original configuration is a durable snapshot.
-	if _, err := p.Configure(ctx, "stripe", restaurantPaymentConfigInput{Mode: "test", Secrets: map[string]string{"secretKey": "sk_test_rotated"}}); err != nil {
+	if _, err := p.Configure(ctx, "stripe", restaurantPaymentConfigInput{Mode: "test", Secrets: map[string]string{"secretKey": "rk_test_rotated"}}); err != nil {
 		t.Fatal(err)
 	}
 	originalFetch := p.adapter.(*restaurantPaymentFakeAdapter).fetch
 	p.adapter.(*restaurantPaymentFakeAdapter).fetch = func(c context.Context, cfg restaurantPaymentConfig, id, ref string) (restaurantPaymentRemote, error) {
-		if cfg.Secrets["secretKey"] != "sk_test_unit_only" {
+		if cfg.Secrets["secretKey"] != "rk_test_synthetic" {
 			t.Fatal("pending payment changed merchant credentials")
 		}
 		return originalFetch(c, cfg, id, ref)
@@ -518,7 +538,7 @@ func TestRestaurantPaymentsIntegrationMismatchCancellationAndAmbiguity(t *testin
 		})
 	}
 }
-func TestRestaurantPaymentsIntegrationForgedHookUsesProviderQuery(t *testing.T) {
+func TestRestaurantPaymentsIntegrationStripeGenericHookRejected(t *testing.T) {
 	p, receipt := restaurantPaymentFixture(t)
 	ctx := context.Background()
 	var queries atomic.Int32
@@ -539,12 +559,12 @@ func TestRestaurantPaymentsIntegrationForgedHookUsesProviderQuery(t *testing.T) 
 		r := httptest.NewRequest("POST", "/payment-hooks/stripe/"+v.AttemptID, strings.NewReader(`{"status":"paid","amount":3000}`))
 		w := httptest.NewRecorder()
 		hooks.ServeHTTP(w, r)
-		if w.Code != 200 {
-			t.Fatalf("hook rejected %d", w.Code)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("unsigned Stripe hook accepted %d", w.Code)
 		}
 	}
-	if queries.Load() != 1 {
-		t.Fatal("durable hook query throttle failed")
+	if queries.Load() != 0 {
+		t.Fatal("unsigned hook reached provider query")
 	}
 	o, _ := p.orders.Track(ctx, receipt.Order.Number, receipt.TrackingToken, "", "")
 	if o.Payment.Status != "pending" {
@@ -610,7 +630,7 @@ func TestRestaurantPaymentsIntegrationRefundHookInsideCooldownSurvives(t *testin
 		t.Fatal(err)
 	}
 	status = "refunded"
-	if err = p.Hook(ctx, "stripe", v.AttemptID); err != nil {
+	if _, err = p.notifyAttempt(ctx, restaurantStripeTestReadAttempt(t, p, v.AttemptID)); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 1 {
@@ -642,7 +662,7 @@ func TestRestaurantPaymentsIntegrationConcurrentHookGeneration(t *testing.T) {
 		return restaurantPaymentRemote{ID: "cs_test_one", URL: "https://checkout.stripe.com/c/pay/cs_test_one"}, nil
 	}, fetch: func(_ context.Context, _ restaurantPaymentConfig, id, ref string) (restaurantPaymentRemote, error) {
 		// Models a newer notification arriving while the authenticated query is in flight.
-		if err := p.Hook(ctx, "stripe", ref); err != nil {
+		if _, err := p.notifyAttempt(ctx, restaurantStripeTestReadAttempt(t, p, ref)); err != nil {
 			t.Fatal(err)
 		}
 		return restaurantPaymentRemote{ID: id, Status: "paid", Currency: "SAR", AmountMinor: 3000, Reference: ref}, nil
@@ -651,7 +671,7 @@ func TestRestaurantPaymentsIntegrationConcurrentHookGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = p.Hook(ctx, "stripe", v.AttemptID); err != nil {
+	if _, err = p.notifyAttempt(ctx, restaurantStripeTestReadAttempt(t, p, v.AttemptID)); err != nil {
 		t.Fatal(err)
 	}
 	var dirty bool

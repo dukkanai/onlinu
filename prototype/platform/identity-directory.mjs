@@ -178,6 +178,9 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
           AND i.issuer=ANY($3::text[]) LIMIT 1`, [tenantId, principalId, [...issuers]]);
         if (!others.rows.length) throw problem(409, 'last_owner_required');
       }
+      // Native mutations carry the originally authenticated session/family.
+      // Recheck after tenant-lock and target reads, before changing membership.
+      await options.authorizeMutation?.(db);
       const result = await db.query(`INSERT INTO platform_memberships(tenant_id,principal_id,role,permissions,enabled,display_name)
         VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(tenant_id,principal_id) DO UPDATE SET
         role=EXCLUDED.role,permissions=EXCLUDED.permissions,enabled=EXCLUDED.enabled,display_name=EXCLUDED.display_name,version=platform_memberships.version+1 RETURNING *`,

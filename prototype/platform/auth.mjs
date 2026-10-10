@@ -147,7 +147,7 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
     const actual=Buffer.from(value),expected=Buffer.from(csrfToken(req));
     if(actual.length!==expected.length || !timingSafeEqual(actual,expected))throw problem(403,'csrf_rejected');
   }
-  async function authenticate(req, { bearerOnly = false, cookieOnly = false } = {}) {
+  async function authenticateDetails(req, { bearerOnly = false, cookieOnly = false } = {}) {
     const authorization = req.headers.authorization;
     if(native&&(!authorization||cookieOnly))return null;
     let token;
@@ -167,10 +167,36 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
     if((cookieOnly || !authorization) && rows[0]?.session_kind!=='browser')return null;
     if(!allowSyntheticAuthorization && authorization && !cookieOnly && rows[0]?.session_kind!=='oauth')return null;
     const identity=rows[0]?await principal(rows[0].principal_id,rows[0].scopes):null;
-    if(identity&&!native&&rows[0].session_kind==='oauth'&&rows[0].expires_at)return{...identity,
+    if(identity&&!native&&rows[0].session_kind==='oauth'&&rows[0].expires_at)return{principal:{...identity,
       eventGrant:{kind:rows[0].grant_id?'family':'session',id:rows[0].grant_id??hash(token)},
-      eventGrantExpiresAt:new Date(rows[0].grant_expires_at??rows[0].expires_at).toISOString()};
-    return identity;
+      eventGrantExpiresAt:new Date(rows[0].grant_expires_at??rows[0].expires_at).toISOString()}};
+    if(!identity)return null;
+    return{principal:identity,...(native?{nativeAuthority:{tokenHash:hash(token),principalId:rows[0].principal_id,
+      familyId:rows[0].grant_id,clientId:rows[0].grant_client_id}}:{})};
+  }
+  async function authenticate(req,options) {
+    return(await authenticateDetails(req,options))?.principal??null;
+  }
+  async function authenticateNativeRequest(req) {
+    if(!native)throw problem(403,'native_client_required');
+    const authenticated=await authenticateDetails(req,{bearerOnly:true});
+    if(!authenticated)return null;
+    // Capture the original authority once. Neither another active family for the
+    // same person nor a later change to request headers can substitute for it.
+    // This closure stays internal; principal responses never contain credentials.
+    const {tokenHash,principalId,familyId,clientId}=authenticated.nativeAuthority;
+    const authorizeMutation=async(database=pool)=>{
+      const {rows}=await database.query(`SELECT s.principal_id FROM demo_sessions s
+        JOIN demo_oauth_grants g ON g.id=s.oauth_family_id
+        WHERE s.token_hash=$1 AND s.principal_id=$2 AND s.oauth_family_id=$3
+        AND s.issuer=$4 AND s.audience=$5 AND s.session_kind='oauth'
+        AND s.expires_at>clock_timestamp() AND s.scopes ? $7
+        AND g.principal_id=$2 AND g.resource=$5 AND g.client_id=$6
+        AND g.revoked=FALSE AND g.expires_at>clock_timestamp() AND g.scopes ? $7`,
+      [tokenHash,principalId,familyId,baseUrl,resource,clientId,NATIVE_SCOPE]);
+      if(rows.length!==1||rows[0].principal_id!==principalId)throw problem(401,'authentication_required');
+    };
+    return{principal:authenticated.principal,authorizeMutation};
   }
   // An Events subscription belongs to the connection that created it. Another
   // active connection for the same owner is never evidence of this grant.
@@ -397,6 +423,6 @@ export function createAuth({ pool, baseUrl, redirectAllowlist = [],
       await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   }
-  return { init, principal, issue, authenticate, authorizeEventGrant, browserToken, csrfToken, verifyCsrf, register, validateAuthorization, authorize, exchange, revoke, nativeGrants, revokeNativeGrant, metadata,
+  return { init, principal, issue, authenticate, authenticateNativeRequest, authorizeEventGrant, browserToken, csrfToken, verifyCsrf, register, validateAuthorization, authorize, exchange, revoke, nativeGrants, revokeNativeGrant, metadata,
     resourceMetadata: { resource, authorization_servers: [baseUrl], scopes_supported: supportedScopes } };
 }

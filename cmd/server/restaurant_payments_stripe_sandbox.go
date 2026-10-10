@@ -1,8 +1,7 @@
 package main
 
-// Preparation only: these sandbox guards are not connected to configuration,
-// routes, or a provider. The existing Stripe webhook is still a re-query hint.
-// Wiring the guards and a durable event inbox is a separate acceptance gate.
+// Signature verification for the closed, own-account snapshot-event sandbox
+// route. Verification authenticates lookup hints, never payment state.
 // Official references, checked 2026-10-10:
 // https://docs.stripe.com/keys/restricted-api-keys
 // https://docs.stripe.com/webhooks#verify-manually
@@ -37,7 +36,8 @@ func restaurantStripeSandboxConfigValid(c restaurantPaymentConfig) error {
 // Only authenticated lookup hints leave the verifier; amounts, statuses,
 // customer details, and the body itself are intentionally not retained.
 type restaurantStripeSandboxEvent struct {
-	ID, Type, ObjectID, AttemptID string
+	ID, Type, ObjectID, AttemptID, APIVersion, Object string
+	ObjectTest                                        bool
 }
 
 // Verify the exact bytes received, before parsing. A fresh signature authenticates
@@ -99,15 +99,18 @@ func restaurantStripeVerifySandboxEvent(raw []byte, signature, secret string, no
 		return invalid()
 	}
 	var envelope struct {
-		ID       string `json:"id"`
-		Object   string `json:"object"`
-		Type     string `json:"type"`
-		LiveMode *bool  `json:"livemode"`
-		Account  string `json:"account"`
-		Context  string `json:"context"`
-		Data     struct {
+		ID         string `json:"id"`
+		APIVersion string `json:"api_version"`
+		Object     string `json:"object"`
+		Type       string `json:"type"`
+		LiveMode   *bool  `json:"livemode"`
+		Account    string `json:"account"`
+		Context    string `json:"context"`
+		Data       struct {
 			Object struct {
 				ID       string            `json:"id"`
+				Object   string            `json:"object"`
+				LiveMode *bool             `json:"livemode"`
 				Metadata map[string]string `json:"metadata"`
 			} `json:"object"`
 		} `json:"data"`
@@ -116,5 +119,5 @@ func restaurantStripeVerifySandboxEvent(raw []byte, signature, secret string, no
 	if decoder.Decode(&envelope) != nil || decoder.Decode(new(any)) != io.EOF || !restaurantStripeEventID.MatchString(envelope.ID) || envelope.Object != "event" || envelope.LiveMode == nil || *envelope.LiveMode || envelope.Account != "" || envelope.Context != "" || envelope.Type == "" || len(envelope.Type) > 200 {
 		return invalid()
 	}
-	return restaurantStripeSandboxEvent{ID: envelope.ID, Type: envelope.Type, ObjectID: envelope.Data.Object.ID, AttemptID: envelope.Data.Object.Metadata["restaurant_attempt"]}, nil
+	return restaurantStripeSandboxEvent{ID: envelope.ID, Type: envelope.Type, ObjectID: envelope.Data.Object.ID, AttemptID: envelope.Data.Object.Metadata["restaurant_attempt"], APIVersion: envelope.APIVersion, Object: envelope.Data.Object.Object, ObjectTest: envelope.Data.Object.LiveMode != nil && !*envelope.Data.Object.LiveMode}, nil
 }

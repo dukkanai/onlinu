@@ -1,3 +1,28 @@
+# Native staff authority checkpoint — 10 October 2026, source under validation
+
+A handler-level regression reproduced two non-courier native administration
+mutations (profile and menu) dispatching after their originating OAuth family
+was revoked while the request body was pending. The fix captures the original
+token hash, principal, family and client internally, and checks that exact
+authority with database-clock expiry at the final scoped mutation checkpoints.
+Another family or a replaced request header cannot substitute. Membership writes
+reuse their transaction connection after tenant-lock and target reads.
+
+The 20 new deterministic handler regressions pass, with independent review and
+66 focused passing tests (four database-dependent cases skipped in that review).
+The subsequent targeted combined PostgreSQL run passed 259 tests without failures
+or skips, including four actual HTTP delayed-body cases: profile/menu reject
+revocation of the originating family and allow it when only another family was
+revoked. Real OAuth revocation and database state are exercised; the signed
+downstream restaurant transport remains synthetic. Exact-commit CI is pending. The closure
+is internal and is not returned in principal JSON. Browser authentication and
+ordinary OAuth event grants retain their previous representation.
+
+This closes tested invalidations completed before the final checkpoint; it does
+not provide atomic revocation across concurrent database changes and a remote
+core-service mutation. The original courier-cookie/session race is unchanged.
+No new deployment or production-security acceptance follows from these tests.
+
 # Review pointer — 10 October 2026
 
 See [the current review and work order](PROJECT-REVIEW-20261010.ar.md) for subsequent

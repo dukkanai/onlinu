@@ -1,6 +1,7 @@
 // Locale-extension source for the Arabic and English restaurant interface.
 export const adminNextEnglish = {
   "payments.field.apiId": "API ID",
+  "payments.field.webhookSecret": "Webhook signing secret", "payments.field.sandboxPilot": "Sandbox opt-in (true)", "payments.field.accountID": "Stripe account ID", "payments.field.country": "Account country (US)", "payments.field.apiVersion": "API version (2026-09-30.endive)",
   "payments.field.secretKey": "Secret key", "payments.field.entityId": "Entity ID", "payments.field.accessToken": "Access token",
   "payments.field.profileId": "Profile ID", "payments.field.serverKey": "Server key", "payments.field.merchantPublicKey": "Merchant public key",
   "payments.field.apiPassword": "API password", "payments.field.apiToken": "API token", "payments.field.paymentMethodId": "Payment method ID",
@@ -25,6 +26,7 @@ export const adminNextEnglish = {
   "adminNext.demoModeRule": "Demo restaurants use test payment gateways only. Restaurants with demo mode turned off use live gateways only.",
   "adminNext.providerLimit.merchant_sar_currency": "MyFatoorah requires a merchant account whose base currency is SAR. Demo accounts with KWD as their base currency cannot be used.",
   "adminNext.providerLimit.paylink_sandbox_only": "Experimental Paylink sandbox only, minimum SAR 5. Live payments, account webhooks and automatic refunds are unavailable. Sandbox account acceptance and external-key security checks are still required.",
+  "adminNext.providerLimit.stripe_sandbox_checkout_only": "Stripe sandbox checkout only: US account, demo orders, and SAR. Set sandbox opt-in to true. Live payments and automatic refunds are unavailable. Account, API version, and webhook signing settings are fixed after setup.",
   "adminNext.providerLimit.hyperpay_test_only": "HyperPay currently supports test mode only. Live checkout is unavailable.",
   "adminNext.providerLimit.merchant_mode_credentials": "Test mode requires your provider's test merchant credentials. Selecting test mode cannot turn live merchant credentials into a sandbox account.",
   "adminNext.metaWebhook": "Meta webhook URL", "adminNext.metaSecretHint": "Credentials are kept on the server. Leave saved secret fields blank to keep their existing values.",
@@ -42,6 +44,7 @@ export const adminNextEnglish = {
 
 export const adminNextArabic: Record<keyof typeof adminNextEnglish, string> = {
   "payments.field.apiId": "معرّف الواجهة",
+  "payments.field.webhookSecret": "سر توقيع إشعارات الدفع", "payments.field.sandboxPilot": "الموافقة على الاختبار (true)", "payments.field.accountID": "معرّف حساب Stripe", "payments.field.country": "بلد الحساب (US)", "payments.field.apiVersion": "إصدار الواجهة (2026-09-30.endive)",
   "payments.field.secretKey": "المفتاح السري", "payments.field.entityId": "معرّف الكيان", "payments.field.accessToken": "رمز الوصول",
   "payments.field.profileId": "معرّف الملف", "payments.field.serverKey": "مفتاح الخادم", "payments.field.merchantPublicKey": "المفتاح العام للتاجر",
   "payments.field.apiPassword": "كلمة مرور الواجهة", "payments.field.apiToken": "رمز الواجهة", "payments.field.paymentMethodId": "معرّف طريقة الدفع",
@@ -66,6 +69,7 @@ export const adminNextArabic: Record<keyof typeof adminNextEnglish, string> = {
   "adminNext.demoModeRule": "المطاعم التجريبية تستخدم بوابات الاختبار فقط. عند إيقاف وضع المطعم التجريبي، تُستخدم البوابات الفعلية فقط.",
   "adminNext.providerLimit.merchant_sar_currency": "يتطلب MyFatoorah حساب تاجر عملته الأساسية الريال السعودي. لا يمكن استخدام الحسابات التجريبية التي عملتها الأساسية الدينار الكويتي.",
   "adminNext.providerLimit.paylink_sandbox_only": "Paylink تجريبي فقط، والحد الأدنى 5 ريالات. الدفع الفعلي وإشعارات الحساب والاسترداد الآلي غير متاحة. ما زال اختبار الحساب التجريبي والتحقق من حماية المفاتيح الخارجية مطلوبين.",
+  "adminNext.providerLimit.stripe_sandbox_checkout_only": "Stripe للدفع التجريبي فقط: حساب أمريكي وطلبات تجريبية بالريال السعودي. اضبط الموافقة على الاختبار على true. الدفع الفعلي والاسترداد الآلي غير متاحين. تثبت بيانات الحساب وإصدار الواجهة وتوقيع الإشعارات بعد الإعداد.",
   "adminNext.providerLimit.hyperpay_test_only": "يدعم HyperPay وضع الاختبار فقط حاليًا. تأكيد الدفع الفعلي غير متاح.",
   "adminNext.providerLimit.merchant_mode_credentials": "وضع الاختبار يتطلب بيانات اعتماد حساب تجريبي من المزوّد. اختيار وضع الاختبار لا يحوّل بيانات اعتماد التاجر الفعلية إلى حساب تجريبي.",
   "adminNext.metaWebhook": "رابط Webhook لـMeta", "adminNext.metaSecretHint": "تُحفظ بيانات الاعتماد على الخادم. اترك الحقول السرية المحفوظة فارغة للاحتفاظ بقيمها الحالية.",

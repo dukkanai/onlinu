@@ -70,7 +70,9 @@ type restaurantRefundAdapter interface {
 
 func restaurantRefundCapabilities(provider string) restaurantRefundCapability {
 	switch provider {
-	case "stripe", "tap", "paytabs", "myfatoorah":
+	case "stripe":
+		return restaurantRefundCapability{Partial: true, Manual: true, Reason: "manual_review_required"}
+	case "tap", "paytabs", "myfatoorah":
 		return restaurantRefundCapability{Automatic: true, Partial: true, Manual: true, Reason: "provider_verified"}
 	default:
 		return restaurantRefundCapability{Partial: true, Manual: true, Reason: "manual_review_required"}

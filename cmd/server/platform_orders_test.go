@@ -317,7 +317,7 @@ func TestPlatformOrderNodeSignatureCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = payments.Configure(context.Background(), "stripe", restaurantPaymentConfigInput{Enabled: true, Mode: "test", Secrets: map[string]string{"secretKey": "sk_test_unit_only"}}); err != nil {
+	if _, err = payments.Configure(context.Background(), "stripe", restaurantStripeTestConfigInput()); err != nil {
 		t.Fatal(err)
 	}
 	s.payments = payments

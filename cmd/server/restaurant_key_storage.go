@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"slices"
 )
 
 const (
@@ -143,6 +144,27 @@ var restaurantCryptoSchemas = map[string][]restaurantCryptoColumn{
 	"restaurant_payment_attempts": {{"id", "text", true}, {"order_number", "text", true}, {"provider", "text", true}, {"mode", "text", true}, {"status", "text", true}, {"remote_id", "text", true}, {"url", "text", true}, {"widget", "jsonb", false}, {"sealed_config", "bytea", true}, {"created_at", "timestamptz", true}, {"updated_at", "timestamptz", true}, {"checked_at", "timestamptz", false}, {"needs_refresh", "bool", true}, {"refresh_version", "int8", true}, {"capture_verified", "bool", true}, {"captured_minor", "int8", true}, {"settlement_watch_started_at", "timestamptz", false}},
 }
 
+// Recognize precisely the additive Stripe sandbox routing migration while
+// retaining offline maintenance of pre-upgrade payload tables. Partial or
+// reordered extensions are not reviewed schema variants.
+var restaurantStripeCryptoAttemptColumns = []restaurantCryptoColumn{
+	{"stripe_integration_identifier", "text", true},
+	{"stripe_intent_id", "text", true},
+	{"stripe_charge_id", "text", true},
+}
+
+func restaurantCryptoColumnSignatureValid(table string, actual []restaurantCryptoColumn) bool {
+	expected, ok := restaurantCryptoSchemas[table]
+	if !ok {
+		return false
+	}
+	if slices.Equal(actual, expected) {
+		return true
+	}
+	return table == "restaurant_payment_attempts" && len(actual) == len(expected)+len(restaurantStripeCryptoAttemptColumns) &&
+		slices.Equal(actual[:len(expected)], expected) && slices.Equal(actual[len(expected):], restaurantStripeCryptoAttemptColumns)
+}
+
 func restaurantCryptoTableExists(ctx context.Context, tx *sql.Tx, schema, table string) (bool, error) {
 	var present bool
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2)`, schema, table).Scan(&present)
@@ -161,20 +183,31 @@ func restaurantCheckCryptoTable(ctx context.Context, tx *sql.Tx, schema, table s
 	if err != nil || !safe {
 		return errRestaurantKeyState
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.attname,CASE WHEN tn.nspname='pg_catalog' THEN t.typname ELSE 'unsupported' END,a.attnotnull FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_type t ON t.oid=a.atttypid JOIN pg_catalog.pg_namespace tn ON tn.oid=t.typnamespace WHERE n.nspname=$1 AND c.relname=$2 AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum`, schema, table)
+	rows, err := tx.QueryContext(ctx, `SELECT a.attname,CASE WHEN tn.nspname='pg_catalog' THEN t.typname ELSE 'unsupported' END,a.attnotnull,COALESCE(pg_catalog.pg_get_expr(d.adbin,d.adrelid),''),a.attgenerated,a.attidentity FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_type t ON t.oid=a.atttypid JOIN pg_catalog.pg_namespace tn ON tn.oid=t.typnamespace LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE n.nspname=$1 AND c.relname=$2 AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum`, schema, table)
 	if err != nil {
 		return errRestaurantKeyState
 	}
 	defer rows.Close()
-	i := 0
+	limit := len(expected)
+	if table == "restaurant_payment_attempts" {
+		limit += len(restaurantStripeCryptoAttemptColumns)
+	}
+	actual := make([]restaurantCryptoColumn, 0, limit)
 	for rows.Next() {
 		var got restaurantCryptoColumn
-		if rows.Scan(&got.name, &got.kind, &got.notNull) != nil || i >= len(expected) || got != expected[i] {
+		var defaultValue, generated, identity string
+		if rows.Scan(&got.name, &got.kind, &got.notNull, &defaultValue, &generated, &identity) != nil || len(actual) >= limit {
 			return errRestaurantKeyState
 		}
-		i++
+		// Only the reviewed Stripe suffix introduces a default contract. Do
+		// not relax it to arbitrary expressions or generated/identity values,
+		// and do not change historical columns' existing default policy.
+		if table == "restaurant_payment_attempts" && len(actual) >= len(expected) && (defaultValue != "''::text" || generated != "" || identity != "") {
+			return errRestaurantKeyState
+		}
+		actual = append(actual, got)
 	}
-	if rows.Err() != nil || i != len(expected) {
+	if rows.Err() != nil || !restaurantCryptoColumnSignatureValid(table, actual) {
 		return errRestaurantKeyState
 	}
 	return nil

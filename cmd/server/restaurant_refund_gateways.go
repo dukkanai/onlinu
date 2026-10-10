@@ -64,6 +64,11 @@ func (g *restaurantPaymentGateways) refundPreflight(ctx context.Context, c resta
 	return nil
 }
 func (g *restaurantPaymentGateways) CreateRefund(ctx context.Context, c restaurantPaymentConfig, a restaurantPaymentAttempt, o restaurantOrder, r restaurantRefund, expected int64) (restaurantRefundRemote, error) {
+	// The reviewed Stripe pilot is checkout-only. Do not even perform a
+	// preflight API read for automatic refund dispatch.
+	if c.ID == "stripe" {
+		return restaurantRefundRemote{}, restaurantRefundPreflightError{restaurantPaymentProviderError()}
+	}
 	if !restaurantRefundCapabilities(c.ID).Automatic || r.AmountMinor <= 0 || r.AmountMinor > o.TotalMinor-expected || !restaurantPaymentID.MatchString(a.RemoteID) {
 		return restaurantRefundRemote{}, restaurantRefundPreflightError{restaurantPaymentProviderError()}
 	}
@@ -139,31 +144,16 @@ type restaurantStripeRefund struct {
 }
 
 func (g *restaurantPaymentGateways) refundStripeCharge(ctx context.Context, c restaurantPaymentConfig, a restaurantPaymentAttempt, o restaurantOrder) (string, error) {
-	var out restaurantStripeSession
-	if err := g.json(ctx, http.MethodGet, "https://api.stripe.com/v1/checkout/sessions/"+url.PathEscape(a.RemoteID)+"?expand%5B%5D=payment_intent.latest_charge", "Bearer "+c.Secrets["secretKey"], nil, &out); err != nil {
+	// Read-only historical refund reconciliation reuses the same account,
+	// version, explicit test modes, and captured-charge proof as settlement.
+	paid, err := g.Fetch(ctx, c, a.RemoteID, a.ID)
+	if err != nil {
 		return "", err
 	}
-	var intent struct {
-		Status string `json:"status"`
-		Charge struct {
-			ID             string `json:"id"`
-			Amount         int64  `json:"amount"`
-			CapturedAmount int64  `json:"amount_captured"`
-			Currency       string `json:"currency"`
-			Live           bool   `json:"livemode"`
-			Paid           bool   `json:"paid"`
-			Captured       bool   `json:"captured"`
-			Disputed       bool   `json:"disputed"`
-		} `json:"latest_charge"`
-	}
-	if json.Unmarshal(out.PaymentIntent, &intent) != nil {
+	if paid.ID != a.RemoteID || paid.Reference != a.ID || paid.AmountMinor != o.TotalMinor || paid.Currency != o.Currency || !o.Demo || c.Mode != "test" || !paid.RefundStateKnown || !restaurantStripeObjectIDValid("charge", paid.StripeChargeID) {
 		return "", restaurantPaymentProviderError()
 	}
-	ch := intent.Charge
-	if out.ID != a.RemoteID || out.Reference != a.ID || out.AmountTotal != o.TotalMinor || strings.ToUpper(out.Currency) != o.Currency || out.LiveMode != (c.Mode == "live") || out.PaymentStatus != "paid" || intent.Status != "succeeded" || !ch.Paid || !ch.Captured || ch.Disputed || ch.Amount != o.TotalMinor || ch.CapturedAmount != o.TotalMinor || strings.ToUpper(ch.Currency) != o.Currency || ch.Live != (c.Mode == "live") || !restaurantPaymentID.MatchString(ch.ID) {
-		return "", restaurantPaymentProviderError()
-	}
-	return ch.ID, nil
+	return paid.StripeChargeID, nil
 }
 
 type restaurantTapRefund struct {
@@ -205,7 +195,7 @@ func (g *restaurantPaymentGateways) FetchRefund(ctx context.Context, c restauran
 			return result, err
 		}
 		var out restaurantStripeRefund
-		if err = g.json(ctx, http.MethodGet, "https://api.stripe.com/v1/refunds/"+url.PathEscape(r.ProviderReference), "Bearer "+c.Secrets["secretKey"], nil, &out); err != nil {
+		if err = g.request(ctx, http.MethodGet, "https://api.stripe.com/v1/refunds/"+url.PathEscape(r.ProviderReference), "Bearer "+c.Secrets["secretKey"], "", nil, &out, map[string]string{"Stripe-Version": restaurantStripeAPIVersion}); err != nil {
 			return result, err
 		}
 		if out.ID != r.ProviderReference || out.Charge != charge || out.Metadata["restaurant_refund"] != r.ID || out.Amount != r.AmountMinor || strings.ToUpper(out.Currency) != r.Currency {

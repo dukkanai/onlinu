@@ -17,9 +17,12 @@ import (
 
 func TestRestaurantStripeCreateUsesPersistedTimestamp(t *testing.T) {
 	created := time.Date(2025, 1, 2, 3, 4, 5, 123456000, time.UTC)
-	r := restaurantPaymentRequest{AttemptID: "synthetic_attempt", OrderNumber: "R1234", Currency: "SAR", AmountMinor: 11500, CreatedAt: created, ReturnURL: "https://restaurant.test/payment-hooks/return/synthetic_attempt", CustomerName: "Synthetic customer", Phone: "synthetic-phone"}
+	r := restaurantPaymentRequest{StripeIntegrationIdentifier: "onlinu_sandbox_abcdefgh", AttemptID: "synthetic_attempt", OrderNumber: "R1234", Currency: "SAR", AmountMinor: 11500, CreatedAt: created, ReturnURL: "https://restaurant.test/payment-hooks/return/synthetic_attempt", CustomerName: "Synthetic customer", Phone: "synthetic-phone"}
 	var bodies, keys []string
 	g := restaurantPaymentGateways{client: &http.Client{Transport: restaurantPaymentTestTransport(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/v1/account" {
+			return restaurantStripeTestAccountResponse(), nil
+		}
 		if req.Method != http.MethodPost || req.URL.String() != "https://api.stripe.com/v1/checkout/sessions" {
 			t.Fatal("unexpected provider operation")
 		}
@@ -29,9 +32,9 @@ func TestRestaurantStripeCreateUsesPersistedTimestamp(t *testing.T) {
 		}
 		bodies = append(bodies, string(raw))
 		keys = append(keys, req.Header.Get("Idempotency-Key"))
-		return restaurantPaymentTestResponse(`{"id":"cs_test_synthetic","url":"https://checkout.stripe.com/c/pay/synthetic","mode":"payment","livemode":false,"amount_total":11500,"currency":"sar","client_reference_id":"synthetic_attempt"}`), nil
+		return restaurantPaymentTestResponse(`{"id":"cs_test_synthetic","url":"https://checkout.stripe.com/c/pay/synthetic","mode":"payment","payment_method_types":["card"],"livemode":false,"amount_total":11500,"currency":"sar","client_reference_id":"synthetic_attempt"}`), nil
 	})}}
-	cfg := restaurantPaymentConfig{ID: "stripe", Mode: "test", Secrets: map[string]string{"secretKey": "sk_test_synthetic"}}
+	cfg := restaurantStripeTestConfig()
 	for i := 0; i < 2; i++ {
 		if remote, err := g.Create(context.Background(), cfg, r); err != nil || remote.Status == "paid" {
 			t.Fatalf("synthetic create failed or settled: %v", err)
@@ -44,12 +47,12 @@ func TestRestaurantStripeCreateUsesPersistedTimestamp(t *testing.T) {
 	if err != nil || form.Get("expires_at") != strconv.FormatInt(created.Add(31*time.Minute).Unix(), 10) {
 		t.Fatal("expiry did not use immutable persisted creation time")
 	}
-	for key, value := range map[string]string{"mode": "payment", "payment_method_types[0]": "card", "line_items[0][price_data][currency]": "sar", "line_items[0][price_data][unit_amount]": "11500", "line_items[0][quantity]": "1", "client_reference_id": r.AttemptID, "metadata[restaurant_attempt]": r.AttemptID, "payment_intent_data[metadata][restaurant_attempt]": r.AttemptID, "success_url": r.ReturnURL, "cancel_url": r.ReturnURL} {
+	for key, value := range map[string]string{"mode": "payment", "allowed_payment_method_types[0]": "card", "integration_identifier": "onlinu_sandbox_abcdefgh", "line_items[0][price_data][currency]": "sar", "line_items[0][price_data][unit_amount]": "11500", "line_items[0][quantity]": "1", "client_reference_id": r.AttemptID, "metadata[restaurant_attempt]": r.AttemptID, "payment_intent_data[metadata][restaurant_attempt]": r.AttemptID, "success_url": r.ReturnURL, "cancel_url": r.ReturnURL} {
 		if form.Get(key) != value {
 			t.Fatalf("immutable field %s changed", key)
 		}
 	}
-	if strings.Contains(bodies[0], "Synthetic+customer") || strings.Contains(bodies[0], r.Phone) || form.Has("automatic_tax[enabled]") || form.Has("allow_promotion_codes") {
+	if strings.Contains(bodies[0], "Synthetic+customer") || strings.Contains(bodies[0], r.Phone) || form.Has("automatic_tax[enabled]") || form.Has("allow_promotion_codes") || form.Has("payment_method_types[0]") || form.Has("payment_method_configuration") {
 		t.Fatal("PII or repricing option was sent")
 	}
 	r.CreatedAt = time.Time{}
@@ -75,9 +78,10 @@ func TestRestaurantStripeSandboxConfigGuard(t *testing.T) {
 			t.Fatal("unsafe configuration accepted or secret disclosed")
 		}
 	}
-	// This increment must not silently wire or activate restricted-key support.
-	if err := restaurantPaymentValidateConfig(restaurantPaymentConfig{ID: "stripe", Mode: "test", Secrets: map[string]string{"secretKey": "rk_test_synthetic"}}); err == nil {
-		t.Fatal("unreviewed sandbox guard integration")
+	// Restricted test keys may be saved, but a key alone is not a ready pilot.
+	cfg := restaurantPaymentConfig{ID: "stripe", Mode: "test", Secrets: map[string]string{"secretKey": "rk_test_synthetic"}}
+	if err := restaurantPaymentValidateConfig(cfg); err != nil || restaurantPaymentConfigured(cfg) {
+		t.Fatal("restricted key validation bypassed full pilot guard")
 	}
 }
 
@@ -181,7 +185,8 @@ func TestRestaurantStripeIntegrationPersistedCreateAndUncertaintyFence(t *testin
 		calls++
 		captured = r
 		var persisted time.Time
-		if err := p.db.QueryRowContext(ctx, `SELECT created_at FROM restaurant_payment_attempts WHERE id=$1`, r.AttemptID).Scan(&persisted); err != nil || !persisted.Equal(r.CreatedAt) || r.CreatedAt.IsZero() {
+		var identifier string
+		if err := p.db.QueryRowContext(ctx, `SELECT created_at,stripe_integration_identifier FROM restaurant_payment_attempts WHERE id=$1`, r.AttemptID).Scan(&persisted, &identifier); err != nil || !persisted.Equal(r.CreatedAt) || r.CreatedAt.IsZero() || identifier != r.StripeIntegrationIdentifier || !restaurantStripeIntegrationIdentifier.MatchString(identifier) {
 			t.Fatal("create did not use committed database timestamp")
 		}
 		return restaurantPaymentRemote{}, errors.New("synthetic uncertain transport")
@@ -202,7 +207,7 @@ func TestRestaurantStripeIntegrationPersistedCreateAndUncertaintyFence(t *testin
 		}
 	}
 	a, err := reopened.readAttempt(reopened.db.QueryRowContext(ctx, restaurantPaymentAttemptSelect+` WHERE id=$1`, first.AttemptID))
-	if err != nil || !a.CreatedAt.Equal(captured.CreatedAt) || a.RemoteID != "" {
+	if err != nil || !a.CreatedAt.Equal(captured.CreatedAt) || a.StripeIntegrationIdentifier != captured.StripeIntegrationIdentifier || a.RemoteID != "" {
 		t.Fatal("restart changed timestamp or invented remote identity")
 	}
 }

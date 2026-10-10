@@ -61,6 +61,9 @@ func (p *restaurantPayments) reconciliationAttempts(ctx context.Context, suffix 
 }
 
 func (p *restaurantPayments) Reconcile(ctx context.Context) error {
+	if err := p.resolveStripeWebhookReceipts(ctx); err != nil {
+		return err
+	}
 	urgent, err := p.reconciliationAttempts(ctx, ` WHERE (needs_refresh OR ((status IN ('creating','pending') OR (status='review' AND NOT capture_verified)) AND created_at > now()-interval '7 days'))
  AND (checked_at IS NULL OR checked_at < now()-interval '30 seconds') ORDER BY checked_at NULLS FIRST,id LIMIT 8`)
 	if err != nil {
@@ -97,11 +100,14 @@ func (p *restaurantPayments) Reconcile(ctx context.Context) error {
 
 type restaurantPaymentReconciliationSummary struct {
 	restaurantPaymentSettlementPolicy
-	SettlementBatchLimit   int   `json:"settlementBatchLimit"`
-	DueSettlements         int64 `json:"dueSettlements"`
-	OverdueSettlements     int64 `json:"overdueSettlements"`
-	OutsideAutomaticWindow int64 `json:"outsideAutomaticWindow"`
-	PendingRefreshes       int64 `json:"pendingRefreshes"`
+	SettlementBatchLimit           int   `json:"settlementBatchLimit"`
+	DueSettlements                 int64 `json:"dueSettlements"`
+	OverdueSettlements             int64 `json:"overdueSettlements"`
+	OutsideAutomaticWindow         int64 `json:"outsideAutomaticWindow"`
+	PendingRefreshes               int64 `json:"pendingRefreshes"`
+	StripeUnresolvedEvents         int64 `json:"stripeUnresolvedEvents"`
+	StripeRejectedEvents           int64 `json:"stripeRejectedEvents"`
+	StripeReceiptCapacityRemaining int64 `json:"stripeReceiptCapacityRemaining"`
 }
 
 // Expose only operational counts through the existing authenticated payment
@@ -115,5 +121,9 @@ func (p *restaurantPayments) ReconciliationSummary(ctx context.Context) (restaur
  count(*) FILTER (WHERE NOT needs_refresh AND `+restaurantPaymentSettlementWatched+` AND COALESCE(settlement_watch_started_at,created_at) <= now()-($1 * interval '1 day')),
  count(*) FILTER (WHERE needs_refresh)
  FROM restaurant_payment_attempts`, p.settlementPolicy.WatchDays, p.settlementPolicy.CheckMinutes).Scan(&s.DueSettlements, &s.OverdueSettlements, &s.OutsideAutomaticWindow, &s.PendingRefreshes)
+	if err != nil {
+		return s, err
+	}
+	err = p.db.QueryRowContext(ctx, `SELECT count(*) FILTER(WHERE state='pending'),count(*) FILTER(WHERE state='rejected'),GREATEST($1-count(*),0) FROM restaurant_stripe_webhook_receipts`, restaurantStripeReceiptLimit).Scan(&s.StripeUnresolvedEvents, &s.StripeRejectedEvents, &s.StripeReceiptCapacityRemaining)
 	return s, err
 }

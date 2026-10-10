@@ -146,7 +146,13 @@ func TestRestaurantPaymentsIntegrationSettlementCadenceWindowAndHooks(t *testing
 		calls++
 		return restaurantPaymentRemote{ID: id, Reference: ref, Status: "refunded", AmountMinor: receipt.Order.TotalMinor, Currency: "SAR"}, nil
 	}
-	if err := p.Hook(ctx, "stripe", view.AttemptID); err != nil || calls != 3 {
+	a, err := p.readAttempt(p.db.QueryRowContext(ctx, restaurantPaymentAttemptSelect+` WHERE id=$1`, view.AttemptID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The signed Stripe inbox owns public authentication; exercise the shared
+	// internal notification/settlement boundary here.
+	if _, err := p.notifyAttempt(ctx, a); err != nil || calls != 3 {
 		t.Fatalf("old refund hook blocked: %d %v", calls, err)
 	}
 	order, err := p.orders.Track(ctx, receipt.Order.Number, receipt.TrackingToken, "", "")
@@ -303,6 +309,11 @@ func TestRestaurantPaymentsIntegrationSettlementCanceledApplyRetainsRetry(t *tes
 func TestRestaurantPaymentsIntegrationSettlementBatchFairnessAndCooldown(t *testing.T) {
 	p, _, _ := restaurantRefundFixture(t)
 	ctx := context.Background()
+	// This fairness case intentionally mixes existing Tap settlement work with
+	// new Stripe checkout work; both synthetic providers must be configured.
+	if _, err := p.Configure(ctx, "stripe", restaurantStripeTestConfigInput()); err != nil {
+		t.Fatal(err)
+	}
 	paidIDs := map[string]bool{}
 	paidCalls, urgentCalls := 0, 0
 	p.adapter = &restaurantPaymentFakeAdapter{
@@ -375,7 +386,7 @@ func TestRestaurantPaymentsIntegrationSettlementAdminSummary(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Reconciliation.OutsideAutomaticWindow != 1 || body.Reconciliation.DueSettlements != 0 {
 		t.Fatalf("manual-refresh visibility missing: %d %s", w.Code, w.Body.String())
 	}
-	if strings.Contains(w.Body.String(), receipt.Order.Number) || strings.Contains(w.Body.String(), "sk_test_unit_only") {
+	if strings.Contains(w.Body.String(), receipt.Order.Number) || strings.Contains(w.Body.String(), "sk_test_synthetic") {
 		t.Fatal("summary exposed an order identifier or secret")
 	}
 	if _, err := p.db.ExecContext(ctx, `UPDATE restaurant_payment_attempts SET needs_refresh=true WHERE order_number=$1`, receipt.Order.Number); err != nil {

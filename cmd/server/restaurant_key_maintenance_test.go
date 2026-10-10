@@ -197,7 +197,7 @@ func restaurantMaintenanceLegacyFixture(t *testing.T) *restaurantMaintenanceFixt
 			return restaurantPaymentRemote{}, errors.New("provider access forbidden in key test")
 		},
 	}
-	_, err = p.Configure(ctx, "stripe", restaurantPaymentConfigInput{Enabled: true, Mode: "test", Secrets: map[string]string{"secretKey": "sk_test_synthetic_maintenance_only"}})
+	_, err = p.Configure(ctx, "stripe", restaurantStripeTestConfigInput())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -855,9 +855,11 @@ func TestRestaurantKeyMaintenanceInitFaultRollbackAndUnknownCommit(t *testing.T)
 
 func TestRestaurantKeyMigrationRejectsUnreviewedSchema(t *testing.T) {
 	for name, statement := range map[string]string{
-		"unknown-order-column":  `ALTER TABLE restaurant_orders ADD COLUMN unexpected_synthetic text`,
-		"unknown-key-column":    `ALTER TABLE restaurant_order_secret ADD COLUMN unexpected_synthetic text`,
-		"missing-attempt-table": `DROP TABLE restaurant_payment_attempts`,
+		"unknown-order-column": `ALTER TABLE restaurant_orders ADD COLUMN unexpected_synthetic text`,
+		"unknown-key-column":   `ALTER TABLE restaurant_order_secret ADD COLUMN unexpected_synthetic text`,
+		// CASCADE drops only dependent fixture constraints, including the empty
+		// synthetic receipt inbox FK, so this still models a missing payload table.
+		"missing-attempt-table": `DROP TABLE restaurant_payment_attempts CASCADE`,
 		"missing-config-column": `ALTER TABLE restaurant_payment_configs DROP COLUMN sealed`,
 		"nullable-key":          `ALTER TABLE restaurant_order_secret ALTER COLUMN secret DROP NOT NULL`,
 		"row-security":          `ALTER TABLE restaurant_orders ENABLE ROW LEVEL SECURITY`,

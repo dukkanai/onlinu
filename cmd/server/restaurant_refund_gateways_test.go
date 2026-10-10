@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,7 +15,13 @@ func TestRestaurantRefundGatewayAuthoritativeBindings(t *testing.T) {
 		for _, wrong := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/wrong=%v", provider, wrong), func(t *testing.T) {
 				c := restaurantPaymentConfig{ID: provider, Mode: "test", Values: map[string]string{"profileId": "123"}, Secrets: map[string]string{"secretKey": "sk_test_fake", "serverKey": "fake", "apiToken": "fake"}}
+				if provider == "stripe" {
+					c = restaurantStripeTestConfig()
+				}
 				a := restaurantPaymentAttempt{ID: "attempt_1", RemoteID: "payment_1"}
+				if provider == "stripe" {
+					a.RemoteID = "cs_test_refund"
+				}
 				r := restaurantRefund{ID: "refund_1", ProviderReference: "refund_remote", AmountMinor: 500, Currency: "SAR"}
 				o := restaurantOrder{TotalMinor: 3000, Currency: "SAR", Demo: true}
 				if provider == "paytabs" {
@@ -33,14 +40,17 @@ func TestRestaurantRefundGatewayAuthoritativeBindings(t *testing.T) {
 				calls := 0
 				g := restaurantPaymentGateways{client: &http.Client{Transport: restaurantPaymentTestTransport(func(req *http.Request) (*http.Response, error) {
 					calls++
+					if req.URL.Path == "/v1/account" {
+						return restaurantStripeTestAccountResponse(), nil
+					}
 					if strings.Contains(req.URL.Path, "checkout/sessions") {
-						return restaurantPaymentTestResponse(`{"id":"payment_1","client_reference_id":"attempt_1","amount_total":3000,"currency":"sar","livemode":false,"payment_status":"paid","payment_intent":{"status":"succeeded","latest_charge":{"id":"charge_1","amount":3000,"amount_captured":3000,"currency":"sar","livemode":false,"paid":true,"captured":true}}}`), nil
+						return restaurantPaymentTestResponse(`{"id":"cs_test_refund","mode":"payment","status":"complete","payment_method_types":["card"],"client_reference_id":"attempt_1","amount_total":3000,"currency":"sar","livemode":false,"payment_status":"paid","payment_intent":{"id":"pi_refund","livemode":false,"status":"succeeded","latest_charge":{"id":"ch_refund","payment_intent":"pi_refund","amount":3000,"amount_captured":3000,"amount_refunded":0,"disputed":false,"currency":"sar","livemode":false,"paid":true,"captured":true}}}`), nil
 					}
 					switch provider {
 					case "stripe":
-						charge := "charge_1"
+						charge := "ch_refund"
 						if wrong {
-							charge = "charge_other"
+							charge = "ch_other"
 						}
 						return restaurantPaymentTestResponse(fmt.Sprintf(`{"id":"refund_remote","charge":%q,"amount":500,"currency":"sar","status":"succeeded","metadata":{"restaurant_refund":"refund_1"}}`, charge)), nil
 					case "tap":
@@ -70,44 +80,21 @@ func TestRestaurantRefundGatewayAuthoritativeBindings(t *testing.T) {
 		}
 	}
 }
-func TestRestaurantRefundStripeCreatePreflightAndIdempotency(t *testing.T) {
-	for _, tc := range []struct {
-		name                     string
-		remoteRefunded, expected int64
-		disputed                 bool
-		allow                    bool
-	}{{"first", 0, 0, false, true}, {"known partial", 500, 500, false, true}, {"external partial", 500, 0, false, false}, {"disputed", 0, 0, true, false}, {"external full", 3000, 0, false, false}} {
-		t.Run(tc.name, func(t *testing.T) {
-			c := restaurantPaymentConfig{ID: "stripe", Mode: "test", Secrets: map[string]string{"secretKey": "sk_test_fake"}}
-			a := restaurantPaymentAttempt{ID: "attempt_1", RemoteID: "payment_1"}
-			o := restaurantOrder{TotalMinor: 3000, Currency: "SAR", Demo: true}
-			r := restaurantRefund{ID: "refund_1", AmountMinor: 500, Currency: "SAR"}
-			posts := 0
-			g := restaurantPaymentGateways{client: &http.Client{Transport: restaurantPaymentTestTransport(func(req *http.Request) (*http.Response, error) {
-				if req.Method == "POST" {
-					posts++
-					if req.URL.Path != "/v1/refunds" || req.Header.Get("Idempotency-Key") != "restaurant-refund-refund_1" {
-						t.Fatal("unstable idempotency")
-					}
-					if err := req.ParseForm(); err != nil {
-						t.Fatal(err)
-					}
-					if req.Form.Get("amount") != "500" || req.Form.Get("charge") != "charge_1" || req.Form.Get("metadata[restaurant_refund]") != "refund_1" {
-						t.Fatal("unbound refund mutation")
-					}
-					return restaurantPaymentTestResponse(`{"id":"refund_remote","charge":"charge_1","amount":500,"currency":"sar","status":"succeeded","metadata":{"restaurant_refund":"refund_1"}}`), nil
-				}
-				return restaurantPaymentTestResponse(fmt.Sprintf(`{"id":"payment_1","client_reference_id":"attempt_1","amount_total":3000,"currency":"sar","livemode":false,"mode":"payment","payment_status":"paid","payment_intent":{"status":"succeeded","latest_charge":{"id":"charge_1","amount":3000,"amount_captured":3000,"amount_refunded":%d,"currency":"sar","livemode":false,"paid":true,"captured":true,"disputed":%v}}}`, tc.remoteRefunded, tc.disputed)), nil
-			})}}
-			got, err := g.CreateRefund(context.Background(), c, a, o, r, tc.expected)
-			if tc.allow {
-				if err != nil || posts != 1 || got.Status != "processing" {
-					t.Fatalf("creation incorrectly settles or fails %+v %v %d", got, err, posts)
-				}
-			} else if err == nil || posts != 0 {
-				t.Fatal("unsafe balance caused refund POST")
-			}
-		})
+func TestRestaurantRefundStripeCreateBlockedBeforeTransport(t *testing.T) {
+	for _, c := range []restaurantPaymentConfig{restaurantStripeTestConfig(), {ID: "stripe", Mode: "live", Enabled: true, Secrets: map[string]string{"secretKey": "sk_live_synthetic"}}, {ID: "stripe", Mode: "test"}} {
+		calls := 0
+		g := restaurantPaymentGateways{client: &http.Client{Transport: restaurantPaymentTestTransport(func(*http.Request) (*http.Response, error) {
+			calls++
+			return restaurantPaymentTestResponse(`{}`), nil
+		})}}
+		a := restaurantPaymentAttempt{ID: "attempt_1", RemoteID: "cs_test_synthetic"}
+		o := restaurantOrder{TotalMinor: 3000, Currency: "SAR", Demo: true}
+		r := restaurantRefund{ID: "refund_1", AmountMinor: 500, Currency: "SAR"}
+		got, err := g.CreateRefund(context.Background(), c, a, o, r, 0)
+		var preflight restaurantRefundPreflightError
+		if !errors.As(err, &preflight) || calls != 0 || got != (restaurantRefundRemote{}) {
+			t.Fatalf("checkout-only pilot reached refund transport: %+v %v calls=%d", got, err, calls)
+		}
 	}
 }
 func TestRestaurantRefundTapPayTabsMyFatoorahCreateAndDeferredConfirmation(t *testing.T) {
@@ -183,7 +170,7 @@ func TestRestaurantRefundUnsupportedProvidersNeverCallNetwork(t *testing.T) {
 		t.Fatal("unsupported gateway network request")
 		return nil, nil
 	})}}
-	for _, provider := range []string{"moyasar", "hyperpay", "geidea", "unknown"} {
+	for _, provider := range []string{"stripe", "moyasar", "hyperpay", "geidea", "unknown"} {
 		if restaurantRefundCapabilities(provider).Automatic {
 			t.Fatal("unsupported advertised")
 		}

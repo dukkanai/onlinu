@@ -15,7 +15,130 @@ and execution must use the separately authorized secure setup flow. Never put ke
 signing secrets, real customer data, or payment details in chat, source, fixtures,
 logs, or this document.
 
-## What already exists
+## Current signed-webhook wiring increment
+
+This working-tree increment is **locally verified source-only preparation**;
+exact-commit CI and connected acceptance remain separate gates. Parent-side account
+setup is a separate workflow; it does not prove this source has been deployed or exercised against a
+connected sandbox. No account identity or credential is hardcoded into source.
+
+### Closed configuration and transport
+
+- Stripe is available for new checkout only with explicit sandbox opt-in,
+  enabled configuration, test mode, a syntactically valid restricted/secret test
+  key, a separate encrypted endpoint signing secret, US account identity, and a
+  server-generated immutable endpoint/account generation. Legacy/incomplete
+  configurations cannot start new Stripe attempts.
+- The account, country, endpoint signing secret, and API/event version are frozen
+  once the generation is created. Endpoint/account replacement and secret
+  rotation require a separately reviewed migration; no fallback to unsigned
+  notifications or guessing an account is permitted. Key rotation leaves old
+  attempt snapshots unchanged. Disabling checkout keeps signed notifications
+  available for existing attempts while the complete endpoint config remains.
+- Pin requests and snapshot events to `2026-09-30.endive`, the stable version
+  reported by Stripe's official versioning documentation on 10 October 2026.
+  Before each create/fetch, query `/v1/account` with the snapshotted test key and
+  require the exact configured account ID and US country. This additional
+  read permission needs later restricted-key acceptance; no permission has
+  been granted or inferred by these source changes.
+- Request `allowed_payment_method_types[0]=card`, the documented dynamic
+  eligible-method filter. Do not send the legacy static `payment_method_types`
+  parameter. The initially proposed mandatory payment-method configuration was
+  removed after primary documentation established this narrower, non-mutating
+  filter. Both create and fetch require returned methods to be exactly `card`.
+  A broader/missing list never exposes a Checkout URL or settles payment.
+- Persist a server-generated `integration_identifier` with each new attempt:
+  `onlinu_sandbox_` followed by eight random lowercase letters. Send that same
+  identifier with the immutable creation timestamp/idempotency key. Old attempts
+  are not backfilled or re-created. No automatic create retry was introduced.
+- Existing integer SAR totals/reference/currency, explicit test session/intent/
+  charge mode, successful captured charge, amount, refunds, and dispute checks
+  remain required. A rejected or uncertain create preserves the unique attempt
+  and review state, so another Start cannot create a replacement session.
+- Automatic Stripe refund dispatch and its shared advertised capability are
+  disabled for this checkout-only pilot. Existing bookkeeping/manual review
+  stays intact. Paylink and courier behavior are outside this increment.
+
+### Signed HTTP route and durable bounded inbox
+
+- `POST /payment-hooks/stripe` reads at most 256 KiB exactly once. Verify the
+  raw-body HMAC, canonical signature timestamp, five-minute past/future tolerance,
+  explicit test snapshot envelope/object, supported object type, and exact API
+  version before routing. Reject Connect/organization context. Configuration
+  loading is the only database read needed before signature verification.
+- `POST /payment-hooks/stripe/{attempt}` fails closed unconditionally. Browser
+  return remains status-free; authorized order refresh remains available.
+- A transaction stores one receipt per `(generation,event_id)` plus its account,
+  event/object IDs, optional attempt hint, SHA-256 body hash, timestamps, and
+  processing state. It stores no raw payload or customer details. Duplicate
+  receipt IDs with identical bytes are no-ops, including freshly signed replay;
+  a changed body under the same ID is rejected.
+- Receipt insertion and `needs_refresh=true`/`refresh_version+1` commit atomically.
+  HTTP performs no provider calls and acknowledges only after commit. Local
+  processing has a three-second deadline; ordinary hook transport rate limits
+  and concurrency limits still apply.
+- Checkout Session events route only to the persisted created session ID; signed
+  metadata is a conflict-detecting hint. A webhook arriving before create returns
+  remains unresolved until the actual create result establishes the binding.
+  Unknown session IDs never become attempt remote IDs.
+- PaymentIntent/charge events require object identities previously learned from
+  authoritative retrieval of the persisted Checkout Session. Metadata alone
+  never schedules a guessed attempt. A charge is frozen only after successful
+  capture, so a declined charge does not block a later successful card retry.
+  Immutable identity conflicts force review, including known partial refunds.
+- The local resolver claims at most 32 due receipts per transaction with row
+  locking, retries unresolved lookup after 30 seconds, and backs off to hourly
+  after one hour. Transaction aborts retain all work. Cross-batch attempt-lock
+  contention can still cause a rollback and later retry.
+- Never delete unresolved receipts. This increment retains completed/rejected
+  tombstones too: admission caps each generation at 100,000 receipts and 1,024
+  unresolved receipts. At capacity, duplicates remain acknowledgeable; new
+  events receive retryable 503 rather than silent acknowledgement. Explicit
+  archival/rotation is a future operational gate. Admin summary exposes unresolved,
+  rejected, and remaining-capacity counts without payloads.
+- Reuse the existing durable refresh lease and generation-checked completion.
+  Reload the attempt after claiming the lease so a stale pre-create snapshot
+  cannot clear newer bound work. Provider outage, restart, new events during
+  retrieval, and out-of-order payloads cannot silently erase pending refresh.
+  Settlement always reads current provider state; event timestamps/statuses
+  never drive payment transitions.
+
+### External-key maintenance and downgrade boundary
+
+The external-v1 envelope format, original data keys, encrypted attempt snapshots,
+and persisted credential bytes are unchanged. The new attempt columns require a
+narrow schema-recognition update for offline key migration, rotation, and
+verification: recognize the exact historical shape or the exact complete reviewed
+Stripe suffix, with its original order, text types, NOT NULL flags, and empty-text
+defaults. Partial/interrupted additions, reordered/unknown columns, wrong types,
+or changed/missing defaults fail closed. Rejection must not regenerate keys,
+rewrite ciphertext, or repair the schema automatically.
+
+An older maintenance binary recognizes only the historical attempt shape and will
+refuse the upgraded shape. Do not treat an older application binary as a safe
+rollback: it may omit the signed-inbox and sandbox gates even if it can read the
+same external-v1 envelopes. A downgrade needs a separately reviewed offline plan
+that preserves pending receipts, original attempt snapshots, and retained keys.
+Do not delete the new columns, receipts, key state, or fences to force a downgrade.
+No actual key maintenance or deployment is part of this source increment.
+
+### Remaining gates before any connected pilot
+
+1. Complete exact-commit CI, including the dedicated external-key actual-runtime,
+   historical/current archive recovery, and media recovery fixtures. Local
+   source-only tests and independent reviews are recorded below.
+2. Securely provision the separately approved sandbox key and own-account snapshot
+   endpoint signing secret, pin the endpoint to the same version, and verify
+   minimal read/write permissions (including the account identity read).
+3. Verify account-specific SAR Checkout support and the card-only returned method
+   list using synthetic identity only. Execute documented success, decline,
+   retry-after-decline, 3DS, expired session, provider failure, duplicate/reordered
+   webhook, and refund-observation scenarios after explicit authorization.
+4. Verify the actual administrator/customer UI and public webhook deployment.
+   No source-only test proves public HTTPS, delivery, restricted-key permission,
+   merchant eligibility, live activation, refund dispatch, or production readiness.
+
+## Historical baseline before signed wiring (`96b6d9c`)
 
 - `cmd/server/restaurant_payments_gateways.go`: Stripe-hosted Checkout Session
   creation; one-time card payment; integer amount and currency taken from the
@@ -32,12 +155,12 @@ logs, or this document.
 - `restaurant_payments_http.go`: browser return discards supplied status and only
   redirects to a local page. Order-authorized refresh and the bounded durable
   reconciliation queue obtain authoritative provider status.
-- The current account webhook accepts unsigned JSON only as a lookup/refresh
+- At that baseline, the account webhook accepted unsigned JSON only as a lookup/refresh
   hint. It cannot mark an order paid from the event payload. Its real weakness is
   unauthenticated refresh/queue triggering and missing event-ID deduplication,
   not a demonstrated forged-payment exploit.
 
-## This source increment
+## First source increment (commit `96b6d9c`)
 
 1. Persist the attempt creation timestamp using PostgreSQL `clock_timestamp()`
    and return that exact value to the adapter. Using transaction-start `now()`
@@ -71,7 +194,7 @@ Before ever introducing one, also persist the full canonical create request
 Rebuilding a request from a changed public URL/configuration after restart would
 not be safe. Never reuse an expired/pruned provider idempotency key to create again.
 
-## Next reviewed wiring increment
+## Original wiring checklist (implementation status summarized above)
 
 ### 1. Closed sandbox boundary and secure configuration
 
@@ -137,6 +260,7 @@ Initial checkout-only pilot uses these code paths:
 
 | Operation | Endpoint | Proposed restricted permission |
 | --- | --- | --- |
+| Verify account identity | `GET /v1/account` | Account identity read; exact restricted-key resource permission still needs sandbox acceptance |
 | Create hosted checkout | `POST /v1/checkout/sessions` | Checkout Sessions: Write, which includes Read |
 | Authoritative lookup | `GET /v1/checkout/sessions/{id}?expand[]=payment_intent.latest_charge` | Checkout Sessions: Read; Payment Intents and Charges: Read for expanded objects |
 | Verify webhook | Local HMAC only | No Stripe API permission; separate endpoint signing secret |
@@ -148,9 +272,9 @@ errors in request logs. Confirm exact required permissions with synthetic reques
 after authorization; do not respond to a failure by granting all access. Do not
 add Products/Prices or other permissions speculatively.
 
-Existing automatic-refund code also uses `POST /v1/refunds`,
-`GET /v1/refunds/{id}`, and PaymentIntent/charge reads. Keep refund dispatch out of
-the initial pilot; no refund Write, payouts, transfers, Connect, account settings,
+Pre-existing refund adapters contain `POST /v1/refunds`,
+`GET /v1/refunds/{id}`, and PaymentIntent/charge reads. Stripe automatic refund
+dispatch is now disabled, including its advertised capability; no refund Write, payouts, transfers, Connect, account settings,
 customer-list access, webhook administration, or key-management permissions are
 needed for hosted-checkout creation plus verification. If refund testing is later
 requested, review its exact scope, permission, and authorization separately.
@@ -193,7 +317,7 @@ account-specific verification at the later secure setup step.
 - [API keys and sandbox separation](https://docs.stripe.com/keys)
 - [Restricted-key permissions](https://docs.stripe.com/keys/restricted-api-keys)
 
-## Verification record
+## Historical first-increment verification record
 
 - Full `go test -race ./... -count=1`: 288 top-level tests passed, zero failed,
   12 existing opt-in tests skipped, using a newly initialized, named disposable
@@ -212,5 +336,68 @@ account-specific verification at the later secure setup step.
   acceptance were not run for this source-only increment.
 
 No external Stripe request, connected-account acceptance, live activation, or
-browser payment acceptance is claimed. Signed HTTP routing and durable webhook
-deduplication remain the next implementation gates.
+browser payment acceptance is claimed. The current wiring increment has a separate verification record and must not
+inherit these historical pass results.
+
+## Current wiring verification record
+
+Final local verification on 10 October 2026:
+
+- Full `go test -race ./... -count=1`: **310 top-level tests passed, zero failed,
+  12 existing opt-in tests skipped**, against a newly initialized PostgreSQL 17
+  cluster and the named loopback `astracalls_restaurant_test` database. This
+  includes all 12 signed-inbox integration tests and both new strict-schema
+  tests, with all PostgreSQL schema variants executed.
+- `go vet ./...`, `go build ./...`, and `git diff --check` passed. Go production
+  source hashes stayed unchanged throughout the final run. Compiler concurrency
+  was bounded to two processors and one package build at a time.
+- Client tests: **121 passed, zero failed or skipped**; `npm run build` passed.
+  The test CLI initially hit a sandbox IPC restriction; the supported direct
+  Node loader (`node --import tsx --test --test-concurrency=1 tests/*.test.ts`)
+  then executed the whole suite without elevated access.
+- Combined platform checkout/adapter/auth/identity/native/staff tests: **259
+  passed, zero failed or skipped**, against two freshly initialized, named
+  PostgreSQL fixture databases with one Node worker. This includes four actual
+  HTTP + PostgreSQL delayed-body profile/menu cases proving original-family
+  revocation blocks dispatch even with another active family, and revoking only
+  the other family preserves the original request. Earlier handler-level SQL
+  doubles and the prior 254-test aggregate are separate evidence, not substitutes
+  for those four actual database/HTTP cases.
+- Independent source review found no remaining blockers after fixes for the
+  unsigned legacy route, stale refresh snapshot, declined-charge identity, and
+  partial-refund identity-conflict edges. A separate final compatibility review
+  approved exact historical/new key-schema recognition and rejection tests.
+  Owned fixture PostgreSQL servers stopped cleanly after both final suites.
+
+Failed and interrupted runs remain part of the record:
+
+- Concurrent clean Go builds initially stalled the executor and were canceled;
+  interrupted runs are not passes.
+- First full attempt: **286 passed, 22 failed, 12 skipped**. Twenty failures were
+  the deliberate synthetic-password fixture guard; the other two exposed a
+  mixed-provider fixture setup omission and a syntactically invalid foreign
+  account test value. The fixture setup was corrected without weakening guards.
+- Second full attempt: **296 passed, 12 failed, 12 skipped**. It exposed the real
+  external-key schema-recognition incompatibility introduced by the new columns,
+  plus the intentional missing-table fixture's new inbox foreign-key dependency.
+  The narrow reviewed compatibility fix and expanded adversarial tests preceded
+  the final 310-pass run. No automatic key regeneration or schema repair was added.
+
+The 12 locally skipped gates are the existing Node/Dart bridge opt-ins,
+intelligent-UI experiment, actual key/recovery/main-runtime tests, media recovery,
+and actual runtime secret-file test. The unchanged CI workflow separately enables
+`TEST_RUNTIME_MAIN=1`, executes `^TestRestaurant(Key|CryptoActualMainRuntime)`,
+and runs `^TestRestaurantKeyRecovery` with explicit recovery opt-in in two owned
+clusters. The latter selector includes historical/current key archive and media
+recovery. Those gates must pass on the eventual published commit; historical CI
+results do not cover this working tree. No CI changes were made here.
+
+Dependency-security acceptance remains separate: a test/build pass is not a
+vulnerability scan, and the repository dependency-alert query was unavailable.
+No connected Stripe request, real secret provisioning, public webhook delivery,
+actual payment acceptance, deployment, or production readiness is claimed.
+
+Additional primary references for the wiring contract:
+- [Stripe API versioning](https://docs.stripe.com/api/versioning)
+- [Checkout creation, dynamic method filter, and integration identifier](https://docs.stripe.com/api/checkout/sessions/create)
+- [Accounts API](https://docs.stripe.com/api/accounts)

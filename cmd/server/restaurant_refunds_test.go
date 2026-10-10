@@ -28,11 +28,11 @@ func (f *restaurantRefundFakeAdapter) FetchRefund(ctx context.Context, c restaur
 }
 func restaurantRefundFixture(t *testing.T) (*restaurantPayments, restaurantReceipt, *restaurantRefundFakeAdapter) {
 	t.Helper()
-	p, receipt := restaurantPaymentFixture(t)
+	p, receipt := restaurantPaymentFixtureProvider(t, "tap")
 	ctx := context.Background()
 	fake := &restaurantRefundFakeAdapter{restaurantPaymentFakeAdapter: restaurantPaymentFakeAdapter{
 		create: func(context.Context, restaurantPaymentConfig, restaurantPaymentRequest) (restaurantPaymentRemote, error) {
-			return restaurantPaymentRemote{ID: "cs_refund_test", URL: "https://checkout.stripe.com/c/pay/mock"}, nil
+			return restaurantPaymentRemote{ID: "charge_refund_test", URL: "https://checkout.tap.company/pay/mock"}, nil
 		},
 		fetch: func(_ context.Context, _ restaurantPaymentConfig, id, attempt string) (restaurantPaymentRemote, error) {
 			return restaurantPaymentRemote{ID: id, Reference: attempt, Status: "paid", Currency: receipt.Order.Currency, AmountMinor: receipt.Order.TotalMinor}, nil
@@ -43,7 +43,7 @@ func restaurantRefundFixture(t *testing.T) (*restaurantPayments, restaurantRecei
 		return restaurantRefundRemote{ID: r.ProviderReference, Status: "succeeded"}, nil
 	}}
 	p.adapter = fake
-	if _, err := p.Start(ctx, receipt.Order.Number, receipt.TrackingToken, "", "stripe"); err != nil {
+	if _, err := p.Start(ctx, receipt.Order.Number, receipt.TrackingToken, "", "tap"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Refresh(ctx, receipt.Order.Number, receipt.TrackingToken, ""); err != nil {

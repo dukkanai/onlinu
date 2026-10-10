@@ -31,7 +31,7 @@ export async function createNativeStaff({pool,baseUrl,csrfKey,directory,browserA
   if(req.method==='GET'&&['/native/.well-known/oauth-protected-resource','/.well-known/oauth-protected-resource/native/api'].includes(path))return json(res,200,auth.resourceMetadata);
   if(path.startsWith('/native/api/')){
    if(req.headers.cookie||req.headers.origin)throw problem(403,'native_bearer_required');
-   const who=await auth.authenticate(req,{bearerOnly:true});if(!who?.scopes.includes(NATIVE_SCOPE)){res.setHeader('www-authenticate',`Bearer realm="onlinu-native"${req.headers.authorization?', error="invalid_token"':''}`);throw problem(401,'authentication_required');}
+   const authority=await auth.authenticateNativeRequest(req),who=authority?.principal;if(!who?.scopes.includes(NATIVE_SCOPE)){res.setHeader('www-authenticate',`Bearer realm="onlinu-native"${req.headers.authorization?', error="invalid_token"':''}`);throw problem(401,'authentication_required');}
    if(url.search)throw problem(400,'invalid_request');
    if(req.method==='GET'&&path==='/native/api/me')return json(res,200,{principal:who});
    const tenant=/^\/native\/api\/restaurants\/([a-z0-9-]{1,64})(?:\/|$)/.exec(path)?.[1];
@@ -40,7 +40,7 @@ export async function createNativeStaff({pool,baseUrl,csrfKey,directory,browserA
    if(!tenant||!member)throw problem(403,'forbidden');
    if(/^\/native\/api\/restaurants\/[^/]+\/members(?:\/|$)/.test(path)&&!member.permissions.includes('members:manage'))throw problem(403,'forbidden');
    const target=new URL('/api'+path.slice('/native/api'.length),baseUrl);
-   return staffApi(req,res,who,target,{restaurantOnly:true});
+   return staffApi(req,res,who,target,{restaurantOnly:true,authorizeMutation:authority.authorizeMutation});
   }
   if(req.method==='POST'&&['/native/oauth/token','/native/oauth/revoke'].includes(path)){
    if(req.headers.cookie||req.headers.authorization||req.headers.origin)throw problem(403,'native_client_required');
