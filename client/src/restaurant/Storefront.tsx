@@ -87,9 +87,14 @@ import {
 } from "./customer/PaymentPanel";
 import {
   readPendingSubmission,
+  rememberSubmissionReceipt,
   savePendingSubmission,
+  sameSubmission,
   type PendingSubmission,
 } from "./customer/pending";
+import { quoteBinding } from "./customer/quoteBinding";
+import { createTrackingReadGuard } from "./customer/trackingRead";
+import { clearSubmittedCart, createCheckoutLifetime } from "./customer/checkoutLifetime";
 
 type L10n = ReturnType<typeof useLocale>;
 type Navigate = (path: string) => void;
@@ -892,12 +897,21 @@ function CheckoutPage({
   const [providersLoading, setProvidersLoading] = useState(true);
   const methods = availablePaymentMethods(settings, mode);
   const [quote, setQuote] = useState<Quote | null>(recovery?.quote ?? null);
+  const [quoteHash, setQuoteHash] = useState(recovery?.input.expectedQuoteHash ?? "");
   const [busy, setBusy] = useState(false);
   const [locating, setLocating] = useState(false);
   const [uncertain, setUncertain] = useState(!!recovery);
   const { error, setError, fail } = useError();
   const submission = useRef<PendingSubmission | null>(recovery);
   const mutation = useRef(false);
+  const lifetime = useRef(createCheckoutLifetime()).current;
+  useEffect(() => {
+    const dispose = lifetime.mount();
+    mutation.current = false;
+    setBusy(false);
+    if (submission.current) setUncertain(true);
+    return dispose;
+  }, [lifetime, customer?.id]);
   useEffect(() => {
     let active = true;
     setProvidersLoading(true);
@@ -985,6 +999,7 @@ function CheckoutPage({
     notes: notes.trim(),
     items: cart,
     expectedTotalMinor: quote?.totalMinor ?? 0,
+    ...(quote && quoteHash ? { expectedQuoteHash: quoteHash } : {}),
     paymentMethod,
     paymentProvider: paymentMethod === "card" ? paymentProvider : "",
   });
@@ -1007,13 +1022,18 @@ function CheckoutPage({
       return;
     }
     mutation.current = true;
+    const current = lifetime.capture();
     setBusy(true);
     setError("");
     try {
       const result = await storefront<Quote>("/quote", json(buildInput()));
+      const binding = await quoteBinding(result);
+      if (!current()) return;
+      setQuoteHash(binding);
       setQuote(result);
       submission.current = null;
     } catch (error) {
+      if (!current()) return;
       fail(error);
       if (
         errorKey(error) === "errors.item_unavailable" ||
@@ -1022,12 +1042,21 @@ function CheckoutPage({
         await refreshCatalog();
       }
     } finally {
-      mutation.current = false;
-      setBusy(false);
+      if (current()) {
+        mutation.current = false;
+        setBusy(false);
+      }
     }
   };
   const confirm = async () => {
     if (mutation.current || !quote) return;
+    // Only an unchanged persisted retry may omit the binding. A new order must
+    // never silently fall back to the legacy total-only confirmation contract.
+    if (!submission.current && !/^[0-9a-f]{64}$/.test(quoteHash)) {
+      setQuote(null);
+      setError("errors.quote_changed");
+      return;
+    }
     if (
       submission.current &&
       submission.current.customerId !== (customer?.id ?? "")
@@ -1036,6 +1065,7 @@ function CheckoutPage({
       return;
     }
     mutation.current = true;
+    const current = lifetime.capture();
     setBusy(true);
     setError("");
     if (!submission.current) {
@@ -1048,19 +1078,31 @@ function CheckoutPage({
       };
       savePendingSubmission(submission.current);
     }
+    // Another checkout view may have learned this request succeeded while this
+    // view was open. Resolve its known receipt instead of replaying a POST.
+    const saved = readPendingSubmission();
+    if (sameSubmission(saved, submission.current) && saved?.receipt) submission.current = saved;
+    const request = submission.current;
     try {
-      const receipt = await storefront<Receipt>(
-        "/orders",
-        json(submission.current.input, "POST", {
-          "Idempotency-Key": submission.current.key,
+      const receipt: Receipt = request.receipt ? {
+        order: await storefront<Order>(`/orders/${encodeURIComponent(request.receipt.number)}`, {
+          headers: { "X-Order-Token": request.receipt.trackingToken },
         }),
-      );
-      savePendingSubmission(null);
-      submission.current = null;
-      setCart([]);
+        trackingToken: request.receipt.trackingToken, accessCode: request.receipt.accessCode,
+      } : await storefront<Receipt>("/orders", json(request.input, "POST", {
+        "Idempotency-Key": request.key,
+      }));
+      rememberSubmissionReceipt(request, receipt);
+      if (!current()) return;
+      setCart(cart => clearSubmittedCart(cart, request.input.items));
       onReceipt(receipt);
+      if (sameSubmission(readPendingSubmission(), request)) savePendingSubmission(null);
+      submission.current = null;
     } catch (error) {
+      if (!current()) return;
       fail(error);
+      // A failed read cannot turn a confirmed order back into a new checkout.
+      if (request.receipt) return;
       const status =
         error && typeof error === "object" && "status" in error
           ? Number(error.status)
@@ -1080,6 +1122,7 @@ function CheckoutPage({
         if (
           [
             "errors.price_changed",
+            "errors.quote_changed",
             "errors.item_unavailable",
             "errors.invalid_option",
           ].includes(errorKey(error))
@@ -1088,8 +1131,10 @@ function CheckoutPage({
         }
       }
     } finally {
-      mutation.current = false;
-      setBusy(false);
+      if (current()) {
+        mutation.current = false;
+        setBusy(false);
+      }
     }
   };
   const locate = () => {
@@ -1141,7 +1186,7 @@ function CheckoutPage({
           {error && <Notice error>{t(error)}</Notice>}
           {uncertain && (
             <Notice>
-              {t("order.networkRetry")}
+              {t(submission.current?.receipt ? "order.confirmedRecovery" : "order.networkRetry")}
               {submission.current?.customerId !== (customer?.id ?? "") && (
                 <button
                   type="button"
@@ -1421,6 +1466,8 @@ function CheckoutPage({
                 >
                   {busy
                     ? t("order.submitting")
+                    : submission.current?.receipt
+                      ? t("order.tracking")
                     : uncertain
                       ? t("common.retry")
                       : `${t("order.confirm")} · ${money(quote.totalMinor, quote.currency)}`}
@@ -1604,45 +1651,52 @@ function TrackPage({
   const [copied, setCopied] = useState(false);
   const [moved, setMoved] = useState(false);
   const { error, setError, fail } = useError();
-  const requestBusy = useRef(false);
+  const reads = useRef(createTrackingReadGuard()).current;
+  const lookupBusy = useRef(false);
   const orderNumber = order?.number ?? params.get("order") ?? "";
   useEffect(() => {
     if (table) setNewTable(table.code);
   }, [table]);
   const fetchOrder = useCallback(async () => {
-    if (!orderNumber || requestBusy.current) return;
-    requestBusy.current = true;
+    if (!orderNumber) return;
+    const request = reads.begin();
+    if (!request) return;
     try {
       const result = await storefront<Order>(
         `/orders/${encodeURIComponent(orderNumber)}`,
-        { headers: token ? { "X-Order-Token": token } : {} },
+        { signal: request.signal, headers: token ? { "X-Order-Token": token } : {} },
       );
-      setOrder(current => current?.number === result.number && current.version > result.version ? current : result);
-      setError("");
+      if (request.current()) {
+        setOrder(current => current?.number === result.number && current.version > result.version ? current : result);
+        setError("");
+      }
     } catch (error) {
-      fail(error);
+      if (request.current()) fail(error);
     } finally {
-      requestBusy.current = false;
+      request.finish();
     }
-  }, [orderNumber, token]);
+  }, [orderNumber, token, reads]);
   useEffect(() => {
-    if (!orderNumber) return;
-    void fetchOrder();
+    if (orderNumber) void fetchOrder();
     const timer = window.setInterval(() => {
       if (!document.hidden) void fetchOrder();
     }, 10000);
-    return () => clearInterval(timer);
-  }, [fetchOrder, orderNumber]);
+    return () => { clearInterval(timer); reads.invalidate(); };
+  }, [fetchOrder, orderNumber, reads]);
   const lookup = async (event: FormEvent) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || lookupBusy.current) return;
+    lookupBusy.current = true;
+    reads.invalidate();
+    const request = reads.begin()!;
     setBusy(true);
     setError("");
     try {
       const receipt = await storefront<Receipt>(
         "/orders/lookup",
-        json({ number: number.trim(), accessCode: accessCode.trim() }),
+        { ...json({ number: number.trim(), accessCode: accessCode.trim() }), signal: request.signal },
       );
+      if (!request.current()) return;
       setOrder(receipt.order);
       setToken(receipt.trackingToken);
       setReceiptCode(receipt.accessCode);
@@ -1661,9 +1715,11 @@ function TrackPage({
         target.pathname + target.search + target.hash,
       );
     } catch (error) {
-      fail(error);
+      if (request.current()) fail(error);
     } finally {
-      setBusy(false);
+      lookupBusy.current = false;
+      if (request.current()) setBusy(false);
+      request.finish();
     }
   };
   const changeTable = async (event: FormEvent) => {

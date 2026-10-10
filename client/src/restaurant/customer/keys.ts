@@ -82,6 +82,7 @@ export const storefrontEnglish = {
   "order.locationRequired":
     "The restaurant requires a location pin for delivery.",
   "order.success": "Your order is received",
+  "order.confirmedRecovery": "Your order was received. Open its tracking page to view the receipt; it will not be submitted again.",
   "order.successText":
     "Keep your order number and private tracking link. The restaurant will update the status here.",
   "order.number": "Order number",

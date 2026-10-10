@@ -68,6 +68,17 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     if (!rows[0]) throw problem(404,'not_found');
     return rows[0];
   }
+  async function requireDispatchAuthority(row, db = pool) {
+    // Evaluate after any awaited lock/authority checks. Transaction now() and
+    // a projection evaluated before FOR UPDATE waits are not current clocks.
+    // Check identity/tenant in the same read, including after a pool wait.
+    const { rows } = await db.query(`SELECT c.expires_at>clock_timestamp() AS live,i.enabled,t.status
+      FROM platform_core_checkouts c JOIN platform_identities i ON i.id=c.principal_id
+      JOIN platform_tenants t ON t.id=c.tenant_id WHERE c.id=$1 AND c.principal_id=$2`, [row.id,row.principal_id]);
+    if (!rows[0]?.live) throw problem(409,'checkout_expired');
+    if (!rows[0].enabled) throw problem(403,'identity_disabled');
+    if (rows[0].status !== 'active') throw problem(409,'tenant_unavailable');
+  }
   async function prepare(identity, value) {
     const who = await principal(identity,'orders:write');
     const input = parse(prepareSchema,value);
@@ -128,7 +139,11 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     try {
       await db.query('BEGIN'); row = await owned(who.id,checkoutId,db,true);
       if (row.state !== 'confirmed') {
-        if (!row.live) throw problem(409,'checkout_expired');
+        // The quote and row-lock waits can outlive the original authority.
+        // Reject known revocation before freezing a previously pending intent.
+        // Use this transaction's connection: a resolver borrowing from the pool
+        // here can deadlock when other confirmations occupy it waiting on us.
+        await requireDispatchAuthority(row,db);
         if (row.confirmation_hash && row.confirmation_hash !== confirmationHash) throw problem(409,'confirmation_conflict');
         await db.query("UPDATE platform_core_checkouts SET state='dispatching',confirmation_hash=$2 WHERE id=$1",[row.id,confirmationHash]);
       }
@@ -138,6 +153,11 @@ export function createCoreCheckouts({ pool, baseUrl, core, orderClient, resolveP
     if (row.state === 'confirmed') return record(row,await orderClient.status(row.tenant_id,who.id,row.order_number));
     // Never reset dispatching on an ambiguous network or DB failure. Recovery
     // reads the original core using the SAME owner and stable UUID on retry.
+    // Recheck after COMMIT too, immediately before signing a new operation.
+    // This closes the named waits, not distributed instantaneous revocation.
+    await principal(identity,'orders:write');
+    if (!await isTenantActive(row.tenant_id)) throw problem(409,'tenant_unavailable');
+    await requireDispatchAuthority(row);
     return record(row,await orderClient.create(row.tenant_id,who.id,{...input,expectedQuoteHash},row.id));
   }
   async function status(identity, tenantId, number) {

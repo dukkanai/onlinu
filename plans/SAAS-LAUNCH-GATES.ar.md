@@ -1,3 +1,5 @@
+> تحديث 10 أكتوبر 2026: ترتيب العمل الحالي ونتائج المراجعة في [خطة المراجعة](PROJECT-REVIEW-20261010.ar.md). تأجل قبول Paylink الحي مع استمرار فحص الأمن والوظائف المستقلة. تفاصيل نشر المختبرين والحاويات وحالات القبول أدناه مؤرخة وليست وصفًا آنيًا للخادم بعد إعادة بنائه في 9 أكتوبر. لا تزال شروط الإنتاج غير المغلقة نافذة.
+
 > Scope override, 2026-10-09: the owner removed all restaurant WhatsApp Business/QR,
 > calling, translation and related conversation-archive requirements. Only restaurant
 > and ChatGPT ordering remain active. Any older WhatsApp requirement below is historical

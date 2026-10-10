@@ -1,4 +1,4 @@
-import type { OrderInput, Quote } from "../types";
+import type { OrderInput, Quote, Receipt } from "../types";
 import { isHistoricalRestaurantCountry } from "../countries";
 
 export const PENDING_STORAGE_KEY = "restaurant-pending-order-v1";
@@ -8,7 +8,10 @@ export interface PendingSubmission {
   quote: Quote;
   customerId: string;
   createdAt: number;
+  receipt?: { number: string; trackingToken: string; accessCode: string };
 }
+let memoryPending: PendingSubmission | null = null;
+let memoryOnly = false;
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown, limit: number): value is string =>
@@ -17,6 +20,12 @@ const amount = (value: unknown) =>
   Number.isSafeInteger(value) &&
   Number(value) >= 0 &&
   Number(value) < 1_000_000_000;
+function receiptReference(value: unknown): PendingSubmission["receipt"] {
+  return record(value) && text(value.number, 40) && /^[A-Za-z0-9_-]+$/.test(value.number) &&
+    text(value.trackingToken, 128) && /^[A-Za-z0-9_-]+$/.test(value.trackingToken) &&
+    text(value.accessCode, 40) && /^[A-Za-z0-9_-]+$/.test(value.accessCode)
+    ? { number: value.number, trackingToken: value.trackingToken, accessCode: value.accessCode } : undefined;
+}
 
 export function parsePendingSubmission(
   serialized: string | null,
@@ -60,6 +69,11 @@ export function parsePendingSubmission(
     )
       return null;
     if (input.paymentProvider !== undefined && !text(input.paymentProvider, 40))
+      return null;
+    // Legacy retries must retain their original payload. New submissions carry
+    // the exact reviewed binding; never add or recompute it during recovery.
+    if (input.expectedQuoteHash !== undefined &&
+      (typeof input.expectedQuoteHash !== "string" || !/^[0-9a-f]{64}$/.test(input.expectedQuoteHash)))
       return null;
     if (
       input.address.country !== undefined &&
@@ -179,6 +193,7 @@ export function parsePendingSubmission(
       key: value.key,
       customerId: value.customerId,
       createdAt: value.createdAt,
+      ...(receiptReference(value.receipt) ? { receipt: receiptReference(value.receipt) } : {}),
       input: input as unknown as OrderInput,
       quote: {
         items: quote.items as unknown as Quote["items"],
@@ -199,23 +214,45 @@ export function parsePendingSubmission(
   }
 }
 export function readPendingSubmission(): PendingSubmission | null {
+  const remembered = () => parsePendingSubmission(memoryPending ? JSON.stringify(memoryPending) : null);
+  if (memoryOnly) return remembered();
   try {
     const saved = sessionStorage.getItem(PENDING_STORAGE_KEY);
     const parsed = parsePendingSubmission(saved);
+    memoryPending = parsed;
     if (saved && !parsed) sessionStorage.removeItem(PENDING_STORAGE_KEY);
     return parsed;
   } catch {
-    return null;
+    return remembered();
   }
 }
 export function savePendingSubmission(value: PendingSubmission | null) {
   // Short-lived, tab-scoped recovery only. Never store passwords, API keys or
   // customer contact/address details in localStorage.
+  memoryPending = value;
   try {
     if (value)
       sessionStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(value));
     else sessionStorage.removeItem(PENDING_STORAGE_KEY);
+    memoryOnly = false;
   } catch {
-    /* Retry still works in memory when storage is disabled. */
+    memoryOnly = true;
+    /* Recovery still works across navigation when tab storage is disabled. */
   }
+}
+
+export function sameSubmission(first: PendingSubmission | null, second: PendingSubmission): boolean {
+  return !!first && first.key === second.key && first.customerId === second.customerId &&
+    JSON.stringify(first.input) === JSON.stringify(second.input);
+}
+
+export function rememberSubmissionReceipt(request: PendingSubmission, receipt: Receipt) {
+  const reference = receiptReference({ number: receipt?.order?.number,
+    trackingToken: receipt?.trackingToken, accessCode: receipt?.accessCode });
+  if (!reference || (request.receipt && request.receipt.number !== reference.number))
+    throw new Error("invalid_receipt");
+  const current = readPendingSubmission();
+  // A late result cannot revive a cleared recovery or replace a newer request.
+  if (!sameSubmission(current, request)) return;
+  savePendingSubmission({ ...current!, receipt: reference });
 }

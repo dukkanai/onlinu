@@ -142,6 +142,12 @@ test("pending recovery retains the exact retry identity and owner without persis
     parsePendingSubmission(JSON.stringify(pending), now + 1000),
     pending,
   );
+  const boundPending = { ...pending, input: { ...pending.input, expectedQuoteHash: "a".repeat(64) } };
+  assert.deepEqual(parsePendingSubmission(JSON.stringify(boundPending), now + 1000), boundPending);
+  assert.equal("expectedQuoteHash" in parsePendingSubmission(JSON.stringify(pending), now + 1000)!.input, false,
+    "legacy unknown-outcome retries must not acquire a different request body");
+  for (const hash of ["", "a".repeat(63), "A".repeat(64), "x".repeat(64), {}, null])
+    assert.equal(parsePendingSubmission(JSON.stringify({ ...pending, input: { ...pending.input, expectedQuoteHash: hash } }), now), null);
   const districtPending = { ...pending, input: { ...pending.input, mode: "delivery", address: { ...emptyAddress(), regionId: "sa-r-1", cityId: "sa-c-2", districtId: "local-d-3" } } };
   assert.deepEqual(parsePendingSubmission(JSON.stringify(districtPending), now + 1000), districtPending);
   for (const invalidAddress of [

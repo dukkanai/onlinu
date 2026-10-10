@@ -1,3 +1,13 @@
+# Review pointer — 10 October 2026
+
+See [the current review and work order](PROJECT-REVIEW-20261010.ar.md) for subsequent
+quote-binding, checkout-authority, MCP catalogue and tracking fixes and their
+verification limits. External-key separation was subsequently verified in the
+test deployments; rotation/recovery acceptance and live payment acceptance remain
+separate gates. The courier-session issue below is still open and is not part of
+the 10 October patch. This pointer does not turn historical test results into
+production acceptance.
+
 # Security remediation status — 9 October 2026
 
 This is a partial code remediation on the restaurant/ChatGPT experiment branch,

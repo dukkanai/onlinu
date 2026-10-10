@@ -104,7 +104,8 @@ export function createMcpHandler({ baseUrl, authenticate, listRestaurants, getMe
   if (typeof requireCatalogAuth !== 'boolean') throw new Error('invalid_catalog_auth_option');
   if (typeof onProtocolExchange !== 'function') throw new Error('invalid_protocol_reporter');
   const catalogScope = requireCatalogAuth ? 'orders:read' : undefined;
-  const toolScopes = { ...requiredScopes, search_restaurants: catalogScope, get_restaurant_menu: catalogScope, quote_cart: catalogScope };
+  const toolScopes = { ...requiredScopes, search_restaurants: catalogScope, get_restaurant_menu: catalogScope, quote_cart: catalogScope,
+    search_open_restaurants: catalogScope, get_restaurant_opening_status: catalogScope };
 
   function authChallenge(scope, error = 'invalid_token') {
     const description = error === 'insufficient_scope'

@@ -5,12 +5,141 @@ import pg from 'pg';
 import { createIdentityDirectory } from './identity-directory.mjs';
 import { createCoreCheckouts } from './core-checkouts.mjs';
 
-test('owned core handoffs are durable, private and idempotent across ambiguous outcomes', { skip: !process.env.IDENTITY_TEST_DATABASE_URL }, async t => {
+test('new checkout dispatch rechecks identity and tenant after awaited quote and lock boundaries', { skip: !process.env.IDENTITY_TEST_DATABASE_URL }, async t => {
+  const url = new URL(process.env.IDENTITY_TEST_DATABASE_URL);
+  assert.equal(url.pathname, '/astracalls_identity_test');
+  assert.equal(url.searchParams.has('dbname'), false);
+  const schema = `checkout_authority_test_${randomBytes(8).toString('hex')}`;
+  const admin = new pg.Pool({ connectionString: url.href });
+  await admin.query(`CREATE SCHEMA ${schema}`);
+  const pool = new pg.Pool({ connectionString: url.href, options: `-c search_path=${schema}`, max: 8 });
+  t.after(async () => { await pool.end(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); });
+  const directory = createIdentityDirectory({ pool, trustedIssuers: ['https://identity.example/'] });
+  await directory.init();
+  const operator = await directory.verifiedIdentity({ issuer: 'https://identity.example/', subject: 'operator' });
+  await pool.query('UPDATE platform_identities SET platform_admin=TRUE WHERE id=$1', [operator.id]);
+  const quote = { currency: 'SAR', totalMinor: 2500, subtotalMinor: 2500, deliveryFeeMinor: 0, demo: false,
+    paymentMethods: ['card'], tax: { enabled: false, rateBps: 0, number: '', netMinor: 2500, taxMinor: 0, grossMinor: 2500 },
+    items: [{ itemId: 'rice', name: 'Rice', quantity: 1, unitPriceMinor: 2500, totalMinor: 2500 }] };
+  for (const boundary of ['quote', 'checkout_lock', 'dispatch_commit', 'dispatch_read']) {
+    for (const change of ['identity_disabled', 'suspended', 'closed']) await t.test(`${boundary}: ${change}`, async () => {
+      const who = { ...await directory.verifiedIdentity({ issuer: 'https://identity.example/', subject: `${boundary}-${change}` }),
+        role: 'customer', scopes: ['orders:read', 'orders:write'] };
+      const tenantId = `${boundary}-${change}`.replaceAll('_', '-');
+      await directory.createTenant(operator.id, { id: tenantId, name: 'Synthetic authority fixture', ownerId: who.id });
+      await directory.setTenantStatus(operator.id, tenantId, { status: 'active', expectedVersion: 1 });
+      let armed = false, creates = 0, blocker;
+      const lockStarted = Promise.withResolvers();
+      const revoke = () => change === 'identity_disabled'
+        ? pool.query('UPDATE platform_identities SET enabled=FALSE WHERE id=$1', [who.id])
+        : directory.setTenantStatus(operator.id, tenantId, { status: change, expectedVersion: 2 });
+      const guardedPool = { async query(...args) {
+        // Delay the final pool read until after revocation, as a queued
+        // acquisition can do after the callback-level authority checks.
+        if (armed && boundary === 'dispatch_read' && args[0].includes('clock_timestamp()')) await revoke();
+        return pool.query(...args);
+      }, async connect() {
+        const db = await pool.connect();
+        return { release: () => db.release(), async query(sql, values) {
+          const pending = db.query(sql, values);
+          if (armed && boundary === 'checkout_lock' && sql.includes('FOR UPDATE')) lockStarted.resolve();
+          const result = await pending;
+          if (armed && boundary === 'dispatch_commit' && sql === 'COMMIT') await revoke();
+          return result;
+        } };
+      } };
+      const store = createCoreCheckouts({ pool: guardedPool, baseUrl: 'https://platform.example',
+        resolvePrincipal: directory.resolve, isTenantActive: async id => (await directory.published([id])).length === 1,
+        core: { async preview() { return quote; }, async quote() { if (armed && boundary === 'quote') await revoke(); return quote; } },
+        orderClient: { async create() { creates++; return { number: 'R00000001', version: 1, status: 'new', paymentStatus: 'unpaid',
+          totalMinor: 2500, currency: 'SAR', mode: 'pickup', updatedAt: new Date().toISOString() }; } },
+      });
+      await store.init();
+      const checkout = await store.prepare(who, { tenantId, mode: 'pickup', items: [{ itemId: 'rice', quantity: 1 }],
+        expectedTotalMinor: 2500, idempotencyKey: randomUUID() });
+      try {
+        if (boundary === 'checkout_lock') {
+          blocker = await pool.connect(); await blocker.query('BEGIN');
+          await blocker.query('SELECT id FROM platform_core_checkouts WHERE id=$1 FOR UPDATE', [checkout.checkoutId]);
+        }
+        armed = true;
+        const confirmation = store.confirm(who, checkout.checkoutId, { customerName: 'Synthetic', phone: '+966501234567', paymentMethod: 'card' });
+        // Attach the rejection handler before releasing the deterministic database barrier.
+        const rejected = assert.rejects(confirmation, { code: change === 'identity_disabled' ? 'identity_disabled' : 'tenant_unavailable' });
+        if (blocker) { await lockStarted.promise; await revoke(); await blocker.query('COMMIT'); }
+        await rejected;
+        assert.equal(creates, 0, 'Revoked authority must never reach the signed create operation');
+        const state = (await pool.query('SELECT state FROM platform_core_checkouts WHERE id=$1', [checkout.checkoutId])).rows[0].state;
+        assert.equal(state, ['dispatch_commit','dispatch_read'].includes(boundary) ? 'dispatching' : 'pending');
+      } finally { if (blocker) { await blocker.query('ROLLBACK'); blocker.release(); } }
+    });
+  }
+  for (const boundary of ['checkout_lock', 'dispatch_commit', 'identity_recheck', 'tenant_recheck']) await t.test(`${boundary}: expiry`, async () => {
+    const who = { ...await directory.verifiedIdentity({ issuer: 'https://identity.example/', subject: `${boundary}-expiry` }),
+      role: 'customer', scopes: ['orders:read', 'orders:write'] };
+    const tenantId = `${boundary}-expiry`.replaceAll('_', '-');
+    await directory.createTenant(operator.id, { id: tenantId, name: 'Synthetic expiry fixture', ownerId: who.id });
+    await directory.setTenantStatus(operator.id, tenantId, { status: 'active', expectedVersion: 1 });
+    let armed = false, creates = 0, blocker, checkoutId, identityReads = 0, tenantReads = 0;
+    const lockStarted = Promise.withResolvers();
+    const expire = async (db = pool) => {
+      // This timestamp is AFTER the waiting confirmation's BEGIN, unlike
+      // now()-1 minute, which would let the old stale-clock check pass the test.
+      await db.query('UPDATE platform_core_checkouts SET expires_at=clock_timestamp() WHERE id=$1', [checkoutId]);
+      const { rows } = await db.query('SELECT expires_at<=clock_timestamp() AS expired FROM platform_core_checkouts WHERE id=$1', [checkoutId]);
+      assert.equal(rows[0].expired, true);
+    };
+    const guardedPool = { query: (...args) => pool.query(...args), async connect() {
+      const db = await pool.connect();
+      return { release: () => db.release(), async query(sql, values) {
+        const pending = db.query(sql, values);
+        if (armed && boundary === 'checkout_lock' && sql.includes('FOR UPDATE')) lockStarted.resolve();
+        const result = await pending;
+        if (armed && boundary === 'dispatch_commit' && sql === 'COMMIT') await expire();
+        return result;
+      } };
+    } };
+    const store = createCoreCheckouts({ pool: guardedPool, baseUrl: 'https://platform.example',
+      async resolvePrincipal(id) {
+        const result = await directory.resolve(id);
+        if (armed && ++identityReads === 2 && boundary === 'identity_recheck') await expire();
+        return result;
+      },
+      async isTenantActive(id) {
+        const active = (await directory.published([id])).length === 1;
+        if (armed && ++tenantReads === 2 && boundary === 'tenant_recheck') await expire();
+        return active;
+      },
+      core: { async preview() { return quote; }, async quote() { return quote; } },
+      orderClient: { async create() { creates++; return { number: 'R00000001', version: 1, status: 'new', paymentStatus: 'unpaid',
+        totalMinor: 2500, currency: 'SAR', mode: 'pickup', updatedAt: new Date().toISOString() }; } },
+    });
+    await store.init();
+    ({ checkoutId } = await store.prepare(who, { tenantId, mode: 'pickup', items: [{ itemId: 'rice', quantity: 1 }],
+      expectedTotalMinor: 2500, idempotencyKey: randomUUID() }));
+    try {
+      if (boundary === 'checkout_lock') {
+        blocker = await pool.connect(); await blocker.query('BEGIN');
+        await blocker.query('SELECT id FROM platform_core_checkouts WHERE id=$1 FOR UPDATE', [checkoutId]);
+      }
+      armed = true;
+      const rejected = assert.rejects(store.confirm(who, checkoutId,
+        { customerName: 'Synthetic', phone: '+966501234567', paymentMethod: 'card' }), { code: 'checkout_expired' });
+      if (blocker) { await lockStarted.promise; await expire(blocker); await blocker.query('COMMIT'); }
+      await rejected;
+      assert.equal(creates, 0, 'An expired intent must never reach the signed create operation');
+      const state = (await pool.query('SELECT state FROM platform_core_checkouts WHERE id=$1', [checkoutId])).rows[0].state;
+      assert.equal(state, boundary === 'checkout_lock' ? 'pending' : 'dispatching');
+    } finally { if (blocker) { await blocker.query('ROLLBACK'); blocker.release(); } }
+  });
+});
+
+test('owned core handoffs are durable, private and idempotent across ambiguous outcomes', { skip: !process.env.IDENTITY_TEST_DATABASE_URL, timeout: 30_000 }, async t => {
   const url = new URL(process.env.IDENTITY_TEST_DATABASE_URL); assert.equal(url.pathname,'/astracalls_identity_test');
   assert.equal(url.searchParams.has('dbname'),false);
   const schema = `checkout_test_${randomBytes(8).toString('hex')}`;
   const admin = new pg.Pool({connectionString:url.href}); await admin.query(`CREATE SCHEMA ${schema}`);
-  const pool = new pg.Pool({connectionString:url.href,options:`-c search_path=${schema}`,max:10});
+  const pool = new pg.Pool({connectionString:url.href,options:`-c search_path=${schema}`,max:2});
   t.after(async()=>{await pool.end();await admin.query(`DROP SCHEMA ${schema} CASCADE`);await admin.end();});
   const directory = createIdentityDirectory({pool,trustedIssuers:['https://identity.example/']});await directory.init();
   const make = async subject=>({...await directory.verifiedIdentity({issuer:'https://identity.example/',subject}),role:'customer',scopes:['orders:read','orders:write']});
@@ -56,8 +185,11 @@ test('owned core handoffs are durable, private and idempotent across ambiguous o
     await assert.rejects(store.confirm(bob,checkout.checkoutId,contact),{code:'not_found'});
     await assert.rejects(store.confirm(alice,checkout.checkoutId,{...contact,items:[]}),{code:'invalid_request'});
     const before=orders.size;
-    const results=await Promise.all([store.confirm(alice,checkout.checkoutId,contact),store.confirm(alice,checkout.checkoutId,contact)]);
+    // Exceed the two-connection pool to guard against borrowing a second
+    // connection for authority checks while holding the checkout row lock.
+    const results=await Promise.all(Array.from({length:20},()=>store.confirm(alice,checkout.checkoutId,contact)));
     assert.equal(results[0].number,results[1].number);assert.equal(orders.size,before+1);
+    assert.equal(new Set(results.map(row=>row.number)).size,1);
     const row=(await pool.query('SELECT * FROM platform_core_checkouts WHERE id=$1',[checkout.checkoutId])).rows[0];
     assert.equal(row.state,'confirmed');assert.equal(JSON.stringify(row).includes(contact.phone),false);
     await assert.rejects(store.status(bob,'a',results[0].number),{code:'not_found'});
@@ -110,9 +242,18 @@ test('owned core handoffs are durable, private and idempotent across ambiguous o
   });
   await t.test('suspension prevents new submission while accepted orders remain recoverable',async()=>{
     const pending=await store.prepare(alice,prepare(randomUUID()));
+    const accepted=await store.prepare(alice,prepare(randomUUID()));
+    const confirmed=await store.confirm(alice,accepted.checkoutId,contact);
+    const uncertain=await store.prepare(alice,prepare(randomUUID()));loseReply=true;
+    try{await assert.rejects(store.confirm(alice,uncertain.checkoutId,contact),{code:'order_outcome_unknown'});}
+    finally{loseReply=false;}
+    const before=creates;
     await directory.setTenantStatus(alice.id,'a',{status:'suspended',expectedVersion:2});
     await assert.rejects(store.confirm(alice,pending.checkoutId,contact),{code:'tenant_unavailable'});
     await assert.rejects(store.prepare(alice,prepare(randomUUID())),{code:'tenant_unavailable'});
+    assert.equal((await store.confirm(alice,accepted.checkoutId,{})).number,confirmed.number);
+    assert.equal((await store.confirm(alice,uncertain.checkoutId,{})).number,orders.get(uncertain.checkoutId).number);
+    assert.equal(creates,before,'Suspension still allows accepted-order reads and recovery without another create');
     await directory.setTenantStatus(alice.id,'a',{status:'active',expectedVersion:3});
   });
   await t.test('support claims are private, owner-bound and never replay an uncertain write',async()=>{

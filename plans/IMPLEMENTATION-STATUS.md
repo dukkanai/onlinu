@@ -1,3 +1,10 @@
+# Current work order — 2026-10-10
+
+The owner deferred live Paylink acceptance while independent security, order/stock
+and customer-interface work continues. The current ordered plan and the exact
+verification limits are in [the 10 October review](PROJECT-REVIEW-20261010.ar.md).
+Earlier entries below are dated evidence, not an aggregate production acceptance.
+
 # Current scope override — 2026-10-09
 
 Cleanup accepted: code `8a4e82c`, CI `37870435256` passed server, client, control-image

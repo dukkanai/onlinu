@@ -59,7 +59,8 @@ Existing historical database tables, recordings, keys and provider accounts are 
 deleted. Removed routes cannot access them. Back up and review them separately before
 any irreversible purge. Personal WhatsApp tools outside this repository are unaffected.
 
-Current implementation and remaining launch work: [status](plans/IMPLEMENTATION-STATUS.md).
+Current prioritized work and review: [10 October review](plans/PROJECT-REVIEW-20261010.ar.md).
+Implementation history and remaining launch work: [status](plans/IMPLEMENTATION-STATUS.md).
 Earlier audit documents describe their dated scope and are historical evidence.
 
 ## License and attribution

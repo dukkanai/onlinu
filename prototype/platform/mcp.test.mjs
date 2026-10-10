@@ -429,3 +429,49 @@ test('bounded open search is read-only and requires catalog scope',async t=>{
  const response=await fixture.call('search_open_restaurants',{limit:2},{token:'alice'});assert.deepEqual(response.body.result.structuredContent,value);assert.equal(reads,1);
  const bad=await fixture.call('search_open_restaurants',{limit:999},{token:'alice'});assert.ok(bad.body.error||bad.body.result.isError);assert.equal(reads,1);
 });
+
+test('opening tools enforce the same cookie Origin boundary in modern and legacy private catalogs', async t => {
+  for (const legacy of [false, true]) await t.test(legacy ? 'legacy' : 'modern', async t => {
+    let reads = 0;
+    const fixture = await setup(t, { requireCatalogAuth: true,
+      authenticate: async req => req.headers.authorization === 'Bearer no-scope' ? { ...alice, scopes: [] }
+        : req.headers.authorization === 'Bearer alice' || req.headers.cookie ? alice : null,
+      coreAdapter: { async listRestaurants() { return []; },
+        async openingStatus(tenantId) { reads++; return { tenantId, version: 1, scheduleEnabled: false, withinHours: null,
+          acceptingOrders: true, timeZone: 'Asia/Riyadh', evaluatedAt: new Date().toISOString() }; },
+        async searchOpenRestaurants() { reads++; return { restaurants: [], checked: 0, closed: 0, unconfigured: 0,
+          unavailable: 0, nextAfter: null, hasMore: false, evaluatedAt: new Date().toISOString() }; },
+      },
+    });
+    for (const [name, args] of [['get_restaurant_opening_status', { tenantId: 'demo-a' }], ['search_open_restaurants', {}]]) {
+      const call = options => fixture.send(legacy ? { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }
+        : envelope('tools/call', { name, arguments: args }), { legacy, ...options });
+      const before = reads;
+      for (const options of [{}, { headers: { cookie: 'synthetic=present' } }, { token: 'no-scope' }]) {
+        const result = (await call(options)).body.result;
+        assert.equal(result.isError, true);
+        assert.equal(result.structuredContent, undefined);
+        assert.match(result._meta['mcp/www_authenticate'][0], /scope="orders:read"/);
+      }
+      assert.equal(reads, before, 'Rejected requests must never read the catalog');
+      assert.equal((await call({ headers: { cookie: 'synthetic=present', origin: 'https://foreign.example' } })).status, 403);
+      for (const options of [{ token: 'alice' }, { headers: { cookie: 'synthetic=present', origin: fixture.baseUrl } }]) {
+        assert.ok((await call(options)).body.result.structuredContent);
+      }
+      assert.equal(reads, before + 2);
+    }
+  });
+});
+
+test('public opening tools remain available without credentials', async t => {
+  let reads = 0;
+  const fixture = await setup(t, { coreAdapter: { async listRestaurants() { return []; },
+    async openingStatus(tenantId) { reads++; return { tenantId, version: 1, scheduleEnabled: false, withinHours: null,
+      acceptingOrders: true, timeZone: 'Asia/Riyadh', evaluatedAt: new Date().toISOString() }; },
+    async searchOpenRestaurants() { reads++; return { restaurants: [], checked: 0, closed: 0, unconfigured: 0,
+      unavailable: 0, nextAfter: null, hasMore: false, evaluatedAt: new Date().toISOString() }; },
+  } });
+  assert.ok((await fixture.call('get_restaurant_opening_status', { tenantId: 'demo-a' })).body.result.structuredContent);
+  assert.ok((await fixture.call('search_open_restaurants', {})).body.result.structuredContent);
+  assert.equal(reads, 2);
+});

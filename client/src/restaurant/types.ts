@@ -30,7 +30,7 @@ export interface RestaurantTable { id: string; name: string; code: string; activ
 export interface Catalog { version: number; settings: Settings; categories: Category[]; items: MenuItem[]; tables?: RestaurantTable[] }
 export interface Address { id?: string; label?: string; country?: string; regionId?: string; cityId?: string; districtId?: string; city: string; district: string; street: string; building: string; postalCode: string; additionalNumber: string; nationalAddress: string; addressLine: string; area: string; latitude: number | null; longitude: number | null }
 export interface OrderLineInput { itemId: string; quantity: number; optionIds: string[] }
-export interface OrderInput { mode: Mode; customerName: string; phone: string; address: Address; tableCode: string; notes: string; items: OrderLineInput[]; expectedTotalMinor: number; paymentMethod?: PaymentMethod; paymentProvider?: string }
+export interface OrderInput { mode: Mode; customerName: string; phone: string; address: Address; tableCode: string; notes: string; items: OrderLineInput[]; expectedTotalMinor: number; expectedQuoteHash?: string; paymentMethod?: PaymentMethod; paymentProvider?: string }
 export interface OrderLine { itemId: string; name: string; quantity: number; unitPriceMinor: number; options: ItemOption[]; totalMinor: number }
 export interface Quote { items: OrderLine[]; subtotalMinor: number; deliveryFeeMinor: number; totalMinor: number; currency: string; tableName?: string; demo: boolean; paymentMethods?: PaymentMethod[]; tax?: TaxSummary }
 export interface StockItem { itemId: string; tracked: boolean; available: number; held: number; version: number; updatedAt: string }
