@@ -134,7 +134,15 @@ Local evidence on 2026-10-10: both cases passed with PostgreSQL 17.11 and the Go
 race detector, with all 38 public table/sequence relations equivalent. The static
 test binary also passed both cases with an empty inherited environment. This
 evidence covers the local synthetic drill only.
-The newly added PostgreSQL 16/network-isolated CI step has not yet been executed.
+Hosted PostgreSQL 16/network-isolated evidence: commit
+`80940a2f7b8e6bcfeb87b689cd55bbef786929c6` passed all four ordinary jobs in
+[CI 38056995203](https://github.com/dukkanai/onlinu/actions/runs/38056995203),
+verified 2026-10-10 13:57 UTC. The dedicated recovery step passed both historical
+and current cases in 4.73 seconds, with 73,287/73,284-byte synthetic archives and
+38 matching public table/sequence relations in each. Its default-gated skip in
+the earlier generic step is not counted as acceptance; the dedicated isolated
+step is the execution evidence. Optional runtime-image and Android/iOS jobs
+were skipped. No live deployment, archive, key or provider was involved.
 
 ## Meaning of success and remaining gates
 
