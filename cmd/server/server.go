@@ -10,22 +10,27 @@ import (
 )
 
 type server struct {
-	ownership    *instanceOwnership
-	db           *sql.DB
-	restaurant   *restaurantStore
-	orders       *restaurantOrders
-	customers    *restaurantAccounts
-	payments     *restaurantPayments
-	couriers     *restaurantCouriers
-	log          *slog.Logger
-	staticDir    string
-	platformAuth *platformRequestAuth
+	ownership      *instanceOwnership
+	db             *sql.DB
+	restaurant     *restaurantStore
+	orders         *restaurantOrders
+	customers      *restaurantAccounts
+	payments       *restaurantPayments
+	couriers       *restaurantCouriers
+	log            *slog.Logger
+	staticDir      string
+	platformAuth   *platformRequestAuth
+	trustedProxies restaurantProxyPolicy
 }
 
 var errPlatformAdminAuthenticationRequired = errors.New("platform restaurant runtime requires administrator authentication")
 
 // newServer opens the restaurant database and initializes commerce services.
 func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, log *slog.Logger) (*server, error) {
+	trustedProxies, err := restaurantTrustedProxiesFromEnv(os.LookupEnv)
+	if err != nil {
+		return nil, err
+	}
 	ring, err := restaurantCryptoRingFromEnv(os.Getenv)
 	if err != nil {
 		return nil, err
@@ -110,5 +115,5 @@ func newServer(ctx context.Context, pgURL, pgNamespace, staticDir string, log *s
 	go payments.Run(ctx)
 
 	initialized = true
-	return &server{ownership: ownership, db: mainDB, restaurant: restaurant, orders: orders, customers: customers, payments: payments, couriers: couriers, log: log, staticDir: staticDir, platformAuth: platformAuth}, nil
+	return &server{ownership: ownership, db: mainDB, restaurant: restaurant, orders: orders, customers: customers, payments: payments, couriers: couriers, log: log, staticDir: staticDir, platformAuth: platformAuth, trustedProxies: trustedProxies}, nil
 }

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -59,23 +58,6 @@ func (l *restaurantRateLimiter) allow(key string, limit int) bool {
 	entry.count++
 	l.entries[key] = entry
 	return entry.count <= limit
-}
-
-func restaurantClientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	peer := net.ParseIP(host)
-	// Caddy appends the verified client to X-Forwarded-For. Only use the last
-	// entry, and only when the direct peer is our local/private proxy network.
-	if peer != nil && (peer.IsLoopback() || peer.IsPrivate()) {
-		parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
-		if ip := net.ParseIP(strings.TrimSpace(parts[len(parts)-1])); ip != nil {
-			return ip.String()
-		}
-	}
-	return host
 }
 
 func restaurantSameOrigin(r *http.Request) bool {
@@ -212,7 +194,12 @@ func (s *server) registerRestaurantRoutes(mux *http.ServeMux) {
 				if r.Method == "POST" && r.URL.Path == "/storefront-api/orders" {
 					group, limit = "order", 20
 				}
-				if !limiter.allow(restaurantClientIP(r)+":"+group, limit) {
+				clientIP, err := s.restaurantClientIP(r)
+				if err != nil {
+					writeRestaurantError(w, err)
+					return
+				}
+				if !limiter.allow(clientIP+":"+group, limit) {
 					w.Header().Set("Retry-After", "60")
 					writeRestaurantError(w, restaurantFail(429, "rate_limited"))
 					return
@@ -585,7 +572,12 @@ func (s *server) restaurantPaymentHookGuard(next http.Handler) http.Handler {
 			writeRestaurantError(w, restaurantFail(405, "invalid_request"))
 			return
 		}
-		if !limiter.allow(restaurantClientIP(r), 120) {
+		clientIP, err := s.restaurantClientIP(r)
+		if err != nil {
+			writeRestaurantError(w, err)
+			return
+		}
+		if !limiter.allow(clientIP, 120) {
 			w.Header().Set("Retry-After", "60")
 			writeRestaurantError(w, restaurantFail(429, "rate_limited"))
 			return

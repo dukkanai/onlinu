@@ -42,6 +42,11 @@ creation/update, cross-tenant rejection, delegated permission ceilings, last-own
 safety, audit rollback, suspension, OAuth/CSRF, logout and live account-disable
 checks. Original synthetic authentication and OIDC tests remain separately active.
 
+The opt-in [synthetic control recovery fixture](CONTROL-RECOVERY.md) additionally
+archives/restores the generated directory, OIDC bindings and customer OAuth state
+into a new owned database. It explicitly leaves Dex recovery and protection
+against post-snapshot revocation rollback as separate production gates.
+
 ## Next integration
 
 Bind the verified platform subject to owned restaurant-core checkouts/orders;

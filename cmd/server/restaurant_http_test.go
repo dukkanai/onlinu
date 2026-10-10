@@ -362,7 +362,7 @@ func TestRestaurantHTTPImagesAndStaticRoutes(t *testing.T) {
 	}
 }
 
-func TestRestaurantRateLimiterAndProxyIP(t *testing.T) {
+func TestRestaurantRateLimiterAndCookieNamespace(t *testing.T) {
 	t.Setenv("WACALLS_API_KEY", "instance-one-private-key")
 	firstCookieName := restaurantSessionCookieName()
 	t.Setenv("WACALLS_API_KEY", "instance-two-private-key")
@@ -377,16 +377,5 @@ func TestRestaurantRateLimiterAndProxyIP(t *testing.T) {
 	}
 	if limiter.allow("a", 10) || !limiter.allow("b", 10) {
 		t.Fatal("limit/isolation")
-	}
-	r := httptest.NewRequest("GET", "/", nil)
-	r.RemoteAddr = "198.51.100.3:123"
-	r.Header.Set("X-Forwarded-For", "203.0.113.1")
-	if restaurantClientIP(r) != "198.51.100.3" {
-		t.Fatal("trusted external spoofed header")
-	}
-	r.RemoteAddr = "172.20.0.1:321"
-	r.Header.Set("X-Forwarded-For", "203.0.113.99, 198.51.100.8")
-	if restaurantClientIP(r) != "198.51.100.8" {
-		t.Fatal("did not use verified rightmost proxy hop")
 	}
 }

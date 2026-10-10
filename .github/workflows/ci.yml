@@ -261,6 +261,15 @@ jobs:
         run: npm test
         working-directory: prototype/platform
 
+      - name: Test synthetic control-plane archive and recovery
+        timeout-minutes: 3
+        env:
+          TEST_CONTROL_RECOVERY: "1"
+        run: |
+          export TEST_CONTROL_RECOVERY_PG_BIN="$(pg_config --bindir)"
+          node --test control-recovery.test.mjs
+        working-directory: prototype/platform
+
       - name: Preserve real-core MCP menu preview rendering
         if: always()
         uses: actions/upload-artifact@v4

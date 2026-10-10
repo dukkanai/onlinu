@@ -157,7 +157,10 @@ payload authentication and envelope-aware release acceptance still need separate
 evidence; the synthetic regression cannot establish them. Business recovery includes
 data outside encrypted receipt/payment fields. Media must be restored and checked
 separately with cross-resource consistency; an existing-volume media marker proves
-persistence only. Control-plane/Dex data and their external secrets are outside
+persistence only. The separate [synthetic media acceptance](MEDIA-RECOVERY-ACCEPTANCE.md)
+combines generated media, catalog/brand references and external-v1 payloads in
+independent owned targets; it does not establish live backup consistency.
+Control-plane/Dex data and their external secrets are outside
 this restaurant-key contract. Independent off-host recovery, custody/retention,
 RPO/RTO, Saudi recovery destination and execution approval remain open.
 

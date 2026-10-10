@@ -317,6 +317,7 @@ func restaurantRecoveryFingerprint(t *testing.T, db *sql.DB) map[string]string {
 
 type restaurantRecoveryRuntime struct {
 	root, namespace, store, master string
+	mediaRoot                      string
 	private                        []string
 }
 
@@ -325,8 +326,12 @@ func (r *restaurantRecoveryRuntime) run(t *testing.T, c *restaurantRecoveryClust
 	address, _ := restaurantRecoveryAddress(t)
 	dsn := c.dsn("postgres")
 	dsnFile := restaurantRecoveryFile(t, t.TempDir(), "database", []byte(dsn))
+	mediaRoot := r.mediaRoot
+	if mediaRoot == "" {
+		mediaRoot = filepath.Join(r.root, "media")
+	}
 	env := append(restaurantRecoveryEnvironment(r.root, c.bin), restaurantRecoveryHelper+"=1", "ONLINU_RECOVERY_NAMESPACE="+r.namespace, "ONLINU_RECOVERY_HTTP="+address, "ONLINU_RECOVERY_COMMAND="+maintenance,
-		"WACALLS_PG_URL_FILE="+dsnFile, "WACALLS_API_KEY="+r.master, "WACALLS_MEDIA_DIR="+filepath.Join(r.root, "media"), "WACALLS_PUBLIC_BASE_URL=https://synthetic.invalid", "RESTAURANT_GEOGRAPHY_DATA_DIR=",
+		"WACALLS_PG_URL_FILE="+dsnFile, "WACALLS_API_KEY="+r.master, "WACALLS_MEDIA_DIR="+mediaRoot, "WACALLS_PUBLIC_BASE_URL=https://synthetic.invalid", "RESTAURANT_GEOGRAPHY_DATA_DIR=",
 		restaurantCryptoModeSetting+"="+restaurantCryptoExternalMode, restaurantCryptoStoreSetting+"="+r.store, restaurantKeyringSetting+"_FILE="+keyFile)
 	life, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -486,17 +491,9 @@ func restaurantRecoveryCheckPayload(t *testing.T, db *sql.DB, ciphers *restauran
 	restaurantMaintenanceCheckFence(t, ctx, db)
 }
 
-func TestRestaurantKeyRecoveryActualMainRuntime(t *testing.T) {
-	if os.Getenv(restaurantRecoveryHelper) == "1" {
-		http.DefaultTransport = restaurantRecoveryDenyHTTP{}
-		flag.CommandLine = flag.NewFlagSet("wacalls", flag.ExitOnError)
-		os.Args = []string{"wacalls", "-addr", os.Getenv("ONLINU_RECOVERY_HTTP"), "-pg-namespace", os.Getenv("ONLINU_RECOVERY_NAMESPACE"), "-static="}
-		if command := os.Getenv("ONLINU_RECOVERY_COMMAND"); command != "" {
-			os.Args = append(os.Args, "-crypto-command", command)
-		}
-		main()
-		return
-	}
+// Shared by the key and media drills; never accepts a database URL or existing cluster.
+func restaurantRecoveryPostgres(t *testing.T) (string, string) {
+	t.Helper()
 	if os.Getenv(restaurantRecoveryGate) == "" {
 		t.Skip("set TEST_EXTERNAL_KEY_RECOVERY=1 and TEST_EXTERNAL_KEY_RECOVERY_PG_BIN for two newly owned synthetic clusters")
 	}
@@ -528,6 +525,21 @@ func TestRestaurantKeyRecoveryActualMainRuntime(t *testing.T) {
 	if info, err := os.Stat(filepath.Join(share, "postgres.bki")); err != nil || !info.Mode().IsRegular() {
 		t.Fatal("PostgreSQL initialization data is unavailable")
 	}
+	return bin, share
+}
+
+func TestRestaurantKeyRecoveryActualMainRuntime(t *testing.T) {
+	if os.Getenv(restaurantRecoveryHelper) == "1" {
+		http.DefaultTransport = restaurantRecoveryDenyHTTP{}
+		flag.CommandLine = flag.NewFlagSet("wacalls", flag.ExitOnError)
+		os.Args = []string{"wacalls", "-addr", os.Getenv("ONLINU_RECOVERY_HTTP"), "-pg-namespace", os.Getenv("ONLINU_RECOVERY_NAMESPACE"), "-static="}
+		if command := os.Getenv("ONLINU_RECOVERY_COMMAND"); command != "" {
+			os.Args = append(os.Args, "-crypto-command", command)
+		}
+		main()
+		return
+	}
+	bin, share := restaurantRecoveryPostgres(t)
 	for _, generation := range []string{"historical", "current"} {
 		t.Run(generation, func(t *testing.T) {
 			source, target := restaurantRecoveryStartCluster(t, bin, share), restaurantRecoveryStartCluster(t, bin, share)
