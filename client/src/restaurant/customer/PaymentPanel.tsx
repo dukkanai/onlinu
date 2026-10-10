@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CreditCard, RefreshCw } from "lucide-react";
 import { storefront, RestaurantAPIError } from "../api";
 import { useLocale } from "../i18n";
 import type { Order } from "../types";
 import { paymentStatusKey } from "./operations";
+import { createPaymentLifetime } from "./paymentLifetime";
 import {
   isolatedHyperPayDocument,
   retainPaymentReceipt,
@@ -16,19 +17,26 @@ export interface PublicPaymentProvider {
   mode: "test" | "live";
 }
 
-export function PaymentPanel({
-  order,
-  token,
-  onUpdated,
-}: {
+interface PaymentPanelProps {
   order: Order;
   token: string;
+  customerId?: string;
   onUpdated: (order: Order) => void;
-}) {
+}
+
+export function PaymentPanel(props: PaymentPanelProps) {
+  // A different order or access identity gets fresh attempt/error/busy state.
+  // Unmounting only fences UI effects; a sent payment may still finish remotely.
+  return <ScopedPaymentPanel key={JSON.stringify([props.order.number, props.token, props.customerId ?? ""])} {...props} />;
+}
+
+function ScopedPaymentPanel({ order, token, customerId = "", onUpdated }: PaymentPanelProps) {
   const { t } = useLocale();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [attempt, setAttempt] = useState<PaymentAttempt | null>(null);
+  const lifetime = useRef(createPaymentLifetime()).current;
+  useLayoutEffect(() => lifetime.mount(), [lifetime]);
   const mutation = useRef(false);
   const readGeneration = useRef(0);
   const headers = token ? { "X-Order-Token": token } : undefined;
@@ -42,11 +50,12 @@ export function PaymentPanel({
   useEffect(() => {
     let active = true;
     const generation = readGeneration.current;
+    const current = lifetime.capture();
     if (order.payment?.method !== "card") return;
     void storefront<PaymentAttempt>(`${base}/payment`, { headers })
       .then((result) => {
         if (
-          active &&
+          active && current() &&
           generation === readGeneration.current &&
           !mutation.current
         )
@@ -61,6 +70,8 @@ export function PaymentPanel({
   }, [order.number, token, order.payment?.status]);
   const refresh = async () => {
     if (mutation.current) return;
+    const current = lifetime.capture();
+    if (!current()) return;
     readGeneration.current++;
     mutation.current = true;
     setBusy(true);
@@ -74,17 +85,23 @@ export function PaymentPanel({
           body: "{}",
         },
       );
+      if (!current()) return;
       setAttempt(result);
-      onUpdated(await storefront<Order>(base, { headers }));
+      const updated = await storefront<Order>(base, { headers });
+      if (current()) onUpdated(updated);
     } catch (error) {
-      fail(error);
+      if (current()) fail(error);
     } finally {
-      mutation.current = false;
-      setBusy(false);
+      if (current()) {
+        mutation.current = false;
+        setBusy(false);
+      }
     }
   };
   const pay = async () => {
     if (mutation.current || !order.payment?.provider) return;
+    const current = lifetime.capture();
+    if (!current()) return;
     readGeneration.current++;
     mutation.current = true;
     setBusy(true);
@@ -95,7 +112,7 @@ export function PaymentPanel({
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ provider: order.payment.provider }),
       });
-      setAttempt(result);
+      if (!current()) return;
       if (
         result.mode !== (order.demo ? "test" : "live") ||
         result.provider !== order.payment.provider
@@ -109,12 +126,21 @@ export function PaymentPanel({
         result.status === "refunded" ||
         result.status === "review"
       ) {
-        onUpdated(await storefront<Order>(base, { headers }));
+        setAttempt(result);
+        const updated = await storefront<Order>(base, { headers });
+        if (current()) onUpdated(updated);
         return;
       }
       const account = await storefront<{ customer: { id: string } | null }>(
         "/account",
       );
+      if (!current()) return;
+      if ((account.customer?.id ?? "") !== customerId) {
+        setAttempt(null);
+        setError("errors.unauthorized");
+        return;
+      }
+      setAttempt(result);
       retainPaymentReceipt(
         result.attemptId,
         order.number,
@@ -135,10 +161,12 @@ export function PaymentPanel({
       }
       window.location.assign(target);
     } catch (error) {
-      fail(error);
+      if (current()) fail(error);
     } finally {
-      mutation.current = false;
-      setBusy(false);
+      if (current()) {
+        mutation.current = false;
+        setBusy(false);
+      }
     }
   };
   const payment = order.payment;

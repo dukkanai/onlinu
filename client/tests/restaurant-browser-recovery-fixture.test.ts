@@ -49,3 +49,17 @@ test('browser recovery fixture closes pending gates and rejects non-fixture oper
   assert.throws(()=>quoteFor({...input,paymentMethod:'card'}));
   assert.throws(()=>quoteFor({...input,items:[{itemId:'unlisted',quantity:1,optionIds:[]}]}));
 });
+
+test('browser payment fixture delays only synthetic responses and retains order isolation',async()=>{
+  const fixture=createRecoveryFixture(), receipt=fixture.orders.get('R00000001').receipt;
+  receipt.order.payment={...receipt.order.payment,method:'card',provider:'paylink'};
+  const path=`/orders/${receipt.order.number}/payment`, token={'x-order-token':receipt.trackingToken};
+  assert.equal((await fixture.handle('POST',path,{provider:'paylink'},{})).status,403);
+  const delayed=fixture.hold('POST',path),pending=fixture.handle('POST',path,{provider:'paylink'},token);
+  await delayed.entered;
+  assert.equal(fixture.submissions.size,0);delayed.release();
+  const result=await pending;assert.equal(result.status,200);assert.equal(result.body.mode,'test');
+  assert.equal((await fixture.handle('POST',`${path}/refresh`,{},token)).status,200);
+  assert.equal((await fixture.handle('GET',path,null,token)).status,200);
+  assert.deepEqual(fixture.unexpected,[]);assert.equal(fixture.submissions.size,0);
+});

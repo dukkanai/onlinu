@@ -106,6 +106,39 @@ export async function checkStorefrontRecovery({browser,root,evidence}){
     assert.equal(originalPosts(fixture).length,0);
   });
 
+  for(const operation of ['refresh','pay']) {
+    for(const destination of operation==='pay'?['other-order','menu']:['other-order']) {
+      await scenario(browser,root,evidence,`payment-${operation}-late-${destination}`,{},async({page,origin,fixture})=>{
+        const first=fixture.orders.get('R00000001').receipt, second=fixture.orders.get('R00000002').receipt;
+        first.order.payment={...first.order.payment,method:'card',provider:'paylink'};
+        await page.goto(`${origin}/track?order=${first.order.number}#token=${first.trackingToken}`);
+        await page.getByRole('heading',{name:`Order number ${first.order.number}`,exact:true}).waitFor();
+        const path=`/orders/${first.order.number}/payment${operation==='refresh'?'/refresh':''}`;
+        const delayed=fixture.hold('POST',path);
+        await page.getByRole('button',{name:operation==='refresh'?'Check payment status':'Continue to secure payment',exact:true}).click();
+        await entered(delayed);
+        if(destination==='other-order') {
+          await page.getByLabel('Order number',{exact:true}).fill(second.order.number);
+          await page.getByLabel('Access code',{exact:true}).fill(second.accessCode);
+          await page.getByRole('button',{name:'Find my order',exact:true}).click();
+          await page.getByRole('heading',{name:`Order number ${second.order.number}`,exact:true}).waitFor();
+        } else { await page.locator('a.rs-brand').click();await page.getByRole('button',{name:'Synthetic dish A',exact:true}).waitFor(); }
+        const late=page.waitForResponse(response=>new URL(response.url()).pathname===`/storefront-api${path}`&&response.request().method()==='POST');
+        const requestCount=fixture.requests.length;
+        delayed.release();await(await late).finished();await settled(page);
+        assert.equal(new URL(page.url()).origin,origin);
+        if(destination==='other-order') {
+          assert.equal(await page.getByRole('heading',{name:`Order number ${second.order.number}`,exact:true}).isVisible(),true);
+          assert.equal(await page.getByRole('heading',{name:`Order number ${first.order.number}`,exact:true}).count(),0);
+        } else assert.equal(new URL(page.url()).pathname,'/');
+        assert.equal(await page.evaluate(()=>Object.keys(sessionStorage).filter(key=>key.startsWith('restaurant-payment-return:')).length),0);
+        assert.equal(fixture.requests.filter(request=>request.method==='POST'&&request.path===path).length,1);
+        assert.equal(fixture.requests.slice(requestCount).filter(request=>request.path==='/account'||request.path===`/orders/${first.order.number}`).length,0);
+        assert.equal(originalPosts(fixture).length,0);
+      });
+    }
+  }
+
   await scenario(browser,root,evidence,'late-success-new-cart',{},async({page,origin,fixture})=>{
     let dismiss=true, dialogs=0;
     page.on('dialog',dialog=>{dialogs++;return dismiss?dialog.dismiss():dialog.accept();});

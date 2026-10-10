@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { storefront, RestaurantAPIError } from "./api";
 import { LanguagePicker, useLocale } from "./i18n";
 import type { Order } from "./types";
+import { mergePaymentOrder } from "./customer/paymentLifetime";
 import { PaymentPanel } from "./customer/PaymentPanel";
 import {
   recoverPaymentReceipt,
@@ -79,7 +80,8 @@ export function PaymentReturn() {
             <PaymentPanel
               order={order}
               token={reference.token}
-              onUpdated={setOrder}
+              customerId={reference.customerId}
+              onUpdated={updated => setOrder(current => mergePaymentOrder(current, updated))}
             />
             <a
               className="rs-button rs-spaced"

@@ -93,6 +93,7 @@ import {
   type PendingSubmission,
 } from "./customer/pending";
 import { quoteBinding } from "./customer/quoteBinding";
+import { mergePaymentOrder } from "./customer/paymentLifetime";
 import { createTrackingReadGuard } from "./customer/trackingRead";
 import { clearSubmittedCart, createCheckoutLifetime } from "./customer/checkoutLifetime";
 
@@ -1812,7 +1813,7 @@ function TrackPage({
               {t("receipt.print")}
             </button>
           </div>
-          <PaymentPanel order={order} token={token} onUpdated={setOrder} />
+          <PaymentPanel order={order} token={token} customerId={customerId} onUpdated={updated => setOrder(current => mergePaymentOrder(current, updated))} />
           <OrderLocation order={order} token={token}/>
           {(token || customerId) && <OrderSupportPanel key={`${order.number}-${customerId}`} order={order} token={token} customerId={customerId} onUpdated={setOrder}/>}
           {order.mode === "delivery" && (

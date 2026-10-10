@@ -82,6 +82,11 @@ export function createRecoveryFixture({initialCustomer=null}={}) {
       assert.ok(['customer-A','customer-B'].includes(body?.username));
       assert.equal(body.password,'synthetic-password-only');
       activeCustomer=customer(body.username);result=response({customer:activeCustomer});
+    } else if(['GET','POST'].includes(method) && /^\/orders\/R\d+\/payment(?:\/refresh)?$/.test(path)) {
+      const number=path.split('/')[2], entry=orders.get(number);
+      if(method==='POST' && !path.endsWith('/refresh') && body?.provider!=='paylink') {unexpected.push(key);result=response({error:'not_found'},404);}
+      else if(!entry || entry.receipt.order.payment.method!=='card' || headers['x-order-token']!==entry.receipt.trackingToken) result=response({error:'invalid_order_access'},403);
+      else result=response({attemptId:'11111111-1111-4111-8111-111111111111',provider:'paylink',mode:'test',status:'pending',url:'https://paymentpilot.paylink.sa/pay/info/123'});
     } else if(method==='GET' && /^\/orders\/R\d+(?:\/refunds)?$/.test(path)) {
       const number=path.split('/')[2], entry=orders.get(number);
       if(!entry || (headers['x-order-token']!==entry.receipt.trackingToken && (!entry.owner || entry.owner!==activeCustomer?.id))) result=response({error:'invalid_order_access'},403);
