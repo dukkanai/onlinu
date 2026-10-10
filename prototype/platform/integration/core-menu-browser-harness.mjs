@@ -1,7 +1,7 @@
 // Test host only. It exercises the MCP Apps iframe protocol, but is not evidence
 // that ChatGPT rendered a resource. callTool can route to a real local MCP server.
-export async function openCoreMenuHarness({ browser, html, initialResult, initialTenant = initialResult.structuredContent?.tenantId, cancelOpening = false, callTool, legacy = false, viewport = { width: 980, height: 1000 } }) {
-  const context = await browser.newContext({ viewport, locale: 'ar-SA' });
+export async function openCoreMenuHarness({ browser, html, initialResult, initialTenant = initialResult.structuredContent?.tenantId, cancelOpening = false, callTool, legacy = false, hasTouch = false, viewport = { width: 980, height: 1000 } }) {
+  const context = await browser.newContext({ viewport, hasTouch, locale: 'ar-SA' });
   const page = await context.newPage();
   page.setDefaultTimeout(6000);
   const errors = [], requests = [], calls = [];
@@ -26,7 +26,7 @@ export async function openCoreMenuHarness({ browser, html, initialResult, initia
     await page.evaluate(({ html, initialResult, initialTenant, cancelOpening }) => {
       const iframe = document.querySelector('iframe');
       const send = message => iframe.contentWindow.postMessage({ jsonrpc: '2.0', ...message }, '*');
-      window.harness = { initialized: false, events: [], send };
+      window.harness = { initialized: false, events: [], toolReplies: [], send };
       window.addEventListener('message', async event => {
         if (event.source !== iframe.contentWindow || event.data?.jsonrpc !== '2.0') return;
         const msg = event.data;
@@ -41,6 +41,7 @@ export async function openCoreMenuHarness({ browser, html, initialResult, initia
         } else if (msg.method === 'tools/call') {
           try { send({ id: msg.id, result: await window.__callTool(msg.params.name, msg.params.arguments) }); }
           catch { send({ id: msg.id, error: { code: -32603, message: 'fixture failure' } }); }
+          window.harness.toolReplies.push(msg.id);
         }
       });
       iframe.srcdoc = html;

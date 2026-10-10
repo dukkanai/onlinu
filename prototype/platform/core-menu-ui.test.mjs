@@ -181,6 +181,90 @@ test('core menu MCP Apps browser behavior', { skip: process.env.CORE_BROWSER_TES
     assert.deepEqual(legacy.errors, []);
   });
 
+  await t.test('touch cart survives host resizing and ignores delayed quotes after reset and teardown', async () => {
+    const mobileMenu = structuredClone(menu);
+    mobileMenu.items[0].description = 'وصف عربي طويل لاختبار التفاف النص وإمكانية الوصول إلى أزرار السلة. '.repeat(12);
+    let nextGate = null;
+    const h = await open({
+      initialResult: success(mobileMenu), hasTouch: true, viewport: { width: 360, height: 800 },
+      callTool: async (name, args) => {
+        const pending = nextGate; nextGate = null;
+        if (pending) await pending.promise;
+        return quote(args);
+      },
+    });
+    const f = h.frame;
+    const plus = item(f, 'chicken').getByRole('button', { name: 'زيادة كبسة دجاج', exact: true });
+    const option = item(f, 'chicken').locator('[data-option-id="rice"]');
+    const sizes = () => h.page.evaluate(() => window.harness.events
+      .filter(event => event.method === 'ui/notifications/size-changed').map(event => event.params.height));
+    // A ping response is a host-message barrier: previous tool replies have
+    // already reached the iframe before we inspect its post-reset state.
+    let barrier = 0;
+    async function settled() {
+      const id = `mobile-barrier-${++barrier}`;
+      await h.page.evaluate(id => window.harness.send({ id, method: 'ping', params: {} }), id);
+      await h.page.waitForFunction(id => window.harness.events.some(event => event.id === id && event.result), id);
+    }
+    async function fits() {
+      assert.equal(await f.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.equal(await f.locator('html').getAttribute('dir'), 'rtl');
+    }
+    assert.equal(await f.evaluate(() => navigator.maxTouchPoints > 0), true);
+    await fits();
+    await plus.tap(); await total(f, 3200);
+    await option.tap(); await total(f, 3800);
+    await plus.tap(); await total(f, 7600);
+    assert.deepEqual(h.calls.at(-1).args.items, [{ itemId: 'chicken', quantity: 2, optionIds: ['rice'] }]);
+    await h.page.waitForFunction(() => window.harness.events.some(event => event.method === 'ui/notifications/size-changed'));
+    const portraitSizes = await sizes();
+    const portraitHeight = portraitSizes.at(-1);
+    const beforeLandscape = portraitSizes.length;
+    await h.page.setViewportSize({ width: 800, height: 360 });
+    await h.page.waitForFunction(({ height, count }) => window.harness.events
+      .filter(event => event.method === 'ui/notifications/size-changed').slice(count)
+      .some(event => event.params.height !== height), { height: portraitHeight, count: beforeLandscape });
+    await fits(); await total(f, 7600);
+    assert.equal(await option.isChecked(), true);
+    assert.equal(await item(f, 'chicken').locator('output').textContent(), '2');
+    await h.page.setViewportSize({ width: 360, height: 800 });
+    await fits(); await total(f, 7600);
+
+    const delayedReset = gate(); nextGate = delayedReset; t.after(() => delayedReset.release());
+    await plus.tap(); await until(() => h.calls.length === 4);
+    await f.locator('#reset').tap();
+    delayedReset.release();
+    await h.page.waitForFunction(() => window.harness.toolReplies.length === 4);
+    await settled();
+    assert.equal(await f.locator('#quote').getAttribute('data-total-minor'), null);
+    assert.match(await f.locator('#quote').textContent(), /السلة فارغة/);
+    assert.equal(await item(f, 'chicken').locator('output').textContent(), '0');
+    assert.equal(await option.isChecked(), false);
+    assert.equal(h.calls.length, 4, 'Reset must not request another quote');
+    await fits();
+
+    const delayedTeardown = gate(); nextGate = delayedTeardown; t.after(() => delayedTeardown.release());
+    await plus.tap(); await until(() => h.calls.length === 5);
+    await h.page.evaluate(() => window.harness.send({ id: 'mobile-teardown', method: 'ui/resource-teardown', params: {} }));
+    await h.page.waitForFunction(() => window.harness.events.some(event => event.id === 'mobile-teardown' && event.result));
+    delayedTeardown.release();
+    await h.page.waitForFunction(() => window.harness.toolReplies.length === 5);
+    // Resize after teardown and wait two rendering frames; disconnected size
+    // observers must not send new notifications or revive the quote.
+    await h.page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const afterTeardown = (await sizes()).length;
+    await h.page.setViewportSize({ width: 800, height: 360 });
+    await h.page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal((await sizes()).length, afterTeardown);
+    assert.equal(await f.locator('#quote').getAttribute('data-total-minor'), null);
+    assert.equal(await plus.isDisabled(), true);
+    assert.equal(await f.locator('#refresh').isDisabled(), true);
+    assert.equal(await f.locator('#reset').isDisabled(), true);
+    assert.ok((await sizes()).every(height => Number.isFinite(height) && height > 0));
+    assert.ok(h.calls.every(call => call.name === 'quote_cart'));
+    assert.deepEqual(h.errors, []); assert.deepEqual(h.requests, []);
+  });
+
   await t.test('teardown blocks delayed results and disables all actions', async () => {
     const delayed = gate(); let waiting = false;
     const h = await open({ callTool: async (_name, args) => { waiting = true; await delayed.promise; return quote(args); } });
