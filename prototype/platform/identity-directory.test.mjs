@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { createIdentityDirectory, RESTAURANT_PERMISSIONS } from './identity-directory.mjs';
-import { createAuth } from './auth.mjs';
+import { createAuth, hash } from './auth.mjs';
 import { createOidcLogin } from './oidc.mjs';
 
 const issuer = 'https://identity.example/';
@@ -11,6 +11,159 @@ test('persistent identity refuses unverified fixture mode and insecure issuers',
   const pool = { query() {}, connect() {} };
   assert.throws(() => createIdentityDirectory({ pool, trustedIssuers: ['http://identity.example/'] }));
   assert.throws(() => createAuth({ pool, baseUrl: 'https://app.example', principalResolver() {} }), /verified_login/);
+});
+
+function issuerTrustFixture() {
+  const currentIssuer = 'https://current-identity.example/';
+  const retired = { id: randomUUID(), issuer, subject: 'same-subject', enabled: true, platform_admin: true };
+  const current = { ...retired, id: randomUUID(), issuer: currentIssuer };
+  const distinct = { ...current, id: randomUUID(), subject: 'distinct-subject' };
+  const nearMatch = { ...current, id: randomUUID(), issuer: currentIssuer.slice(0, -1) };
+  const disabled = { ...current, id: randomUUID(), enabled: false };
+  const identities = [retired, current, distinct, nearMatch, disabled];
+  const memberships = identities.map(identity => ({ principal_id: identity.id, tenant_id: 'trusted-tenant',
+    role: 'owner', permissions: [...RESTAURANT_PERMISSIONS], enabled: true, version: 1,
+    tenant_status: 'active', tenant_name: 'Synthetic tenant' }));
+  const queries = [];
+  const pool = {
+    async query(sql, values = []) {
+      queries.push({ sql, values });
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [] };
+      if (sql.includes('FROM platform_identities WHERE id=$1')) {
+        assert.match(sql, /SELECT id,issuer(?:,platform_admin)? FROM/);
+        return { rows: identities.filter(identity => identity.id === values[0] && identity.enabled) };
+      }
+      if (sql.includes('FROM platform_memberships m')) {
+        return { rows: memberships.filter(member => member.principal_id === values[0]
+          && (values[1] === undefined || member.tenant_id === values[1])) };
+      }
+      if (sql === 'SELECT status FROM platform_tenants WHERE id=$1 FOR UPDATE') return { rows: [{ status: 'active' }] };
+      throw new Error(`Unexpected fixture query: ${sql}`);
+    },
+    async connect() { return { query: pool.query, release() {} }; },
+  };
+  return { currentIssuer, retired, current, distinct, nearMatch, disabled, identities, memberships, queries, pool };
+}
+
+test('stored principals must match a currently trusted issuer exactly without linking subjects or rewriting history', async () => {
+  const fixture = issuerTrustFixture();
+  const { pool, currentIssuer, retired, current, distinct, nearMatch, disabled, identities, memberships, queries } = fixture;
+  const before = structuredClone({ identities, memberships });
+  const former = createIdentityDirectory({ pool, trustedIssuers: [issuer, currentIssuer] });
+  assert.equal((await former.resolve(retired.id)).id, retired.id);
+  await former.authorize(retired.id, 'trusted-tenant', 'orders:read');
+
+  const directory = createIdentityDirectory({ pool, trustedIssuers: [currentIssuer] });
+  for (const identity of [retired, nearMatch]) {
+    queries.length = 0;
+    assert.equal(await directory.resolve(identity.id), null);
+    await assert.rejects(directory.authorize(identity.id, 'trusted-tenant', 'orders:read'), { status: 403, code: 'untrusted_issuer' });
+    assert.equal(queries.some(query => query.sql.includes('platform_memberships')), false);
+    await assert.rejects(directory.verifiedIdentity({ issuer: identity.issuer, subject: identity.subject }), { code: 'untrusted_issuer' });
+  }
+  for (const identity of [current, distinct]) {
+    assert.equal((await directory.resolve(identity.id)).id, identity.id);
+    assert.equal((await directory.authorize(identity.id, 'trusted-tenant', 'orders:read')).principalId, identity.id);
+  }
+  for (const principalId of [disabled.id, randomUUID()]) {
+    assert.equal(await directory.resolve(principalId), null);
+    await assert.rejects(directory.authorize(principalId, 'trusted-tenant', 'orders:read'), { code: 'identity_disabled' });
+  }
+  await assert.rejects(directory.verifiedIdentity({ issuer: currentIssuer, subject: current.subject, email: 'same@example.invalid' }), { code: 'invalid_request' });
+  assert.deepEqual({ identities, memberships }, before);
+});
+
+test('retired issuers cannot exercise administrator or membership authority, or receive new ownership', async () => {
+  const { pool, currentIssuer, retired, current } = issuerTrustFixture();
+  const directory = createIdentityDirectory({ pool, trustedIssuers: [currentIssuer] });
+  const change = { role: 'kitchen', enabled: true, expectedVersion: null };
+  for (const operation of [
+    () => directory.createTenant(retired.id, { id: 'new-tenant', name: 'Synthetic tenant', ownerId: current.id }),
+    () => directory.createTenant(current.id, { id: 'new-tenant', name: 'Synthetic tenant', ownerId: retired.id }),
+    () => directory.setTenantStatus(retired.id, 'trusted-tenant', { status: 'suspended', expectedVersion: 1 }),
+    () => directory.members(retired.id, 'trusted-tenant'),
+    () => directory.setMembership(retired.id, 'trusted-tenant', current.id, change),
+    () => directory.setMembership(current.id, 'trusted-tenant', retired.id, change),
+  ]) await assert.rejects(operation(), { status: 403, code: 'untrusted_issuer' });
+});
+
+test('last-owner protection counts only enabled owners from currently trusted issuers', async t => {
+  for (const replacementTrusted of [false, true]) {
+    for (const change of [{ role: 'owner', enabled: false }, { role: 'kitchen', enabled: true }]) {
+      await t.test(`${replacementTrusted ? 'trusted' : 'retired'} replacement when owner ${change.enabled ? 'demotes' : 'disables'} themselves`, async () => {
+        const { pool, currentIssuer, current, retired, distinct, identities, memberships } = issuerTrustFixture();
+        const replacement = replacementTrusted ? distinct : retired;
+        const ownerRows = memberships.filter(member => [current.id, replacement.id].includes(member.principal_id));
+        const readQuery = pool.query;
+        let writes = 0, audits = 0;
+        pool.query = async (sql, values) => {
+          if (sql.startsWith('SELECT * FROM platform_memberships WHERE tenant_id=$1')) {
+            return { rows: ownerRows.filter(member => member.tenant_id === values[0] && member.principal_id === values[1]) };
+          }
+          if (sql.startsWith('SELECT 1 FROM platform_memberships m JOIN platform_identities i')) {
+            assert.match(sql, /i\.issuer=ANY\(\$3::text\[\]\)/);
+            assert.deepEqual(values, ['trusted-tenant', current.id, [currentIssuer]]);
+            return { rows: ownerRows.filter(member => member.tenant_id === values[0]
+              && member.principal_id !== values[1] && member.role === 'owner' && member.enabled
+              && identities.some(identity => identity.id === member.principal_id && identity.enabled
+                && values[2].includes(identity.issuer))).map(() => ({ exists: 1 })) };
+          }
+          if (sql.startsWith('INSERT INTO platform_memberships(')) {
+            writes++;
+            return { rows: [{ tenant_id: values[0], principal_id: values[1], role: values[2],
+              permissions: JSON.parse(values[3]), enabled: values[4], display_name: values[5], version: 2 }] };
+          }
+          if (sql.startsWith('INSERT INTO platform_identity_audit(')) { audits++; return { rows: [] }; }
+          return readQuery(sql, values);
+        };
+        const directory = createIdentityDirectory({ pool, trustedIssuers: [currentIssuer] });
+        const operation = directory.setMembership(current.id, 'trusted-tenant', current.id, { ...change, expectedVersion: 1 });
+        if (replacementTrusted) {
+          const updated = await operation;
+          assert.equal(updated.role, change.role);
+          assert.equal(updated.enabled, change.enabled);
+          assert.equal(writes, 1);
+          assert.equal(audits, 1);
+        } else {
+          await assert.rejects(operation, { status: 409, code: 'last_owner_required' });
+          assert.equal(writes, 0);
+          assert.equal(audits, 0);
+        }
+      });
+    }
+  }
+});
+
+test('existing browser and OAuth sessions lose access when their stored issuer leaves current trust', async () => {
+  const { pool, currentIssuer, retired, current } = issuerTrustFixture();
+  const sessions = [retired, current].flatMap(identity => ['browser', 'oauth'].map(kind => ({
+    token: randomBytes(32).toString('base64url'), principal_id: identity.id, scopes: ['orders:read'],
+    session_kind: kind, expires_at: new Date(Date.now() + 60_000).toISOString(),
+  })));
+  const before = structuredClone(sessions);
+  const sessionPool = { ...pool, async query(sql, values) {
+    if (sql.includes('FROM demo_sessions s')) return { rows: sessions.filter(session => hash(session.token) === values[0]) };
+    if (sql === 'SELECT enabled FROM demo_identities WHERE id=$1') return { rows: [{ enabled: true }] };
+    return pool.query(sql, values);
+  } };
+  const authFor = trustedIssuers => createAuth({ pool: sessionPool, baseUrl: 'https://platform.example',
+    allowSyntheticAuthorization: false, csrfKey: randomBytes(32).toString('base64'),
+    principalResolver: createIdentityDirectory({ pool, trustedIssuers }).resolve });
+  const former = authFor([issuer, currentIssuer]), currentAuth = authFor([currentIssuer]);
+  for (const session of sessions) {
+    const browser = session.session_kind === 'browser';
+    const request = { headers: browser ? { cookie: `prototype_session=${session.token}` }
+      : { authorization: `Bearer ${session.token}` } };
+    const channel = browser ? { cookieOnly: true } : { bearerOnly: true };
+    assert.equal((await former.authenticate(request, channel)).id, session.principal_id);
+    const principal = await currentAuth.authenticate(request, channel);
+    if (session.principal_id === retired.id) assert.equal(principal, null);
+    else assert.equal(principal.id, current.id);
+  }
+  for (const kind of ['browser', 'oauth']) {
+    await assert.rejects(currentAuth.issue(retired.id, ['orders:read'], { kind }), { code: 'identity_disabled' });
+  }
+  assert.deepEqual(sessions, before);
 });
 
 test('persistent tenant identity, roles, concurrency and OAuth revocation', {

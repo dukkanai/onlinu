@@ -1,6 +1,6 @@
 # Control-plane recovery safety contract
 
-Status: **proposed policy and implementation design; not implemented or activated**.
+Status: **full recovery policy remains unimplemented and inactive; a bounded authentication-preparation source/test increment is staged**.
 Source review: `574cbdb30e1e9e9ede3438ea9c6a2d8ba3460a97`, 10 October 2026.
 
 This document specifies the next source/test increment after the
@@ -9,6 +9,11 @@ It is not an operational restore script, an approval to change a live security
 setting, or evidence that production recovery is safe. Read-only investigation,
 documentation and authorized isolated source/test work can continue without a
 new live-operation approval. The activation gates below apply to live actions.
+
+The [staged preparation implementation](../prototype/platform/CONTROL-RECOVERY-PREPARATION.md)
+covers offline auth invalidation, target/configuration-bound receipts and isolated
+archive tests only. It is not wired into startup and does not satisfy the full
+acceptance matrix or authorize serving, Events APIs/workers or live recovery.
 
 ## 1. Verified source findings and evidence boundaries
 

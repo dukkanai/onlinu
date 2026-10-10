@@ -59,8 +59,9 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
   }
   async function enabledIdentity(db, principalId) {
     parse(key, principalId);
-    const { rows } = await db.query('SELECT id,platform_admin FROM platform_identities WHERE id=$1 AND enabled=TRUE', [principalId]);
+    const { rows } = await db.query('SELECT id,issuer,platform_admin FROM platform_identities WHERE id=$1 AND enabled=TRUE', [principalId]);
     if (!rows[0]) throw problem(403, 'identity_disabled');
+    if (!issuers.has(rows[0].issuer)) throw problem(403, 'untrusted_issuer');
     return rows[0];
   }
   async function administrator(db, principalId) {
@@ -107,8 +108,10 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
   }
   async function resolve(principalId) {
     if (!key.safeParse(principalId).success) return null;
-    const { rows } = await pool.query('SELECT id FROM platform_identities WHERE id=$1 AND enabled=TRUE', [principalId]);
-    if (!rows[0]) return null;
+    const { rows } = await pool.query('SELECT id,issuer FROM platform_identities WHERE id=$1 AND enabled=TRUE', [principalId]);
+    // Recheck current trust for stored principals, including existing sessions.
+    // Retiring an issuer removes authority without deleting identity/history.
+    if (!rows[0] || !issuers.has(rows[0].issuer)) return null;
     const memberships = await pool.query(`SELECT m.*,t.status AS tenant_status,t.name AS tenant_name FROM platform_memberships m
       JOIN platform_tenants t ON t.id=m.tenant_id WHERE m.principal_id=$1 AND m.enabled=TRUE AND t.status IN ('active','suspended')
       ORDER BY m.tenant_id`, [principalId]);
@@ -171,7 +174,8 @@ export function createIdentityDirectory({ pool, trustedIssuers }) {
       if ((row ? Number(row.version) : null) !== change.expectedVersion) throw problem(409, 'version_conflict');
       if (row?.role === 'owner' && row.enabled && (change.role !== 'owner' || !change.enabled)) {
         const others = await db.query(`SELECT 1 FROM platform_memberships m JOIN platform_identities i ON i.id=m.principal_id
-          WHERE m.tenant_id=$1 AND m.principal_id<>$2 AND m.role='owner' AND m.enabled=TRUE AND i.enabled=TRUE LIMIT 1`, [tenantId, principalId]);
+          WHERE m.tenant_id=$1 AND m.principal_id<>$2 AND m.role='owner' AND m.enabled=TRUE AND i.enabled=TRUE
+          AND i.issuer=ANY($3::text[]) LIMIT 1`, [tenantId, principalId, [...issuers]]);
         if (!others.rows.length) throw problem(409, 'last_owner_required');
       }
       const result = await db.query(`INSERT INTO platform_memberships(tenant_id,principal_id,role,permissions,enabled,display_name)

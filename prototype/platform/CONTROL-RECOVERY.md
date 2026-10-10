@@ -5,6 +5,10 @@ generated control-plane data. It is a test fixture, not an operational backup or
 restore tool. It never connects to Dex, a restaurant core, a payment service or a
 messaging service.
 
+A separate [staged authentication-preparation increment](CONTROL-RECOVERY-PREPARATION.md)
+adds target-bound invalidation and receipt validation with its own opted-in archive
+fixture. It does not activate a startup barrier or establish complete recovery safety.
+
 ## Run
 
 Use the existing isolated PostgreSQL harness described in
