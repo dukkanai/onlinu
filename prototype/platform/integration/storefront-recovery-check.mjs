@@ -118,6 +118,12 @@ export async function checkStorefrontRecovery({browser,root,evidence}){
         await page.getByRole('button',{name:operation==='refresh'?'Check payment status':'Continue to secure payment',exact:true}).click();
         await entered(delayed);
         if(destination==='other-order') {
+          // Loaded tracking hides its lookup form. Use the real SPA navigation
+          // link to start a fresh lookup while A's payment POST remains pending.
+          // This exercises unmount -> lookup B, not an in-place identity swap.
+          await page.locator('nav a[href="/track"]').click();
+          assert.equal(new URL(page.url()).search,'');
+          assert.equal(new URL(page.url()).hash,'');
           await page.getByLabel('Order number',{exact:true}).fill(second.order.number);
           await page.getByLabel('Access code',{exact:true}).fill(second.accessCode);
           await page.getByRole('button',{name:'Find my order',exact:true}).click();
