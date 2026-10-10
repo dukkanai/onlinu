@@ -88,6 +88,12 @@ invalidating/reissuing sessions, grants, authorization codes and pending OIDC
 flows before restored services are exposed. No such policy is implemented or
 activated by this fixture.
 
+The proposed [control-plane recovery safety contract](../../plans/CONTROL-RECOVERY-SAFETY.md)
+defines a cold-recovery invalidation barrier, data/identity preservation, issuer
+binding, old-process fencing, an exact synthetic acceptance matrix and separate
+live activation gates. It is design documentation, not implemented recovery
+behavior or approval to change a live environment.
+
 ### Full-archive post-snapshot exposure matrix
 
 `control-rollback-exposure.test.mjs` is a separate, explicitly opted-in negative
