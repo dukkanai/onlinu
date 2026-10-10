@@ -88,6 +88,52 @@ invalidating/reissuing sessions, grants, authorization codes and pending OIDC
 flows before restored services are exposed. No such policy is implemented or
 activated by this fixture.
 
+### Full-archive post-snapshot exposure matrix
+
+`control-rollback-exposure.test.mjs` is a separate, explicitly opted-in negative
+fixture. A passing result **demonstrates exposure**, not a safe invalidation
+policy. It uses the same database/client/ownership guards as the recovery test:
+
+```sh
+TEST_CONTROL_ROLLBACK_EXPOSURE=1 \
+TEST_CONTROL_RECOVERY_PG_BIN=/absolute/path/to/postgresql/bin \
+node --test prototype/platform/control-rollback-exposure.test.mjs
+```
+
+The source is quiesced for a real T0 archive. Only after that archive is complete
+does the fixture perform and verify these T1 changes on independent generated
+identities:
+
+- Browser logout: the old cookie no longer authenticates.
+- OAuth family revocation: old access and refresh tokens are rejected.
+- Refresh rotation with scope narrowing, followed by consumed-token replay: the
+  older access token is rejected, and replay revokes the successor family.
+- Authorization-code consumption: a second exchange is rejected.
+
+It restores the unchanged T0 archive to a newly created database, compares all
+12 tables and the sequence exactly, restarts the control modules, and verifies
+the old authority becomes usable again. In particular, the older refresh token
+recovers its T0 broader scope. Tokens minted only at T1 remain absent from the
+restored database. Within the recovered timeline, subsequent logout, revocation,
+refresh replay detection and authorization-code single use still work.
+
+Negative controls preserve revocations and expired browser/code/family authority
+already present at T0. Wrong PKCE, client, resource and redirect are rejected;
+browser cookies and OAuth bearer tokens retain their separate authority. The
+source's T1 fingerprint and the archive hash must remain unchanged through target
+testing. Cleanup verifies the owned schema and restored database are gone before
+emitting the bounded report. No raw tokens, row contents or archive bytes are
+reported. Ordinary runs skip this test; CI explicitly opts into both fixtures.
+
+This matrix uses direct generated identity seeding and never invokes its provider
+adapter. Some of its 12 tables are intentionally empty; populated identity,
+membership and OIDC-state restoration remain covered by the original fixture.
+It does not test Dex, provider-side authorization codes, native-staff storage,
+Events, courier sessions, a coordinated system snapshot or live recovery. The
+report deliberately retains `postSnapshotRevocationProtected: false`. Any real
+invalidation/reissuance procedure remains a separately reviewed operating policy
+and implementation gate.
+
 Also excluded: native-staff OAuth storage, provisioning/checkouts/event tables,
 cluster-global roles and ACLs, a coordinated snapshot with restaurant databases
 or media, production secret/key mounts, off-host encryption and retention, RPO,

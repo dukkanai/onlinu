@@ -261,13 +261,14 @@ jobs:
         run: npm test
         working-directory: prototype/platform
 
-      - name: Test synthetic control-plane archive and recovery
+      - name: Test synthetic control-plane archive and rollback exposure
         timeout-minutes: 3
         env:
           TEST_CONTROL_RECOVERY: "1"
+          TEST_CONTROL_ROLLBACK_EXPOSURE: "1"
         run: |
           export TEST_CONTROL_RECOVERY_PG_BIN="$(pg_config --bindir)"
-          node --test control-recovery.test.mjs
+          node --test control-recovery.test.mjs control-rollback-exposure.test.mjs
         working-directory: prototype/platform
 
       - name: Preserve real-core MCP menu preview rendering
