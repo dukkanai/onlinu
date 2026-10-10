@@ -85,6 +85,7 @@ type restaurantPaymentView struct {
 type restaurantPaymentRequest struct {
 	AttemptID, OrderNumber, Currency, CustomerName, Phone, ReturnURL, HookURL string
 	AmountMinor                                                               int64
+	CreatedAt                                                                 time.Time
 }
 type restaurantPaymentRemote struct {
 	ID, URL, Status, Currency, Reference string
@@ -488,7 +489,9 @@ func (p *restaurantPayments) Start(ctx context.Context, number, token, customerI
 	if err != nil {
 		return restaurantPaymentView{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO restaurant_payment_attempts(id,order_number,provider,mode,status,sealed_config) VALUES($1,$2,$3,$4,$5,$6)`, a.ID, a.Number, a.Provider, a.Mode, a.Status, sealed); err != nil {
+	// Persist the exact timestamp used by provider request parameters. Database
+	// now() is transaction-start time and can be stale after an order-lock wait.
+	if err = tx.QueryRowContext(ctx, `INSERT INTO restaurant_payment_attempts(id,order_number,provider,mode,status,sealed_config,created_at) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp()) RETURNING created_at`, a.ID, a.Number, a.Provider, a.Mode, a.Status, sealed).Scan(&a.CreatedAt); err != nil {
 		return restaurantPaymentView{}, err
 	}
 	o.Payment.Status = "pending"
@@ -498,7 +501,7 @@ func (p *restaurantPayments) Start(ctx context.Context, number, token, customerI
 	if err = tx.Commit(); err != nil {
 		return restaurantPaymentView{}, err
 	}
-	req := restaurantPaymentRequest{AttemptID: a.ID, OrderNumber: o.Number, AmountMinor: o.TotalMinor, Currency: o.Currency, CustomerName: o.CustomerName, Phone: o.Phone, ReturnURL: p.baseURL + "/payment-hooks/return/" + url.PathEscape(a.ID), HookURL: p.baseURL + "/payment-hooks/" + provider + "/" + a.ID}
+	req := restaurantPaymentRequest{AttemptID: a.ID, OrderNumber: o.Number, AmountMinor: o.TotalMinor, Currency: o.Currency, CustomerName: o.CustomerName, Phone: o.Phone, CreatedAt: a.CreatedAt, ReturnURL: p.baseURL + "/payment-hooks/return/" + url.PathEscape(a.ID), HookURL: p.baseURL + "/payment-hooks/" + provider + "/" + a.ID}
 	remote, createErr := p.adapter.Create(ctx, cfg, req)
 	// Persist the outcome using a fresh bounded context, even if browser canceled.
 	saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

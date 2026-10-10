@@ -226,7 +226,15 @@ type restaurantStripeSession struct {
 }
 
 func (g *restaurantPaymentGateways) createStripe(ctx context.Context, c restaurantPaymentConfig, r restaurantPaymentRequest) (restaurantPaymentRemote, error) {
-	v := url.Values{"mode": {"payment"}, "payment_method_types[0]": {"card"}, "success_url": {r.ReturnURL}, "cancel_url": {r.ReturnURL}, "client_reference_id": {r.AttemptID}, "metadata[restaurant_attempt]": {r.AttemptID}, "line_items[0][price_data][currency]": {strings.ToLower(r.Currency)}, "line_items[0][price_data][unit_amount]": {strconv.FormatInt(r.AmountMinor, 10)}, "line_items[0][price_data][product_data][name]": {"Order " + r.OrderNumber}, "line_items[0][quantity]": {"1"}, "expires_at": {strconv.FormatInt(time.Now().Add(30*time.Minute).Unix(), 10)}}
+	if r.CreatedAt.IsZero() {
+		return restaurantPaymentRemote{}, restaurantPaymentProviderError()
+	}
+	// Every parameter must stay identical for the attempt's idempotency key.
+	// Use its persisted timestamp, never the current clock on a repeated call.
+	// A one-minute submission margin avoids starting exactly at Stripe's
+	// 30-minute minimum. This does not authorize retrying an uncertain create.
+	expires := r.CreatedAt.Add(31 * time.Minute).Unix()
+	v := url.Values{"mode": {"payment"}, "payment_method_types[0]": {"card"}, "success_url": {r.ReturnURL}, "cancel_url": {r.ReturnURL}, "client_reference_id": {r.AttemptID}, "metadata[restaurant_attempt]": {r.AttemptID}, "line_items[0][price_data][currency]": {strings.ToLower(r.Currency)}, "line_items[0][price_data][unit_amount]": {strconv.FormatInt(r.AmountMinor, 10)}, "line_items[0][price_data][product_data][name]": {"Order " + r.OrderNumber}, "line_items[0][quantity]": {"1"}, "expires_at": {strconv.FormatInt(expires, 10)}}
 	v.Set("payment_intent_data[metadata][restaurant_attempt]", r.AttemptID)
 	var out restaurantStripeSession
 	err := g.form(ctx, http.MethodPost, "https://api.stripe.com/v1/checkout/sessions", "Bearer "+c.Secrets["secretKey"], v, &out, map[string]string{"Idempotency-Key": "restaurant-" + r.AttemptID})

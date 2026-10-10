@@ -114,7 +114,7 @@ func TestRestaurantPaymentStripeCreateAndRequery(t *testing.T) {
 		}
 		return restaurantPaymentTestResponse(`{"id":"cs_test_one","url":"https://checkout.stripe.com/c/pay/cs_test_one","mode":"payment","livemode":false,"payment_status":"paid","status":"complete","amount_total":11500,"currency":"sar","client_reference_id":"` + attempt + `","payment_intent":{"status":"succeeded","latest_charge":{"id":"ch_mock","paid":true,"captured":true,"amount":11500,"amount_captured":11500,"amount_refunded":0,"currency":"sar","livemode":false}}}`), nil
 	})}}
-	req := restaurantPaymentRequest{AttemptID: attempt, OrderNumber: "R1", AmountMinor: 11500, Currency: "SAR", ReturnURL: "https://restaurant.test/payment-return?attempt=" + attempt}
+	req := restaurantPaymentRequest{AttemptID: attempt, OrderNumber: "R1", AmountMinor: 11500, Currency: "SAR", CreatedAt: time.Now().UTC(), ReturnURL: "https://restaurant.test/payment-return?attempt=" + attempt}
 	remote, err := g.Create(context.Background(), cfg, req)
 	if err != nil || remote.ID != "cs_test_one" || remote.Status == "paid" {
 		t.Fatalf("creation must not confirm payment: %v", err)
