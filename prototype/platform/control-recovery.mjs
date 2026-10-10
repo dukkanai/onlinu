@@ -1,4 +1,4 @@
-/** Staged, offline authentication preparation. NOT a restore tool or serving permit.
+/** Staged, offline authentication/Events preparation. NOT a restore tool or serving permit.
  * Nothing imports this module from server startup, HTTP routes, or workers.
  * The caller must independently fence old processes and keep Events APIs/workers
  * closed. Supplied review/fence records are operator assertions, not proof.
@@ -7,10 +7,12 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
-export const CONTROL_RECOVERY_POLICY = 'cold-authentication-preparation-v1';
-const implementation = 'control-recovery-v1';
+export const CONTROL_RECOVERY_POLICY = 'cold-authentication-events-preparation-v2';
+const implementation = 'control-recovery-v2';
 const receiptTable = 'platform_control_recovery_receipts';
 const authTables = ['demo_sessions', 'demo_oauth_grants', 'demo_oauth_refresh_tokens', 'demo_oauth_codes', 'oidc_login_states'];
+const eventTables = ['event_owner_epochs', 'event_subscriptions', 'event_deliveries', 'event_callback_verifications'];
+const eventsStorage = z.enum(['absent', 'installed']);
 const expired = '1970-01-01T00:00:00.000Z'; // Finite and parseable by OIDC's JavaScript Date check.
 const identifier = z.string().regex(/^(?!pg_)[a-z][a-z0-9_]{0,62}$/);
 const oid = z.number().int().min(1).max(4294967295);
@@ -25,7 +27,7 @@ const bindingSchema = z.object({ origin: z.string().max(2048),
   customer: z.object({ issuer: z.string().max(2048), resource: z.string().max(2048) }).strict(),
   native: z.object({ issuer: z.string().max(2048), resource: z.string().max(2048), mobileEnabled: z.boolean() }).strict().nullable(),
   oidc: z.object({ issuer: z.string().max(2048), clientId: z.string().min(1).max(255) }).strict(),
-  redirectAllowlist: z.array(z.string().max(2048)).max(100), events: z.literal('disabled'),
+  redirectAllowlist: z.array(z.string().max(2048)).max(100), events: z.literal('disabled'), eventsStorage,
 }).strict();
 const expectationSchema = z.object({ recoveryId: uuid, policy: z.literal(CONTROL_RECOVERY_POLICY), target: targetSchema,
   binding: bindingSchema, operatorReference: reference,
@@ -33,12 +35,17 @@ const expectationSchema = z.object({ recoveryId: uuid, policy: z.literal(CONTROL
   coldFence: evidenceSchema,
 }).strict();
 const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
-const receiptSchema = z.object({ expectation: expectationSchema, implementation: z.literal(implementation),
+const receiptBase = z.object({ expectation: expectationSchema, implementation: z.literal(implementation),
   operationSha256: digest, completedAt: z.string().datetime(),
-  counts: z.object(Object.fromEntries(authTables.map(name => [name, count]))).strict(),
-  scope: z.literal('authentication-preparation-only'), servingAuthorized: z.literal(false),
+  servingAuthorized: z.literal(false),
   eventsSupported: z.literal(false), processFencingVerified: z.literal(false), authorityReconciliationVerified: z.literal(false),
 }).strict();
+const receiptSchema = z.discriminatedUnion('eventsCoverage', [
+  receiptBase.extend({ eventsCoverage: z.literal('absent'), scope: z.literal('authentication-preparation-only'),
+    counts: z.object(Object.fromEntries(authTables.map(name => [name, count]))).strict() }).strict(),
+  receiptBase.extend({ eventsCoverage: z.literal('fenced-storage-only'), scope: z.literal('authentication-events-preparation-only'),
+    counts: z.object(Object.fromEntries([...authTables, ...eventTables, 'event_owner_epochs_inserted'].map(name => [name, count]))).strict() }).strict(),
+]);
 
 export class ControlRecoveryError extends Error {
   constructor(code) { super(code); this.name = 'ControlRecoveryError'; this.code = code; }
@@ -62,7 +69,7 @@ export function controlRecoveryBinding(configuration) {
   const config = parse(z.object({ baseUrl: z.string().max(2048),
     oidc: z.object({ issuer: z.string().max(2048), clientId: z.string().min(1).max(255).regex(/^[^\x00-\x1f\x7f]+$/) }).strict(),
     nativeStaffEnabled: z.boolean(), nativeMobileEnabled: z.boolean(),
-    redirectAllowlist: z.array(z.string().max(2048)).max(100), eventsEnabled: z.literal(false),
+    redirectAllowlist: z.array(z.string().max(2048)).max(100), eventsEnabled: z.literal(false), eventsStorage,
   }).strict(), configuration);
   let base, upstream;
   try { base = new URL(config.baseUrl); upstream = new URL(config.oidc.issuer); }
@@ -77,7 +84,7 @@ export function controlRecoveryBinding(configuration) {
   }
   return { origin: base.origin, customer: { issuer: base.origin, resource: base.origin + '/mcp' },
     native: config.nativeStaffEnabled ? { issuer: base.origin + '/native', resource: base.origin + '/native/api', mobileEnabled: config.nativeMobileEnabled } : null,
-    oidc: config.oidc, redirectAllowlist: [...new Set(config.redirectAllowlist)].sort(), events: 'disabled' };
+    oidc: config.oidc, redirectAllowlist: [...new Set(config.redirectAllowlist)].sort(), events: 'disabled', eventsStorage: config.eventsStorage };
 }
 function inputs(expectation, configuration) {
   const expected = parse(expectationSchema, expectation);
@@ -137,10 +144,29 @@ async function verifyTarget(query, expected) {
     databaseOwnerOid: row.database_owner_oid, marker: row.marker, schema: row.schema, schemaOid: row.schema_oid,
     schemaOwnerOid: row.schema_owner_oid }) !== stable(expected)) fail('recovery_target_mismatch');
 }
+async function verifyEventsStorage(query, expected) {
+  // Bounded coverage/topology checks, not arbitrary-schema attestation. Current
+  // column/constraint definitions and fenced DDL writers remain prerequisites.
+  const { rows } = await query(`SELECT c.relname,c.relkind,c.relpersistence,c.relrowsecurity,c.relforcerowsecurity,
+    EXISTS(SELECT 1 FROM pg_inherits i WHERE i.inhrelid=c.oid OR i.inhparent=c.oid) AS inherited,
+    EXISTS(SELECT 1 FROM pg_rewrite r WHERE r.ev_class=c.oid) AS user_rules,
+    EXISTS(SELECT 1 FROM pg_trigger t WHERE t.tgrelid=c.oid AND NOT t.tgisinternal) AS user_triggers
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1
+      AND left(c.relname,6)='event_' AND c.relkind NOT IN ('i','I')`, [expected.target.schema]);
+  if (expected.binding.eventsStorage === 'absent') {
+    if (rows.length) fail('recovery_events_storage_mismatch');
+  } else if (rows.length !== eventTables.length || rows.some(row => !eventTables.includes(row.relname) || row.relkind !== 'r' || row.relpersistence !== 'p' ||
+      row.inherited || row.relrowsecurity || row.relforcerowsecurity || row.user_rules || row.user_triggers)) {
+    // No auto-initialization, migration, optional-table skipping or partial coverage.
+    fail('recovery_events_storage_mismatch');
+  }
+}
 function validateReceipt(value, expected) {
   const receipt = parse(receiptSchema, value, 'recovery_receipt_invalid');
   if (Buffer.byteLength(stable(receipt)) > 16384 || stable(receipt.expectation) !== stable(expected) ||
-      receipt.operationSha256 !== checksum(expected)) fail('recovery_receipt_mismatch');
+      receipt.operationSha256 !== checksum(expected) ||
+      receipt.eventsCoverage !== (expected.binding.eventsStorage === 'installed' ? 'fenced-storage-only' : 'absent')) fail('recovery_receipt_mismatch');
   return receipt;
 }
 async function readReceipt(query, expected) {
@@ -151,7 +177,7 @@ async function readReceipt(query, expected) {
 }
 
 /** Administrative API only; no CLI/HTTP route, backup, restore or target discovery.
- * Atomic auth invalidation + receipt. Exact same-operation retries are read-only
+ * Atomic auth/installed Events invalidation + receipt. Exact same-operation retries are read-only
  * after the receipt lookup and retain freshly issued sessions. New restores MUST
  * receive a new external ID; reusing an archived ID is not detectable here.
  */
@@ -162,21 +188,40 @@ export async function prepareControlRecovery({ pool, expectation, configuration,
     // Serialize concurrent preparation in the same database/schema, including DDL.
     await query('SELECT pg_advisory_xact_lock($1::int,$2::int)', [19470101, expected.target.schemaOid | 0]);
     await verifyTarget(query, expected.target);
+    await verifyEventsStorage(query, expected);
     const table = qualified(expected.target.schema, receiptTable);
     await query('CREATE TABLE IF NOT EXISTS ' + table + ` (recovery_id UUID PRIMARY KEY,
       receipt JSONB NOT NULL CHECK(octet_length(receipt::text)<=16384), created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
     const previous = await readReceipt(query, expected);
     if (previous) return previous;
-    await query('LOCK TABLE ' + authTables.map(name => qualified(expected.target.schema, name)).join(',') + ' IN ACCESS EXCLUSIVE MODE');
+    const installed = expected.binding.eventsStorage === 'installed';
+    await query('LOCK TABLE ' + [...authTables, ...(installed ? eventTables : [])].map(name => qualified(expected.target.schema, name)).join(',') + ' IN ACCESS EXCLUSIVE MODE');
     const updates = ['expires_at=$1', 'revoked=TRUE', 'consumed=TRUE,expires_at=$1', 'expires_at=$1', 'expires_at=$1'];
     const counts = {};
     for (let i = 0; i < authTables.length; i++) {
       const result = await query('UPDATE ' + qualified(expected.target.schema, authTables[i]) + ' SET ' + updates[i], i === 1 ? [] : [expired]);
       counts[authTables[i]] = parse(count, result.rowCount, 'recovery_count_invalid');
     }
+    if (installed) {
+      const events = Object.fromEntries(eventTables.map(name => [name, qualified(expected.target.schema, name)]));
+      // Preserve history and repair only the missing fencing rows. Cache-only
+      // owners matter too; no callback, secret decryption or external work occurs.
+      const inserted = await query(`INSERT INTO ${events.event_owner_epochs}(owner_id)
+        SELECT owner_id FROM ${events.event_subscriptions} UNION SELECT owner_id FROM ${events.event_callback_verifications}
+        ON CONFLICT (owner_id) DO NOTHING`);
+      counts.event_owner_epochs_inserted = parse(count, inserted.rowCount, 'recovery_count_invalid');
+      const changes = ['epoch=epoch+1', 'active=FALSE,generation=generation+1,updated_at=transaction_timestamp()',
+        "status='revoked',finished_at=transaction_timestamp() WHERE status='pending'", 'verified_until=$1'];
+      for (let i = 0; i < eventTables.length; i++) {
+        const result = await query('UPDATE ' + events[eventTables[i]] + ' SET ' + changes[i], i === 3 ? [expired] : []);
+        counts[eventTables[i]] = parse(count, result.rowCount, 'recovery_count_invalid');
+      }
+    }
     await verifyTarget(query, expected.target);
     const receipt = validateReceipt({ expectation: expected, implementation, operationSha256: checksum(expected),
-      completedAt: new Date().toISOString(), counts, scope: 'authentication-preparation-only', servingAuthorized: false,
+      completedAt: new Date().toISOString(), counts,
+      scope: installed ? 'authentication-events-preparation-only' : 'authentication-preparation-only',
+      eventsCoverage: installed ? 'fenced-storage-only' : 'absent', servingAuthorized: false,
       eventsSupported: false, processFencingVerified: false, authorityReconciliationVerified: false }, expected);
     await query('INSERT INTO ' + table + '(recovery_id,receipt) VALUES($1,$2)', [expected.recoveryId, JSON.stringify(receipt)]);
     return receipt;
@@ -190,6 +235,7 @@ export async function verifyControlRecoveryReceipt({ pool, expectation, configur
   const expected = inputs(expectation, configuration);
   return transaction(pool, signal, true, async query => {
     await verifyTarget(query, expected.target);
+    await verifyEventsStorage(query, expected);
     const receipt = await readReceipt(query, expected);
     if (!receipt) fail('recovery_receipt_missing');
     return receipt;

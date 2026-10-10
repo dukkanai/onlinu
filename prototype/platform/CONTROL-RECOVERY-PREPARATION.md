@@ -1,4 +1,4 @@
-# Staged control authentication recovery preparation
+# Staged control authentication and Events recovery preparation
 
 Status: source/test increment only. `control-recovery.mjs` is not imported by
 ordinary startup, HTTP handlers, workers or deployment configuration. It does
@@ -9,7 +9,8 @@ remains the activation gate; the original courier-session denial is unchanged.
 
 `controlRecoveryBinding(configuration)` accepts an explicit non-secret security
 configuration: HTTPS origin, exact canonical upstream issuer/client ID, customer
-redirect allowlist, native staff/mobile switches, and `eventsEnabled: false`.
+redirect allowlist, native staff/mobile switches, `eventsEnabled: false` and an
+explicit `eventsStorage: 'absent' | 'installed'` declaration.
 It derives customer/native issuer/resource pairs, deduplicates/sorts redirects,
 and rejects ambiguous or unsupported configuration. Do not pass credentials.
 
@@ -17,7 +18,7 @@ and rejects ambiguous or unsupported configuration. Do not pass credentials.
 administrative module API with no HTTP or command-line entrypoint. The caller
 supplies an already identified target and explicit expectation containing:
 
-- A newly allocated UUID recovery ID and exact `cold-authentication-preparation-v1`
+- A newly allocated UUID recovery ID and exact `cold-authentication-events-preparation-v2`
   policy version
 - Database name, database OID and owner OID, a fresh database ownership comment
   `onlinu-control-recovery:<uuid>`, schema name/OID and schema owner OID
@@ -38,7 +39,27 @@ locks the five authentication tables, expires every browser/OAuth access session
 revokes every refresh family, consumes/expires every refresh token, expires every
 authorization code, and sets every pending OIDC state to a finite 1970 expiry.
 No resource/profile filter can accidentally omit code-only or native authority.
-Rows remain present. A separate receipt table stores only the bounded expectation,
+Rows remain present. Actual Events storage must match the explicit binding before
+preparation, same-ID retry or receipt verification. An absent declaration rejects
+any `event_*` relation other than indexes; installed storage requires exactly the
+four supported permanent ordinary tables. Partial/unknown tables, views, foreign
+tables, unlogged storage, inheritance/partitions, row-level security and user
+rules/triggers fail closed. This is a bounded catalog check, not complete schema
+attestation, migration or runtime compatibility verification. It still assumes
+the trusted, reviewed schema and separately fenced DDL writers.
+
+For installed Events storage, the same transaction locks the four tables, adds
+missing owner-epoch rows for subscription/cache owners, advances all owner epochs,
+advances all subscription generations and disables every subscription, marks only
+pending deliveries revoked with a finite completion timestamp, and expires every
+callback-verification entry. Existing inactive subscriptions and epoch-only owners
+are included. SQL/constraint errors or counter overflow abort the transaction;
+no counter is reset or wrapped. Subscription bindings, secrets and timestamps other
+than `updated_at`, delivery bodies/attempts and all terminal delivery rows remain
+unchanged. The business-ingestion cursor is not reset. The operation does not
+decrypt secrets, send callback traffic, verify external effects or resume workers.
+
+A separate receipt table stores only the bounded expectation,
 configuration/policy/implementation binding, digest, completion time and affected
 row counts. No raw tokens, codes, PKCE values or secrets are recorded. Identity
 records, memberships, client registrations, tenant records and identity-audit
@@ -51,14 +72,24 @@ exactly the same owned operation verifies its committed receipt or performs the
 transaction if none committed. Concurrent identical first requests serialize.
 Same-ID retries do not invalidate sessions issued after preparation. Reuse with a
 changed configuration, target, operator/review/fence record or policy is refused.
+V1 receipts and expectations are unsupported, not silently upgraded or accepted
+as Events coverage. A newly reviewed operation needs a fresh external recovery ID
+and explicit target/storage binding; existing receipt history is retained.
 A different operation is never silently substituted on error.
 
 `verifyControlRecoveryReceipt({pool, expectation, configuration, signal})` is a
 read-only prerequisite check, with no schema initialization or repair. Missing,
 malformed, mismatched or unsupported receipts fail closed. The successful result
-explicitly records `scope: authentication-preparation-only`,
+explicitly records `scope: authentication-preparation-only` for absent Events
+storage or `authentication-events-preparation-only` for installed storage,
 `servingAuthorized: false`, `eventsSupported: false`,
 `processFencingVerified: false` and `authorityReconciliationVerified: false`.
+The strict `eventsCoverage` is respectively `absent` or `fenced-storage-only`.
+`eventsSupported: false` means Events serving/activation remains unsupported by
+this prerequisite check, even when its stored authority was prepared. Counts
+cover each authentication table and, when installed, each Events table plus
+`event_owner_epochs_inserted`; the owner count includes inserted rows and the
+delivery count includes only formerly pending rows. Counts contain no row data.
 
 ## Acceptance and remaining gates
 
@@ -88,11 +119,23 @@ or live rollback resistance. Those scopes remain closed. The module assumes a
 cold, trusted-schema target; cooperating transaction locks do not fence an older
 binary or a privileged administrator changing catalogs concurrently.
 
-Events APIs and workers must remain unavailable: restored callback-verification
-cache and queued subscriptions/deliveries need their own reviewed invalidation and
-acceptance. Turning workers off alone is insufficient because callbacks can occur
-inline through APIs. A caller's `eventsEnabled: false` declaration is not runtime
-enforcement; this staged module does not activate or configure the application.
+`control-events-recovery-safety.test.mjs` has a separate explicit
+`TEST_CONTROL_EVENTS_RECOVERY_SAFETY=1` opt-in. It extends synthetic archive
+acceptance with real family-bound and code-only Events grants and simulated
+callback transport. It checks restored cache exposure, atomic preparation,
+strict coverage, exact retry, history/cursor preservation, fresh-login
+non-reactivation and explicit same-URL/same-secret resubscription with a fresh
+challenge, grant and generation. The existing negative exposure fixture is
+unchanged. These are isolated storage/authorization tests, not operational
+old-worker/process fencing or provider-side acceptance.
+
+Events APIs and workers must remain unavailable until the full serving and
+operational acceptance gates pass. Turning workers off alone is insufficient
+because callbacks can occur inline through APIs. A caller's
+`eventsEnabled: false` declaration is not runtime enforcement; this staged module does not
+activate or configure the application. Fresh login never automatically
+resubscribes; the isolated fixture's explicit new subscription is test activity,
+not an activation path added by this increment.
 
 The separate identity-directory change rejects stored principals from retired
 issuers during resolution/authorization and prevents counting retired-issuer owners

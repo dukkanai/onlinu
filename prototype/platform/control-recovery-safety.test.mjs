@@ -18,7 +18,7 @@ const random = () => randomBytes(32).toString('base64url');
 const configuration = { baseUrl: 'https://safety.example.invalid',
   oidc: { issuer: 'https://identity.safety.example.invalid/', clientId: 'synthetic-safety-client' },
   nativeStaffEnabled: true, nativeMobileEnabled: false,
-  redirectAllowlist: ['https://client.safety.example.invalid/callback'], eventsEnabled: false };
+  redirectAllowlist: ['https://client.safety.example.invalid/callback'], eventsEnabled: false, eventsStorage: 'absent' };
 const syntheticTarget = { database: 'control_recovery_restore_' + 'a'.repeat(24), databaseOid: 123,
   databaseOwnerOid: 10, marker: 'onlinu-control-recovery:' + randomUUID(),
   schema: 'control_recovery_' + 'a'.repeat(24), schemaOid: 124, schemaOwnerOid: 10 };
@@ -39,7 +39,7 @@ test('staged recovery refuses incomplete assertions, unsupported scope and confi
     { coldFence: null }, { unexpected: true }]) {
     await assert.rejects(prepareControlRecovery({ pool, expectation: { ...expected, ...change }, configuration }), /recovery_input_invalid/);
   }
-  for (const change of [{ baseUrl: 'http://safety.example.invalid' }, { eventsEnabled: true },
+  for (const change of [{ baseUrl: 'http://safety.example.invalid' }, { eventsEnabled: true }, { eventsStorage: 'installed' }, { eventsStorage: undefined },
     { nativeStaffEnabled: false }, { nativeMobileEnabled: true }, { redirectAllowlist: [] },
     { oidc: { ...configuration.oidc, issuer: 'https://replacement.example.invalid/' } },
     { oidc: { ...configuration.oidc, clientId: 'replacement' } }, { baseUrl: 'https://other.example.invalid' }]) {
@@ -55,6 +55,7 @@ test('recovery binding is canonical, bounded and includes enabled native/client 
   assert.deepEqual(binding.customer, { issuer: configuration.baseUrl, resource: configuration.baseUrl + '/mcp' });
   assert.deepEqual(binding.native, { issuer: configuration.baseUrl + '/native', resource: configuration.baseUrl + '/native/api', mobileEnabled: false });
   assert.equal(binding.events, 'disabled');
+  assert.equal(binding.eventsStorage, 'absent');
   assert.equal(controlRecoveryBinding({ ...configuration, nativeStaffEnabled: false }).native, null);
   assert.deepEqual(controlRecoveryBinding({ ...configuration, redirectAllowlist: [...configuration.redirectAllowlist, ...configuration.redirectAllowlist] }), binding);
   for (const change of [{ baseUrl: configuration.baseUrl + '/' }, { oidc: { ...configuration.oidc, issuer: 'https://id.example.invalid' } },
@@ -318,6 +319,7 @@ test('actual archive authentication preparation is atomic, target-bound and retr
       assert.equal(invalidationStatements, 5, 'concurrent duplicate cannot invalidate twice');
       assert.deepEqual(await prepareControlRecovery(args), receipt);
       assert.equal(receipt.scope, 'authentication-preparation-only');
+      assert.equal(receipt.eventsCoverage, 'absent');
       for (const field of ['servingAuthorized', 'eventsSupported', 'processFencingVerified', 'authorityReconciliationVerified']) assert.equal(receipt[field], false);
       for (const [name, value] of Object.entries(before)) assert.equal(receipt.counts[name], value.count);
       assert.deepEqual(await verifyControlRecoveryReceipt(args), receipt);

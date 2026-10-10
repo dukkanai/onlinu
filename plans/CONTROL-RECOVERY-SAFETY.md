@@ -1,6 +1,6 @@
 # Control-plane recovery safety contract
 
-Status: **full recovery policy remains unimplemented and inactive; a bounded authentication-preparation source/test increment is staged**.
+Status: **full recovery policy remains unimplemented and inactive; bounded authentication and Events-storage preparation source/test increments are staged**.
 Source review: `574cbdb30e1e9e9ede3438ea9c6a2d8ba3460a97`, 10 October 2026.
 
 This document specifies the next source/test increment after the
@@ -11,8 +11,9 @@ documentation and authorized isolated source/test work can continue without a
 new live-operation approval. The activation gates below apply to live actions.
 
 The [staged preparation implementation](../prototype/platform/CONTROL-RECOVERY-PREPARATION.md)
-covers offline auth invalidation, target/configuration-bound receipts and isolated
-archive tests only. It is not wired into startup and does not satisfy the full
+covers offline auth invalidation, installed Events storage fencing,
+target/configuration-bound receipts and isolated archive tests only. It is not
+wired into startup and does not satisfy the full
 acceptance matrix or authorize serving, Events APIs/workers or live recovery.
 
 ## 1. Verified source findings and evidence boundaries
@@ -318,8 +319,11 @@ The activation review must establish:
 10. A stop/rollback plan that keeps the fence intact. Reverting code or restoring
     another archive must not reactivate old authority or overwrite newer data.
 
-The next bounded deliverable is source implementation plus isolated acceptance
-of this contract. Deployment and live recovery remain distinct decisions. The
+The staged v2 preparation increment adds explicit Events storage coverage,
+callback-cache expiry and subscription/delivery fencing. It does not implement
+the startup barrier, authority reconstruction, process/old-binary fencing or
+the full acceptance matrix. Further bounded source implementation and isolated
+acceptance remain necessary. Deployment and live recovery are distinct decisions. The
 original restaurant courier-session gate remains open and outside this work.
 
 ## 7. Design review record
