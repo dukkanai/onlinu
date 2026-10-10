@@ -18,7 +18,7 @@ case "${1:-build}" in
       --mount type=bind,source="$task_root",target=/src \
       --mount type=volume,source=astracalls-build-gomod,target=/go/pkg/mod \
       --mount type=volume,source=astracalls-build-gocache,target=/root/.cache/go-build \
-      golang:1.26.4 go build -buildvcs=false -o /src/bin/iteration-audit-server ./cmd/server
+      golang:1.26.9 go build -buildvcs=false -o /src/bin/iteration-audit-server ./cmd/server
     ;;
   start)
     docker run -d --name "$task_app" --pull never \
@@ -30,7 +30,7 @@ case "${1:-build}" in
       -e WACALLS_API_KEY=restaurant-browser-test-key \
       -e WACALLS_RECORDING_DIR=/audit-data \
       -e RESTAURANT_GEOGRAPHY_DATA_DIR=/src/data/saudi-geography \
-      -w /src golang:1.26.4 /src/bin/iteration-audit-server -addr 127.0.0.1:18083 -static /src/client/dist
+      -w /src golang:1.26.9 /src/bin/iteration-audit-server -addr 127.0.0.1:18083 -static /src/client/dist
     ;;
   restart|stop)
     if [[ "$(docker inspect --format '{{index .Config.Labels "astracalls.purpose"}}' "$task_app")" != iteration-isolated-audit ]]; then

@@ -27,7 +27,7 @@ restaurant features and are unrelated to removed WhatsApp pairing.
 
 ## Development
 
-Go 1.26.4 and Node 22+. Main database configuration is `WACALLS_PG_URL`, an existing
+Go 1.26.9 and Node 22+. Main database configuration is `WACALLS_PG_URL`, an existing
 compatibility name. Use an isolated PostgreSQL database for tests and never production
 credentials. The backend retains the `<namespace>_main` database convention; it no
 longer creates, migrates, connects to or drops WhatsApp session databases.

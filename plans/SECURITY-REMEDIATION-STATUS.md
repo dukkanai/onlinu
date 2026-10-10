@@ -1,4 +1,4 @@
-# Native staff authority checkpoint — 10 October 2026, source under validation
+# Native staff authority checkpoint — 10 October 2026, source CI accepted
 
 A handler-level regression reproduced two non-courier native administration
 mutations (profile and menu) dispatching after their originating OAuth family
@@ -14,7 +14,11 @@ The subsequent targeted combined PostgreSQL run passed 259 tests without failure
 or skips, including four actual HTTP delayed-body cases: profile/menu reject
 revocation of the originating family and allow it when only another family was
 revoked. Real OAuth revocation and database state are exercised; the signed
-downstream restaurant transport remains synthetic. Exact-commit CI is pending. The closure
+downstream restaurant transport remains synthetic. Exact commit
+`e48fb4add81e196b98740f767446d5986584a90b` passed all four ordinary jobs in
+[CI 38070787097](https://github.com/dukkanai/onlinu/actions/runs/38070787097).
+The dedicated control recovery suite passed 40/40 without skips. Optional mobile
+and runtime-image jobs were not run. The closure
 is internal and is not returned in principal JSON. Browser authentication and
 ordinary OAuth event grants retain their previous representation.
 

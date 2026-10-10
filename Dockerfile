@@ -9,7 +9,7 @@ COPY prototype/platform/quote-binding.mjs /app/prototype/platform/
 COPY prototype/platform/integration/storefront-recovery-fixture.mjs /app/prototype/platform/integration/
 RUN npm test && npm run build
 
-FROM golang:1.26.4-bookworm AS server
+FROM golang:1.26.9-bookworm AS server
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

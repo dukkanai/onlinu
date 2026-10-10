@@ -114,8 +114,14 @@ func (s *server) handleRestaurantImage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	file, info, err := restaurantOpenPublicFile(restaurantMediaDir(), name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer file.Close()
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
-	http.ServeFile(w, r, filepath.Join(restaurantMediaDir(), name))
+	http.ServeContent(w, r, name, info.ModTime(), file)
 }

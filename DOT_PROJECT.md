@@ -50,7 +50,7 @@ calls, payments, messages, production migrations or deployments during tests.
 
 ## Stack and major areas
 
-- Main backend: Go 1.26.4, module `wacalls`, HTTP/SSE; pgx/PostgreSQL;
+- Main backend: Go 1.26.9, module `wacalls`, HTTP/SSE; pgx/PostgreSQL;
   whatsmeow WhatsApp integration, Pion WebRTC, optional cgo MLow/Opus codec.
 - Web client: React 19, TypeScript 5, Vite 7, Tailwind 4, Radix/shadcn-style
   components, Zustand and TanStack React Query. Node 22 is the CI baseline.
@@ -77,7 +77,7 @@ not prove a live integration is configured or accepted by its provider.
 
 ## Local run
 
-1. Install Go 1.26.4 and Node 22+; install frontend dependencies with `npm ci`
+1. Install Go 1.26.9 and Node 22+; install frontend dependencies with `npm ci`
    in `client/`, using a writable npm cache. Keep lockfiles unchanged.
 2. Provision an isolated local PostgreSQL instance and set `WACALLS_PG_URL`.
    Main backend requires database connectivity and its account needs database

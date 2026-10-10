@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -600,10 +599,10 @@ func (s *server) restaurantPaymentHookGuard(next http.Handler) http.Handler {
 	})
 }
 
-// SPA fallback is explicit; unknown API/static paths remain 404 and private
-// workspace files can never be served by this handler.
+// SPA fallback is explicit; unknown API/static paths remain 404. The configured
+// directory is trusted public content. The shared opener rejects hidden names
+// and observed symlinks below that base, then verifies opened file identities.
 func restaurantStatic(directory string) http.Handler {
-	files := http.FileServer(http.Dir(directory))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -612,22 +611,36 @@ func restaurantStatic(directory string) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		spa := false
 		switch r.URL.Path {
 		case "/", "/order", "/track", "/account", "/admin", "/courier", "/payment-return":
+			name, spa = "index.html", true
+		}
+		if !spa && (name == "" || strings.HasPrefix(name, ".") || strings.Contains(name, "/.") || strings.HasPrefix(name, "api/") || strings.HasPrefix(name, "storefront-api/") || strings.HasPrefix(name, "courier-api/") || strings.HasPrefix(name, "payment-hooks/")) {
+			http.NotFound(w, r)
+			return
+		}
+		file, info, err := restaurantOpenPublicFile(directory, name)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer file.Close()
+		if spa {
 			w.Header().Set("Cache-Control", "no-cache")
-			http.ServeFile(w, r, filepath.Join(directory, "index.html"))
+		}
+		// Preserve FileServer's canonical index URL and query without reopening
+		// the pathname after validating the file descriptor.
+		if strings.HasSuffix(r.URL.Path, "/index.html") {
+			location := "./"
+			if r.URL.RawQuery != "" {
+				location += "?" + r.URL.RawQuery
+			}
+			w.Header().Set("Location", location)
+			w.WriteHeader(http.StatusMovedPermanently)
 			return
 		}
-		clean := strings.TrimPrefix(r.URL.Path, "/")
-		if clean == "" || strings.HasPrefix(clean, ".") || strings.Contains(clean, "/.") || strings.HasPrefix(clean, "api/") || strings.HasPrefix(clean, "storefront-api/") || strings.HasPrefix(clean, "courier-api/") || strings.HasPrefix(clean, "payment-hooks/") {
-			http.NotFound(w, r)
-			return
-		}
-		info, err := os.Stat(filepath.Join(directory, filepath.FromSlash(clean)))
-		if err != nil || info.IsDir() {
-			http.NotFound(w, r)
-			return
-		}
-		files.ServeHTTP(w, r)
+		http.ServeContent(w, r, name, info.ModTime(), file)
 	})
 }

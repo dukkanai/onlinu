@@ -68,7 +68,7 @@ async function start(kind) {
   } else {
     args.push('--mount', `type=bind,source=${root},target=/src,readonly`, '-e', 'LD_LIBRARY_PATH=/src/native',
       '-e', 'RESTAURANT_GEOGRAPHY_DATA_DIR=/src/data/saudi-geography', '-w', '/src',
-      'golang:1.26.4', '/src/bin/iteration-audit-server', '-addr', '127.0.0.1:18084', '-static', '/src/client/dist');
+      'golang:1.26.9', '/src/bin/iteration-audit-server', '-addr', '127.0.0.1:18084', '-static', '/src/client/dist');
   }
   run(args);
   ownsApp = true;
