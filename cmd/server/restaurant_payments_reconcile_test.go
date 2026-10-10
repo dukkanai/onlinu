@@ -48,9 +48,17 @@ func TestRestaurantPaymentsIntegrationSlowPaymentDoesNotStarveRefundLookup(t *te
 		t.Fatal(err)
 	}
 	paymentReads, refundReads := 0, 0
+	var paymentCtx context.Context
 	fake.fetch = func(ctx context.Context, _ restaurantPaymentConfig, _, _ string) (restaurantPaymentRemote, error) {
+		if ctx.Err() != nil {
+			t.Fatalf("payment lookup started with an exhausted queue budget: %v", ctx.Err())
+		}
+		paymentCtx = ctx
 		paymentReads++
 		<-ctx.Done() // Consume the payment queue's entire time allowance.
+		if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			t.Fatalf("payment lookup did not exhaust its deadline: %v", ctx.Err())
+		}
 		return restaurantPaymentRemote{}, ctx.Err()
 	}
 	fake.createRefund = func(context.Context, restaurantPaymentConfig, restaurantPaymentAttempt, restaurantOrder, restaurantRefund, int64) (restaurantRefundRemote, error) {
@@ -58,13 +66,22 @@ func TestRestaurantPaymentsIntegrationSlowPaymentDoesNotStarveRefundLookup(t *te
 		return restaurantRefundRemote{}, nil
 	}
 	fake.fetchRefund = func(ctx context.Context, _ restaurantPaymentConfig, _ restaurantPaymentAttempt, _ restaurantOrder, r restaurantRefund) (restaurantRefundRemote, error) {
+		if paymentCtx == nil {
+			t.Fatal("payment lookup never started before refund lookup")
+		}
+		if !errors.Is(paymentCtx.Err(), context.DeadlineExceeded) {
+			t.Fatalf("refund lookup started before payment deadline exhaustion: %v", paymentCtx.Err())
+		}
 		if ctx.Err() != nil {
 			t.Fatalf("refund lookup inherited exhausted payment budget: %v", ctx.Err())
 		}
 		refundReads++
 		return restaurantRefundRemote{ID: r.ProviderReference, Status: "succeeded"}, nil
 	}
-	p.runReconciliationCycle(ctx, 200*time.Millisecond)
+	// Allow SQL setup time on race-enabled CI while still exhausting the real
+	// payment queue deadline before checking the refund queue's fresh budget.
+	const queueBudget = 5 * time.Second
+	p.runReconciliationCycle(ctx, queueBudget)
 	if paymentReads != 1 || refundReads != 1 {
 		t.Fatalf("payment exhaustion starved refund work: payment reads=%d refund reads=%d", paymentReads, refundReads)
 	}
