@@ -309,6 +309,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify core image client-stage packaging
+        run: docker build --target client -t onlinu-client-stage:test ..
+
       - name: Install pinned browser-test dependencies
         run: npm ci --prefix ../prototype/platform
 
