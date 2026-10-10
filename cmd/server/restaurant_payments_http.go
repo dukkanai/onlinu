@@ -82,6 +82,15 @@ func (s *server) registerRestaurantPaymentHandlers(pub, admin, hooks *http.Serve
 	})
 	for _, method := range []string{"GET", "POST"} {
 		pub.HandleFunc(method+" /storefront-api/orders/{number}/payment", func(w http.ResponseWriter, r *http.Request) {
+			// ServeMux also sends HEAD requests to GET patterns. Reject anything
+			// except the explicit read/start methods before auth or body parsing.
+			switch r.Method {
+			case http.MethodGet, http.MethodPost:
+			default:
+				w.Header().Set("Allow", "GET, POST")
+				writeRestaurantError(w, restaurantFail(http.StatusMethodNotAllowed, "method_not_allowed"))
+				return
+			}
 			if s.payments == nil {
 				writeRestaurantError(w, restaurantFail(503, "payment_unavailable"))
 				return
@@ -92,9 +101,10 @@ func (s *server) registerRestaurantPaymentHandlers(pub, admin, hooks *http.Serve
 				return
 			}
 			var v restaurantPaymentView
-			if r.Method == http.MethodGet {
+			switch r.Method {
+			case http.MethodGet:
 				v, err = s.payments.Status(r.Context(), r.PathValue("number"), r.Header.Get("X-Order-Token"), c.ID)
-			} else {
+			case http.MethodPost:
 				var in struct {
 					Provider string `json:"provider"`
 				}
