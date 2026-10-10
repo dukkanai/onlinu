@@ -203,6 +203,44 @@ jobs:
           CGO_ENABLED: "1"
         run: go test -race -count=1 -v ./cmd/server -run '^TestRestaurant(Key|CryptoActualMainRuntime)'
 
+      - name: Test synthetic external-key recovery in two isolated clusters
+        timeout-minutes: 6
+        run: |
+          # Reuse the exact official PostgreSQL image already provisioned for
+          # this job, never its database, ports, environment or data volume.
+          unset DOCKER_HOST DOCKER_CONTEXT
+          image=$(docker --context default inspect --format '{{.Image}}' '${{ job.services.postgres.id }}')
+          [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]]
+          binary="$RUNNER_TEMP/onlinu-key-recovery.test"
+          cidfile="$RUNNER_TEMP/onlinu-key-recovery.cid"
+          owner="recovery-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_SHA"
+          test ! -e "$binary" && test ! -e "$cidfile"
+          CGO_ENABLED=0 go test -c -o "$binary" ./cmd/server
+          cleanup() {
+            if test -s "$cidfile"; then
+              cid=$(cat "$cidfile")
+              [[ "$cid" =~ ^[a-f0-9]{64}$ ]] || return 1
+              test "$(docker --context default inspect --format '{{index .Config.Labels "org.onlinu.fixture"}}' "$cid")" = "$owner" || return 1
+              test "$(docker --context default inspect --format '{{.Image}}' "$cid")" = "$image" || return 1
+              docker --context default rm --force "$cid" >/dev/null
+            fi
+          }
+          trap cleanup EXIT
+          docker --context default create --cidfile "$cidfile" --label "org.onlinu.fixture=$owner" \
+            --network none --user postgres --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --pids-limit 128 --memory 1g \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=512m \
+            --tmpfs /var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=1m \
+            --mount "type=bind,src=$binary,dst=/recovery.test,readonly" \
+            --entrypoint /usr/bin/env "$image" -i \
+            HOME=/tmp PATH=/usr/lib/postgresql/16/bin:/usr/bin:/bin LANG=C LC_ALL=C TZ=UTC \
+            TEST_EXTERNAL_KEY_RECOVERY=1 TEST_EXTERNAL_KEY_RECOVERY_PG_BIN=/usr/lib/postgresql/16/bin \
+            /recovery.test \
+            -test.v -test.count=1 -test.timeout=4m -test.run '^TestRestaurantKeyRecovery' >/dev/null
+          cid=$(cat "$cidfile")
+          docker --context default start --attach "$cid"
+          test "$(docker --context default inspect --format '{{.State.ExitCode}}' "$cid")" = 0
+
       - name: Test core checkout browser flow
         env:
           CGO_ENABLED: "1"

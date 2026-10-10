@@ -76,16 +76,65 @@ fingerprint match is useful backup-format evidence, but cannot prove successful
 external-v1 runtime recovery. The offline comparison refuses that name mismatch.
 Do not rewrite stored identity or weaken runtime checks to make a restore pass.
 
-A future approved synthetic drill should use a fresh independently owned cluster
-with the original database/schema/store identity. Seed synthetic receipt and
-disabled payment configuration/terminal-attempt data; exercise historical and
-current wrapping generations. Restore each approved synthetic archive into an
-absent target; use retained keys to run offline verification and an envelope-aware
-cold start. Wrong or missing historical material must fail before schema changes,
-HTTP serving or provider work. Prove payload preservation, key fences, full
-business-table/sequence equivalence, unchanged source and neighboring resources.
-Keep reports to bounded hashes/counts and assertion results, never archive or
-key bytes. That drill has not been implemented or executed by this increment.
+The separate opt-in synthetic regression now implements that exact-identity
+drill. It does not turn this metadata preflight into an executable recovery tool.
+
+## Two-cluster synthetic recovery regression
+
+`cmd/server/restaurant_key_recovery_test.go` accepts an explicit local PostgreSQL
+binary directory, never an existing data directory, database URL, archive or
+keyring. The test creates both clusters itself in private temporary directories,
+using generated credentials and keys, separate loopback ports, no Unix sockets,
+and the exact same generated `<namespace>_main`/`public`/store identity. Connection
+checks bind each cluster to its data directory, port and system identifier.
+Every case owns fresh clusters; no restore overwrites or drops a database.
+
+The historical case restores old-generation envelopes with the old key retained
+in a ring whose active key is new. The current case explicitly rotates synthetic
+source envelopes and restores with the new-only ring. Both seed generated receipt
+secrets, disabled Stripe configuration, a failed terminal attempt and non-crypto
+business data. Wrong key bytes and missing historical/current keys fail offline
+verification and actual-main startup with the expected crypto-error marker and
+exit status, without HTTP serving or table/sequence changes. A temporary
+target-only catalog rename makes premature schema initialization observable;
+it is reversed before successful recovery checks.
+
+The custom-format archive is capped at 32 MiB, checked for its PGDMP header,
+written exclusively with mode 0600 and SHA256-checked after readback. All public
+table row hashes/counts and sequence values/called flags must match, alongside
+real receipt/config/attempt reads, durable key fences, unchanged source and
+neighbor fingerprints, and uninterrupted neighbor-cluster uptime. The actual-main
+helper rejects outbound HTTP. Reports contain only bounded hashes/counts and
+assertion results; no archive, key or raw runtime-log artifact is uploaded.
+
+Run only with official PostgreSQL 16/17 binaries in their reviewed Debian layout,
+as a non-root Linux user with loopback socket access:
+
+```
+TEST_EXTERNAL_KEY_RECOVERY=1 \
+TEST_EXTERNAL_KEY_RECOVERY_PG_BIN=/absolute/path/to/usr/lib/postgresql/17/bin \
+go test -race -count=1 -v ./cmd/server -run '^TestRestaurantKeyRecovery' -timeout 5m
+```
+
+Without the opt-in, the two-cluster test skips; its pure ownership/output-bound
+guard still runs. The ordinary server CI job compiles a static test binary and
+runs it as `postgres` in the exact official PostgreSQL 16 image already provisioned
+for that job, with an empty inherited environment, `--network none`, a read-only
+root, no added capabilities, private tmpfs and only the test binary mounted.
+The image's declared data-volume
+path is also covered by an unused tmpfs, preventing anonymous persistent-volume
+creation. No existing database volume or host port is shared. Cleanup verifies
+the created container's exact ID, ownership label and image before removing it.
+Native cleanup stops only its own process
+groups before temporary-directory removal; it never adopts another cluster.
+Shutdown/reaping waits are bounded; failed shutdown retains the owned directory
+and fails the test rather than deleting a running cluster's files.
+
+Local evidence on 2026-10-10: both cases passed with PostgreSQL 17.11 and the Go
+race detector, with all 38 public table/sequence relations equivalent. The static
+test binary also passed both cases with an empty inherited environment. This
+evidence covers the local synthetic drill only.
+The newly added PostgreSQL 16/network-isolated CI step has not yet been executed.
 
 ## Meaning of success and remaining gates
 
@@ -94,15 +143,16 @@ remain false. This tool neither authenticates declarations nor binds them to a
 particular archive, release, cluster or independently verified installation.
 Exit 2 rejects malformed or incompatible declarations without echoing them.
 
-Actual archive integrity/completeness, correct keys, trusted installation mapping,
-target ownership/emptiness/isolation, roles/settings, payload authentication and
-envelope-aware release acceptance still need evidence. Business recovery includes
+For a live deployment, archive integrity/completeness, correct keys, trusted
+installation mapping, target ownership/emptiness/isolation, roles/settings,
+payload authentication and envelope-aware release acceptance still need separate
+evidence; the synthetic regression cannot establish them. Business recovery includes
 data outside encrypted receipt/payment fields. Media must be restored and checked
 separately with cross-resource consistency; an existing-volume media marker proves
 persistence only. Control-plane/Dex data and their external secrets are outside
 this restaurant-key contract. Independent off-host recovery, custody/retention,
 RPO/RTO, Saudi recovery destination and execution approval remain open.
 
-The current no-backup/snapshot instruction is unchanged. No live key,
+The current no-live-backup/snapshot instruction is unchanged. No live key,
 rotation, deployment, server/security setting, or courier-session work is part of
 this increment.
