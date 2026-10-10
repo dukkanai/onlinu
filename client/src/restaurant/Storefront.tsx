@@ -1815,7 +1815,7 @@ function TrackPage({
           </div>
           <PaymentPanel order={order} token={token} customerId={customerId} onUpdated={updated => setOrder(current => mergePaymentOrder(current, updated))} />
           <OrderLocation order={order} token={token}/>
-          {(token || customerId) && <OrderSupportPanel key={`${order.number}-${customerId}`} order={order} token={token} customerId={customerId} onUpdated={setOrder}/>}
+          {(token || customerId) && <OrderSupportPanel key={`${order.number}-${customerId}`} order={order} token={token} customerId={customerId} onUpdated={updated => setOrder(current => mergePaymentOrder(current, updated))}/>}
           {order.mode === "delivery" && (
             <section className="rs-panel">
               <h2>{t("delivery.title")}</h2>
