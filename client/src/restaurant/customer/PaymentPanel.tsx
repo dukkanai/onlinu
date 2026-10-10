@@ -105,6 +105,7 @@ export function PaymentPanel({
       }
       if (
         result.status === "paid" ||
+        result.status === "failed" ||
         result.status === "refunded" ||
         result.status === "review"
       ) {

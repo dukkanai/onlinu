@@ -500,15 +500,20 @@ func (p *restaurantPayments) Start(ctx context.Context, number, token, customerI
 	}
 	req := restaurantPaymentRequest{AttemptID: a.ID, OrderNumber: o.Number, AmountMinor: o.TotalMinor, Currency: o.Currency, CustomerName: o.CustomerName, Phone: o.Phone, ReturnURL: p.baseURL + "/payment-hooks/return/" + url.PathEscape(a.ID), HookURL: p.baseURL + "/payment-hooks/" + provider + "/" + a.ID}
 	remote, createErr := p.adapter.Create(ctx, cfg, req)
-	// Persist uncertainty using a fresh bounded context, even if browser canceled.
+	// Persist the outcome using a fresh bounded context, even if browser canceled.
 	saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if createErr != nil || !restaurantPaymentID.MatchString(remote.ID) || remote.URL == "" && remote.Widget == nil {
-		_, err = p.apply(saveCtx, a, restaurantPaymentRemote{Status: "review"}, false)
-		if err != nil {
-			return restaurantPaymentView{}, err
+		status := "review"
+		var notSubmitted *restaurantPaylinkNotSubmittedError
+		if a.Provider == "paylink" && cfg.ID == "paylink" && cfg.Mode == "test" && errors.As(createErr, &notSubmitted) {
+			// This proof applies only to this new attempt. The durable row stays
+			// in place, so repeated Start calls cannot create another invoice.
+			status = "failed"
 		}
-		return restaurantPaymentView{AttemptID: a.ID, Status: "review", Provider: provider, Mode: cfg.Mode}, nil
+		// Return the locked, persisted result, including a concurrent review or
+		// terminal state preserved by apply rather than the proposed status.
+		return p.apply(saveCtx, a, restaurantPaymentRemote{Status: status}, false)
 	}
 	if remote.URL != "" && !restaurantPaymentURL(provider, remote.URL) {
 		_, _ = p.apply(saveCtx, a, restaurantPaymentRemote{ID: remote.ID, Status: "review"}, false)

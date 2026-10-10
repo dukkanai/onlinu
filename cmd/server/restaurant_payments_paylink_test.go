@@ -176,8 +176,9 @@ func TestRestaurantPaylinkPreflightAndURLBoundaries(t *testing.T) {
 	} {
 		req := paylinkTestRequest()
 		change(&req)
-		if _, err := g.Create(context.Background(), paylinkTestConfig(), req); err == nil {
-			t.Fatal("invalid invoice accepted")
+		var notSubmitted *restaurantPaylinkNotSubmittedError
+		if _, err := g.Create(context.Background(), paylinkTestConfig(), req); !errors.As(err, &notSubmitted) {
+			t.Fatal("invalid invoice was not classified as never submitted")
 		}
 	}
 	for _, mode := range []string{"live", "", "sandbox"} {
@@ -224,13 +225,13 @@ func TestRestaurantPaylinkPreflightAndURLBoundaries(t *testing.T) {
 }
 
 func TestRestaurantPaylinkTransportFailuresNeverRetry(t *testing.T) {
-	for _, stage := range []string{"auth", "create", "fetch"} {
-		for _, failure := range []string{"expired", "timeout", "redirect", "oversize", "malformed", "missing-token"} {
+	for _, stage := range []string{"auth", "create", "fetch", "fetch-auth"} {
+		for _, failure := range []string{"expired", "timeout", "redirect", "oversize", "malformed", "missing-token", "invalid-token"} {
 			t.Run(stage+"-"+failure, func(t *testing.T) {
 				calls := 0
 				g := restaurantPaymentGateways{client: &http.Client{Transport: restaurantPaymentTestTransport(func(r *http.Request) (*http.Response, error) {
 					calls++
-					if stage != "auth" && r.URL.Path == "/api/auth" {
+					if stage != "auth" && stage != "fetch-auth" && r.URL.Path == "/api/auth" {
 						return restaurantPaymentTestResponse(`{"id_token":"synthetic-token"}`), nil
 					}
 					response := restaurantPaymentTestResponse(`{"error":"synthetic-secret-not-a-provider-key"}`)
@@ -248,21 +249,27 @@ func TestRestaurantPaylinkTransportFailuresNeverRetry(t *testing.T) {
 						return restaurantPaymentTestResponse(`{"success":`), nil
 					case "missing-token":
 						return restaurantPaymentTestResponse(`{}`), nil
+					case "invalid-token":
+						return restaurantPaymentTestResponse(`{"id_token":"synthetic token with spaces"}`), nil
 					}
 					return response, nil
 				})}}
 				var err error
-				if stage == "fetch" {
+				if stage == "fetch" || stage == "fetch-auth" {
 					_, err = g.Fetch(context.Background(), paylinkTestConfig(), paylinkTestID, "attempt_synthetic")
 				} else {
 					_, err = g.Create(context.Background(), paylinkTestConfig(), paylinkTestRequest())
 				}
 				wantCalls := 2
-				if stage == "auth" {
+				if stage == "auth" || stage == "fetch-auth" {
 					wantCalls = 1
 				}
 				if err == nil || strings.Contains(err.Error(), "synthetic-secret") || calls != wantCalls {
 					t.Fatalf("failure was retried or disclosed: %v calls=%d", err, calls)
+				}
+				var notSubmitted *restaurantPaylinkNotSubmittedError
+				if errors.As(err, &notSubmitted) != (stage == "auth") {
+					t.Fatalf("incorrect pre-invoice classification at %s: %v", stage, err)
 				}
 			})
 		}

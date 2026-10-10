@@ -25,6 +25,14 @@ var restaurantPaylinkID = regexp.MustCompile(`^[0-9]{1,40}$`)
 var restaurantPaylinkToken = regexp.MustCompile(`^[A-Za-z0-9._~+/-]+={0,2}$`)
 var restaurantPaylinkCheckout = regexp.MustCompile(`^https://paymentpilot\.paylink\.sa/pay/info/[0-9]{1,40}$`)
 
+// Only createPaylink may produce this proof that addInvoice was never started.
+// In particular, an authentication failure during Fetch says nothing about an
+// earlier invoice and must never be classified as a failed creation.
+type restaurantPaylinkNotSubmittedError struct{ cause error }
+
+func (e *restaurantPaylinkNotSubmittedError) Error() string { return e.cause.Error() }
+func (e *restaurantPaylinkNotSubmittedError) Unwrap() error { return e.cause }
+
 func restaurantPaylinkRequestValid(r restaurantPaymentRequest) error {
 	if r.Currency != "SAR" || r.AmountMinor < 500 || !restaurantPaymentID.MatchString(r.AttemptID) || strings.TrimSpace(r.CustomerName) == "" || !restaurantOrderText(r.CustomerName, 100, false) {
 		return restaurantFail(400, "invalid_request")
@@ -101,11 +109,11 @@ func (out restaurantPaylinkInvoice) remote(attempt string) (restaurantPaymentRem
 
 func (g *restaurantPaymentGateways) createPaylink(ctx context.Context, c restaurantPaymentConfig, r restaurantPaymentRequest) (restaurantPaymentRemote, error) {
 	if err := restaurantPaylinkRequestValid(r); err != nil {
-		return restaurantPaymentRemote{}, err
+		return restaurantPaymentRemote{}, &restaurantPaylinkNotSubmittedError{cause: err}
 	}
 	auth, err := g.paylinkAuth(ctx, c)
 	if err != nil {
-		return restaurantPaymentRemote{}, err
+		return restaurantPaymentRemote{}, &restaurantPaylinkNotSubmittedError{cause: err}
 	}
 	amount := json.Number(restaurantPaymentDecimal(r.AmountMinor, r.Currency))
 	// The attempt ID is the unique merchant invoice number, not a reusable
@@ -114,6 +122,8 @@ func (g *restaurantPaymentGateways) createPaylink(ctx context.Context, c restaur
 	body := map[string]any{"orderNumber": r.AttemptID, "amount": amount, "currency": "SAR", "callBackUrl": r.ReturnURL, "cancelUrl": r.ReturnURL,
 		"clientName": r.CustomerName, "clientMobile": r.Phone, "products": []map[string]any{{"title": "Order " + r.OrderNumber, "price": amount, "qty": 1}}}
 	var out restaurantPaylinkInvoice
+	// From this point onward, even a timeout or malformed response is ambiguous:
+	// the provider may have accepted the invoice. Do not mark it not submitted.
 	if err = g.json(ctx, http.MethodPost, restaurantPaylinkAPI+"/api/addInvoice", auth, body, &out); err != nil {
 		return restaurantPaymentRemote{}, err
 	}
